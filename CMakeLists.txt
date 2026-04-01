@@ -66,7 +66,7 @@ target_link_libraries(VTKQtCore PRIVATE
     ${VTK_LIBRARIES}
 )
 
-# Initialise VTK modules (required for vtk_module_autoinit)
+# Initialize VTK modules (required for vtk_module_autoinit)
 vtk_module_autoinit(
     TARGETS VTKQtCore
     MODULES ${VTK_LIBRARIES}
