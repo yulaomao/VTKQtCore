@@ -48,10 +48,14 @@ void LogicRuntime::onActionReceived(const UiAction& action)
         if (m_workflowStateMachine->canAdvanceToNext()) {
             switchToModule(m_workflowStateMachine->getNextModule(), action.actionId);
         } else {
+            const QString next = m_workflowStateMachine->getNextModule();
+            const QString reason = next.isEmpty()
+                ? QStringLiteral("Already at the last step in the workflow")
+                : QStringLiteral("Next module '%1' is not enterable").arg(next);
             LogicNotification notification = LogicNotification::create(
                 LogicNotification::ErrorOccurred,
                 LogicNotification::Shell,
-                {{QStringLiteral("message"), QStringLiteral("Cannot advance to next step")}});
+                {{QStringLiteral("message"), reason}});
             notification.setSourceActionId(action.actionId);
             notification.setLevel(LogicNotification::Warning);
             emit logicNotification(notification);
@@ -62,10 +66,14 @@ void LogicRuntime::onActionReceived(const UiAction& action)
         if (m_workflowStateMachine->canGoToPrev()) {
             switchToModule(m_workflowStateMachine->getPrevModule(), action.actionId);
         } else {
+            const QString prev = m_workflowStateMachine->getPrevModule();
+            const QString reason = prev.isEmpty()
+                ? QStringLiteral("Already at the first step in the workflow")
+                : QStringLiteral("Previous module '%1' is not enterable").arg(prev);
             LogicNotification notification = LogicNotification::create(
                 LogicNotification::ErrorOccurred,
                 LogicNotification::Shell,
-                {{QStringLiteral("message"), QStringLiteral("Cannot go to previous step")}});
+                {{QStringLiteral("message"), reason}});
             notification.setSourceActionId(action.actionId);
             notification.setLevel(LogicNotification::Warning);
             emit logicNotification(notification);
