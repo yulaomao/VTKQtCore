@@ -37,8 +37,11 @@ int main(int argc, char* argv[])
     CommunicationHub communicationHub(&redisGateway);
     communicationHub.initialize();
 
+    bool redisReady = false;
+
     if (useRedisMode) {
         redisGateway.connectToServer(QStringLiteral("127.0.0.1"), 6379);
+        redisReady = redisGateway.waitForConnected(2000);
     }
 
     LocalLogicGateway gateway(
@@ -47,7 +50,7 @@ int main(int argc, char* argv[])
         useRedisMode ? &redisGateway : nullptr);
     MainWindow mainWindow;
 
-    RedisSoftwareResolver resolver(useRedisMode ? &redisGateway : nullptr);
+    RedisSoftwareResolver resolver(useRedisMode && redisReady ? &redisGateway : nullptr);
     const QVariantMap softwareProfile = resolver.resolveSoftwareProfile();
     QString softwareType = softwareTypeFromProfile(softwareProfile);
     if (softwareType.isEmpty()) {

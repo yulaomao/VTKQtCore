@@ -217,6 +217,36 @@ RedisGateway::ConnectionState RedisGateway::getConnectionState() const
     return m_connectionState;
 }
 
+bool RedisGateway::waitForConnected(int timeoutMs)
+{
+    if (m_connectionState == Connected) {
+        return true;
+    }
+
+    if (timeoutMs <= 0) {
+        return false;
+    }
+
+    QEventLoop loop;
+    QTimer timeoutTimer;
+    timeoutTimer.setSingleShot(true);
+
+    QMetaObject::Connection stateConnection;
+    stateConnection = connect(this, &RedisGateway::connectionStateChanged,
+                              &loop, [&](ConnectionState state) {
+                                  if (state == Connected) {
+                                      loop.quit();
+                                  }
+                              });
+    connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
+
+    timeoutTimer.start(timeoutMs);
+    loop.exec();
+    disconnect(stateConnection);
+
+    return m_connectionState == Connected;
+}
+
 void RedisGateway::subscribe(const QString& channel)
 {
     if (channel.isEmpty()) {

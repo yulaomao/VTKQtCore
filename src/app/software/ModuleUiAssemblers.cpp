@@ -147,6 +147,11 @@ void registerPointPickModuleUi(const ModuleUiAssemblyContext& context)
                              return;
                          }
 
+                         if (notification.payload.contains(QStringLiteral("points"))) {
+                             page->updatePointList(
+                                 notification.payload.value(QStringLiteral("points")).toStringList());
+                         }
+
                          if (notification.payload.contains(QStringLiteral("pointCount"))) {
                              page->setPointCount(
                                  notification.payload.value(QStringLiteral("pointCount")).toInt());

@@ -16,6 +16,7 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Gui Network)
 # ---------------------------------------------------------------------------
 # VTK
 # ---------------------------------------------------------------------------
+set(VTK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirtyPart/vtk/lib/cmake/vtk-9.4")
 find_package(VTK REQUIRED COMPONENTS
     GUISupportQt
     RenderingOpenGL2

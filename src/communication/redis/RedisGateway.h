@@ -30,6 +30,7 @@ public:
     void connectToServer(const QString& host, int port);
     void disconnect();
     ConnectionState getConnectionState() const;
+    bool waitForConnected(int timeoutMs = 2000);
 
     void subscribe(const QString& channel);
     void unsubscribe(const QString& channel);

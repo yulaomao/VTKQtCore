@@ -4,6 +4,7 @@
 #include "logic/scene/nodes/PointNode.h"
 
 #include <array>
+#include <QStringList>
 
 namespace {
 
@@ -69,6 +70,37 @@ QVector<PointItem> extractPoints(const QVariantMap& payload)
         item.position[1] = position[1];
         item.position[2] = position[2];
         points.append(item);
+    }
+
+    return points;
+}
+
+QStringList buildPointSummary(const PointNode* pointNode)
+{
+    QStringList points;
+    if (!pointNode) {
+        return points;
+    }
+
+    const int selectedIndex = pointNode->getSelectedPointIndex();
+    for (int index = 0; index < pointNode->getPointCount(); ++index) {
+        const PointItem& point = pointNode->getPointByIndex(index);
+        QString label = point.label;
+        if (label.isEmpty()) {
+            label = point.pointId.isEmpty()
+                ? QStringLiteral("Point %1").arg(index + 1)
+                : QStringLiteral("Point %1").arg(point.pointId.left(8));
+        }
+
+        QString entry = QStringLiteral("%1 (%2, %3, %4)")
+                            .arg(label)
+                            .arg(point.position[0], 0, 'f', 1)
+                            .arg(point.position[1], 0, 'f', 1)
+                            .arg(point.position[2], 0, 'f', 1);
+        if (index == selectedIndex || point.selectedFlag) {
+            entry.prepend(QStringLiteral("[selected] "));
+        }
+        points.append(entry);
     }
 
     return points;
@@ -244,6 +276,8 @@ void PointPickModuleLogicHandler::emitSelectionState(const QString& sourceAction
     if (scene) {
         if (auto* pointNode = scene->getNodeById<PointNode>(m_pointNodeId)) {
             payload.insert(QStringLiteral("pointCount"), pointNode->getPointCount());
+            payload.insert(QStringLiteral("selectedIndex"), pointNode->getSelectedPointIndex());
+            payload.insert(QStringLiteral("points"), buildPointSummary(pointNode));
         }
     }
 

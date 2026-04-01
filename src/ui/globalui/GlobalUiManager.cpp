@@ -126,7 +126,14 @@ void GlobalUiManager::hideOverlay()
 void GlobalUiManager::registerVtkWindow(VtkSceneWindow* window)
 {
     if (window) {
-        m_vtkWindows.insert(window->getWindowId(), window);
+        const QString windowId = window->getWindowId();
+        m_vtkWindows.insert(windowId, window);
+        connect(window, &QObject::destroyed,
+                this, [this, windowId, window]() {
+                    if (m_vtkWindows.value(windowId) == window) {
+                        m_vtkWindows.remove(windowId);
+                    }
+                });
     }
 }
 

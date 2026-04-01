@@ -84,6 +84,9 @@ void CommunicationHub::initialize()
             this, &CommunicationHub::onAckReceived);
     connect(m_messageRouter, &MessageRouter::actionRequestRouted,
             this, [this](const QString& module, const QVariantMap& payload) {
+                if (isSelfOriginated(payload)) {
+                    return;
+                }
                 m_lastControlMessageMs = QDateTime::currentMSecsSinceEpoch();
                 ++m_receivedControlCount;
                 if (shouldAck(QStringLiteral("ActionRequest"), payload)) {
@@ -94,6 +97,9 @@ void CommunicationHub::initialize()
             });
     connect(m_messageRouter, &MessageRouter::serverCommandRouted,
             this, [this](const QString& commandType, const QVariantMap& payload) {
+                if (isSelfOriginated(payload)) {
+                    return;
+                }
                 m_lastControlMessageMs = QDateTime::currentMSecsSinceEpoch();
                 ++m_receivedControlCount;
                 if (shouldAck(QStringLiteral("ServerCommand"), payload)) {
@@ -104,6 +110,9 @@ void CommunicationHub::initialize()
             });
     connect(m_messageRouter, &MessageRouter::resyncRequestReceived,
             this, [this](const QVariantMap& payload) {
+                if (isSelfOriginated(payload)) {
+                    return;
+                }
                 m_lastControlMessageMs = QDateTime::currentMSecsSinceEpoch();
                 ++m_receivedControlCount;
                 if (shouldAck(QStringLiteral("ResyncRequest"), payload)) {
@@ -114,6 +123,9 @@ void CommunicationHub::initialize()
             });
     connect(m_messageRouter, &MessageRouter::resyncResponseReceived,
             this, [this](const QVariantMap& payload) {
+                if (isSelfOriginated(payload)) {
+                    return;
+                }
                 m_lastControlMessageMs = QDateTime::currentMSecsSinceEpoch();
                 ++m_receivedControlCount;
                 if (shouldAck(QStringLiteral("ResyncResponse"), payload)) {
@@ -262,6 +274,8 @@ bool CommunicationHub::sendActionRequest(const UiAction& action, bool loopbackTo
     payload.insert(QStringLiteral("timestampMs"), action.timestampMs);
     payload.insert(QStringLiteral("payload"), action.payload);
     payload.insert(QStringLiteral("requireAck"), true);
+    payload.insert(QStringLiteral("origin"), QStringLiteral("client"));
+    payload.insert(QStringLiteral("senderId"), m_clientInstanceId);
     payload.insert(QStringLiteral("seq"), m_nextOutboundSeq++);
 
     publishJson(m_controlPublishChannel, payload);
@@ -281,6 +295,8 @@ bool CommunicationHub::sendResyncRequest(const QString& reason, bool loopbackToL
     payload.insert(QStringLiteral("reason"), reason);
     payload.insert(QStringLiteral("timestampMs"), QDateTime::currentMSecsSinceEpoch());
     payload.insert(QStringLiteral("requireAck"), true);
+    payload.insert(QStringLiteral("origin"), QStringLiteral("client"));
+    payload.insert(QStringLiteral("senderId"), m_clientInstanceId);
     payload.insert(QStringLiteral("seq"), m_nextOutboundSeq++);
 
     publishJson(m_controlPublishChannel, payload);
