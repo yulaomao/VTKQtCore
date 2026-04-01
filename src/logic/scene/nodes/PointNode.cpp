@@ -117,6 +117,8 @@ void PointNode::setPointSelected(int index, bool selected)
     m_controlPoints[index].selectedFlag = selected;
     if (selected) {
         m_selectedPointIndex = index;
+    } else if (m_selectedPointIndex == index) {
+        m_selectedPointIndex = -1;
     }
     touchModified();
 }

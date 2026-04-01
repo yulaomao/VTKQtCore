@@ -89,8 +89,11 @@ void NodeBase::setReference(const QString& role, const QString& nodeId)
 
 void NodeBase::addReference(const QString& role, const QString& nodeId)
 {
-    m_referenceMap[role].append(nodeId);
-    emitEvent(NodeEventType::ReferenceChanged);
+    QStringList& refs = m_referenceMap[role];
+    if (!refs.contains(nodeId)) {
+        refs.append(nodeId);
+        emitEvent(NodeEventType::ReferenceChanged);
+    }
 }
 
 void NodeBase::removeReference(const QString& role, const QString& nodeId)
@@ -120,7 +123,11 @@ void NodeBase::endBatchModify()
         m_batchModifyDepth--;
     }
     if (m_batchModifyDepth == 0 && !m_pendingEvents.isEmpty()) {
+        QSet<NodeEventType> pending = m_pendingEvents;
         m_pendingEvents.clear();
+        for (auto type : pending) {
+            emit nodeEvent(m_nodeId, type);
+        }
         emit nodeEvent(m_nodeId, NodeEventType::NodeModified);
     }
 }

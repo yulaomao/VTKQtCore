@@ -132,7 +132,7 @@ void TransformNode::transformPoint(const double in[3], double out[3]) const
              + m_matrixData[1 * 4 + 3] * in[1]
              + m_matrixData[2 * 4 + 3] * in[2]
              + m_matrixData[3 * 4 + 3];
-    if (std::fabs(w) > 1e-15 && std::fabs(w - 1.0) > 1e-15) {
+    if (std::fabs(w) > 1e-9 && std::fabs(w - 1.0) > 1e-15) {
         out[0] /= w;
         out[1] /= w;
         out[2] /= w;
@@ -192,6 +192,7 @@ void TransformNode::setParentTransform(const QString& transformId)
 {
     if (m_parentTransformId != transformId) {
         m_parentTransformId = transformId;
+        touchModified();
         emitEvent(NodeEventType::TransformChanged);
     }
 }
