@@ -41,7 +41,10 @@ int main(int argc, char* argv[])
         redisGateway.connectToServer(QStringLiteral("127.0.0.1"), 6379);
     }
 
-    LocalLogicGateway gateway(&logicRuntime, useRedisMode ? &redisGateway : nullptr);
+    LocalLogicGateway gateway(
+        &logicRuntime,
+        useRedisMode ? &communicationHub : nullptr,
+        useRedisMode ? &redisGateway : nullptr);
     MainWindow mainWindow;
 
     RedisSoftwareResolver resolver(useRedisMode ? &redisGateway : nullptr);

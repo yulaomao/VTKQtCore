@@ -19,42 +19,7 @@ QString normalizeKey(const QString& value)
 
 bool parseActionType(const QString& rawType, UiAction::ActionType& actionType)
 {
-    const QString normalized = normalizeKey(rawType);
-    if (normalized == QStringLiteral("next_step")) {
-        actionType = UiAction::NextStep;
-        return true;
-    }
-    if (normalized == QStringLiteral("prev_step") ||
-        normalized == QStringLiteral("previous_step")) {
-        actionType = UiAction::PrevStep;
-        return true;
-    }
-    if (normalized == QStringLiteral("request_switch_module") ||
-        normalized == QStringLiteral("switch_module")) {
-        actionType = UiAction::RequestSwitchModule;
-        return true;
-    }
-    if (normalized == QStringLiteral("confirm_points")) {
-        actionType = UiAction::ConfirmPoints;
-        return true;
-    }
-    if (normalized == QStringLiteral("start_navigation")) {
-        actionType = UiAction::StartNavigation;
-        return true;
-    }
-    if (normalized == QStringLiteral("stop_navigation")) {
-        actionType = UiAction::StopNavigation;
-        return true;
-    }
-    if (normalized == QStringLiteral("update_parameter")) {
-        actionType = UiAction::UpdateParameter;
-        return true;
-    }
-    if (normalized == QStringLiteral("custom_action")) {
-        actionType = UiAction::CustomAction;
-        return true;
-    }
-    return false;
+    return UiAction::fromString(rawType, actionType);
 }
 
 QVariantMap extractPayloadMap(const QVariantMap& input)
@@ -111,29 +76,6 @@ LogicNotification createShellError(const QString& errorCode,
     return notification;
 }
 
-QString actionTypeName(UiAction::ActionType actionType)
-{
-    switch (actionType) {
-    case UiAction::NextStep:
-        return QStringLiteral("next_step");
-    case UiAction::PrevStep:
-        return QStringLiteral("prev_step");
-    case UiAction::RequestSwitchModule:
-        return QStringLiteral("request_switch_module");
-    case UiAction::ConfirmPoints:
-        return QStringLiteral("confirm_points");
-    case UiAction::StartNavigation:
-        return QStringLiteral("start_navigation");
-    case UiAction::StopNavigation:
-        return QStringLiteral("stop_navigation");
-    case UiAction::UpdateParameter:
-        return QStringLiteral("update_parameter");
-    case UiAction::CustomAction:
-    default:
-        return QStringLiteral("custom_action");
-    }
-}
-
 LogicNotification createWorkflowRejectedNotification(const WorkflowDecision& decision,
                                                     UiAction::ActionType actionType,
                                                     const QString& actionId)
@@ -146,7 +88,7 @@ LogicNotification createWorkflowRejectedNotification(const WorkflowDecision& dec
         {{QStringLiteral("reasonCode"), decision.reasonCode},
          {QStringLiteral("targetModule"), decision.targetModule},
          {QStringLiteral("currentModule"), decision.currentModule},
-         {QStringLiteral("actionType"), actionTypeName(actionType)}});
+            {QStringLiteral("actionType"), UiAction::toString(actionType)}});
     notification.setSourceActionId(actionId);
     notification.setLevel(LogicNotification::Warning);
     return notification;
@@ -192,36 +134,24 @@ void LogicRuntime::registerModuleHandler(ModuleLogicHandler* handler)
 
 void LogicRuntime::onActionReceived(const UiAction& action)
 {
+    const WorkflowDecision actionDecision = m_workflowStateMachine->evaluateAction(action);
+    if (!actionDecision.allowed) {
+        emit logicNotification(createWorkflowRejectedNotification(
+            actionDecision, action.actionType, action.actionId));
+        return;
+    }
+
     switch (action.actionType) {
     case UiAction::NextStep: {
-        const WorkflowDecision decision = m_workflowStateMachine->evaluateAdvanceToNext();
-        if (decision.allowed) {
-            switchToModule(decision.targetModule, action.actionId);
-        } else {
-            emit logicNotification(createWorkflowRejectedNotification(
-                decision, action.actionType, action.actionId));
-        }
+        switchToModule(actionDecision.targetModule, action.actionId);
         break;
     }
     case UiAction::PrevStep: {
-        const WorkflowDecision decision = m_workflowStateMachine->evaluateGoToPrev();
-        if (decision.allowed) {
-            switchToModule(decision.targetModule, action.actionId);
-        } else {
-            emit logicNotification(createWorkflowRejectedNotification(
-                decision, action.actionType, action.actionId));
-        }
+        switchToModule(actionDecision.targetModule, action.actionId);
         break;
     }
     case UiAction::RequestSwitchModule: {
-        const QString targetModule = action.payload.value(QStringLiteral("targetModule")).toString();
-        const WorkflowDecision decision = m_workflowStateMachine->evaluateSwitchTo(targetModule);
-        if (decision.allowed) {
-            switchToModule(decision.targetModule, action.actionId);
-        } else {
-            emit logicNotification(createWorkflowRejectedNotification(
-                decision, action.actionType, action.actionId));
-        }
+        switchToModule(actionDecision.targetModule, action.actionId);
         break;
     }
     default:

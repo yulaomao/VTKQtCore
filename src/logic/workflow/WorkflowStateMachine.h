@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QVariantMap>
 
+#include "contracts/UiAction.h"
+
 struct WorkflowDecision
 {
     bool allowed = false;
@@ -56,6 +58,7 @@ public:
     WorkflowDecision evaluateSwitchTo(const QString& module) const;
     WorkflowDecision evaluateAdvanceToNext() const;
     WorkflowDecision evaluateGoToPrev() const;
+    WorkflowDecision evaluateAction(const UiAction& action) const;
     QVariantMap createSnapshot() const;
 
     int getModuleIndex(const QString& module) const;

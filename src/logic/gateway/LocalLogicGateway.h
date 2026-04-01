@@ -5,6 +5,7 @@
 #include <QMap>
 
 class LogicRuntime;
+class CommunicationHub;
 class RedisGateway;
 
 class LocalLogicGateway : public ILogicGateway
@@ -13,6 +14,7 @@ class LocalLogicGateway : public ILogicGateway
 
 public:
     explicit LocalLogicGateway(LogicRuntime* runtime,
+                               CommunicationHub* communicationHub = nullptr,
                                RedisGateway* redisGateway = nullptr,
                                QObject* parent = nullptr);
     ~LocalLogicGateway() override = default;
@@ -32,6 +34,7 @@ private:
     void updateConnectionState(ConnectionState state);
 
     LogicRuntime* m_runtime = nullptr;
+    CommunicationHub* m_communicationHub = nullptr;
     RedisGateway* m_redisGateway = nullptr;
     ConnectionState m_connectionState = Connected;
     int m_nextSubscriptionId = 1;

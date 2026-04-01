@@ -1,13 +1,16 @@
 #include "LocalLogicGateway.h"
 
+#include "communication/hub/CommunicationHub.h"
 #include "logic/runtime/LogicRuntime.h"
 #include "communication/redis/RedisGateway.h"
 
 LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime,
+                                     CommunicationHub* communicationHub,
                                      RedisGateway* redisGateway,
                                      QObject* parent)
     : ILogicGateway(parent)
     , m_runtime(runtime)
+    , m_communicationHub(communicationHub)
     , m_redisGateway(redisGateway)
 {
     if (m_runtime) {
@@ -26,7 +29,15 @@ LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime,
 
 bool LocalLogicGateway::sendAction(const UiAction& action)
 {
-    if (!m_runtime || m_connectionState == Disconnected) {
+    if (m_connectionState == Disconnected) {
+        return false;
+    }
+
+    if (m_communicationHub) {
+        return m_communicationHub->sendActionRequest(action, true);
+    }
+
+    if (!m_runtime) {
         return false;
     }
 
@@ -57,6 +68,11 @@ ILogicGateway::ConnectionState LocalLogicGateway::getConnectionState() const
 
 void LocalLogicGateway::requestResync(const QString& reason)
 {
+    if (m_communicationHub) {
+        m_communicationHub->sendResyncRequest(reason, true);
+        return;
+    }
+
     if (!m_runtime) {
         return;
     }

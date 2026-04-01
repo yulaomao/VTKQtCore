@@ -35,6 +35,58 @@ QStringList setToSortedList(const QSet<QString>& modules)
     return result;
 }
 
+WorkflowDecision evaluateModuleScopedAction(const UiAction& action,
+                                            const QString& currentModule,
+                                            const QStringList& knownModules,
+                                            const QString& requiredModule = QString())
+{
+    if (currentModule.isEmpty()) {
+        return rejectDecision(
+            QStringLiteral("current_module_unset"),
+            QStringLiteral("Current workflow module is not set"),
+            QString(),
+            currentModule);
+    }
+
+    const QString actionModule = action.module.isEmpty() ? currentModule : action.module;
+    if (actionModule.isEmpty()) {
+        return rejectDecision(
+            QStringLiteral("action_module_unset"),
+            QStringLiteral("Action '%1' does not specify a module").arg(UiAction::toString(action.actionType)),
+            QString(),
+            currentModule);
+    }
+
+    if (!knownModules.contains(actionModule)) {
+        return rejectDecision(
+            QStringLiteral("action_module_unknown"),
+            QStringLiteral("Action '%1' references unknown module '%2'")
+                .arg(UiAction::toString(action.actionType), actionModule),
+            actionModule,
+            currentModule);
+    }
+
+    if (!requiredModule.isEmpty() && actionModule != requiredModule) {
+        return rejectDecision(
+            QStringLiteral("action_module_mismatch"),
+            QStringLiteral("Action '%1' is only valid in module '%2'")
+                .arg(UiAction::toString(action.actionType), requiredModule),
+            actionModule,
+            currentModule);
+    }
+
+    if (actionModule != currentModule) {
+        return rejectDecision(
+            QStringLiteral("action_module_inactive"),
+            QStringLiteral("Action '%1' is only valid in current module '%2'")
+                .arg(UiAction::toString(action.actionType), currentModule),
+            actionModule,
+            currentModule);
+    }
+
+    return allowDecision(actionModule, currentModule);
+}
+
 }
 
 WorkflowStateMachine::WorkflowStateMachine(QObject* parent)
@@ -222,6 +274,40 @@ WorkflowDecision WorkflowStateMachine::evaluateGoToPrev() const
     }
 
     return evaluateSwitchTo(prevModule);
+}
+
+WorkflowDecision WorkflowStateMachine::evaluateAction(const UiAction& action) const
+{
+    switch (action.actionType) {
+    case UiAction::NextStep:
+        return evaluateAdvanceToNext();
+    case UiAction::PrevStep:
+        return evaluateGoToPrev();
+    case UiAction::RequestSwitchModule:
+        return evaluateSwitchTo(action.payload.value(QStringLiteral("targetModule")).toString());
+    case UiAction::UpdateParameter:
+        return evaluateModuleScopedAction(
+            action,
+            m_currentModule,
+            m_workflowSequence,
+            QStringLiteral("params"));
+    case UiAction::ConfirmPoints:
+        return evaluateModuleScopedAction(
+            action,
+            m_currentModule,
+            m_workflowSequence,
+            QStringLiteral("pointpick"));
+    case UiAction::StartNavigation:
+    case UiAction::StopNavigation:
+        return evaluateModuleScopedAction(
+            action,
+            m_currentModule,
+            m_workflowSequence,
+            QStringLiteral("navigation"));
+    case UiAction::CustomAction:
+    default:
+        return evaluateModuleScopedAction(action, m_currentModule, m_workflowSequence);
+    }
 }
 
 QVariantMap WorkflowStateMachine::createSnapshot() const

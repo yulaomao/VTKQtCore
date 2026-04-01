@@ -8,6 +8,7 @@
 #include <QVariantMap>
 #include <QVector>
 
+#include "contracts/UiAction.h"
 #include "communication/datasource/StateSample.h"
 #include "communication/redis/RedisGateway.h"
 
@@ -42,6 +43,8 @@ public:
     void addPollingTask(PollingTask* task);
     void setOutboundChannels(const QString& controlPublishChannel,
                              const QString& ackChannel);
+    bool sendActionRequest(const UiAction& action, bool loopbackToLocal = true);
+    bool sendResyncRequest(const QString& reason, bool loopbackToLocal = true);
     void start();
     void stop();
     QString getConnectionStateName() const;
@@ -73,7 +76,6 @@ private:
     void stopPollingTransport(bool blocking = false);
     void publishAck(const QString& category, const QVariantMap& payload,
                     const QString& status = QStringLiteral("received"));
-    void publishResyncRequest(const QString& reason);
     void publishJson(const QString& channel, const QVariantMap& payload);
     void dispatchOutboundMessage(OutboundControlMessage message);
     void flushOutboundQueue();

@@ -251,6 +251,49 @@ void CommunicationHub::setOutboundChannels(const QString& controlPublishChannel,
     }
 }
 
+bool CommunicationHub::sendActionRequest(const UiAction& action, bool loopbackToLocal)
+{
+    QVariantMap payload;
+    payload.insert(QStringLiteral("category"), QStringLiteral("ActionRequest"));
+    payload.insert(QStringLiteral("msgId"), action.actionId);
+    payload.insert(QStringLiteral("actionId"), action.actionId);
+    payload.insert(QStringLiteral("actionType"), UiAction::toString(action.actionType));
+    payload.insert(QStringLiteral("module"), action.module);
+    payload.insert(QStringLiteral("timestampMs"), action.timestampMs);
+    payload.insert(QStringLiteral("payload"), action.payload);
+    payload.insert(QStringLiteral("requireAck"), true);
+    payload.insert(QStringLiteral("seq"), m_nextOutboundSeq++);
+
+    publishJson(m_controlPublishChannel, payload);
+
+    if (loopbackToLocal) {
+        emit controlMessageReceived(action.module, payload);
+    }
+
+    return true;
+}
+
+bool CommunicationHub::sendResyncRequest(const QString& reason, bool loopbackToLocal)
+{
+    QVariantMap payload;
+    payload.insert(QStringLiteral("category"), QStringLiteral("ResyncRequest"));
+    payload.insert(QStringLiteral("msgId"), QUuid::createUuid().toString(QUuid::WithoutBraces));
+    payload.insert(QStringLiteral("reason"), reason);
+    payload.insert(QStringLiteral("timestampMs"), QDateTime::currentMSecsSinceEpoch());
+    payload.insert(QStringLiteral("requireAck"), true);
+    payload.insert(QStringLiteral("seq"), m_nextOutboundSeq++);
+
+    publishJson(m_controlPublishChannel, payload);
+    ++m_resyncRequestCount;
+    refreshHealthSnapshot();
+
+    if (loopbackToLocal) {
+        emit serverCommandReceived(QStringLiteral("resync_request"), payload);
+    }
+
+    return true;
+}
+
 void CommunicationHub::start()
 {
     m_started = true;
@@ -363,10 +406,7 @@ void CommunicationHub::onGatewayConnectionStateChanged(RedisGateway::ConnectionS
 
     if (recovered) {
         ++m_reconnectCount;
-        publishResyncRequest(QStringLiteral("communication_recovered"));
-        emit serverCommandReceived(
-            QStringLiteral("resync"),
-            {{QStringLiteral("reason"), QStringLiteral("communication_recovered")}});
+        sendResyncRequest(QStringLiteral("communication_recovered"), true);
     }
 
     m_lastConnectionState = state;
@@ -505,22 +545,6 @@ void CommunicationHub::publishAck(const QString& category, const QVariantMap& pa
     ackPayload.insert(QStringLiteral("seq"), m_nextOutboundSeq++);
     publishJson(m_ackChannel, ackPayload);
     ++m_ackCount;
-    refreshHealthSnapshot();
-}
-
-void CommunicationHub::publishResyncRequest(const QString& reason)
-{
-    QVariantMap payload;
-    payload.insert(QStringLiteral("category"), QStringLiteral("ResyncRequest"));
-    payload.insert(QStringLiteral("msgId"), QUuid::createUuid().toString(QUuid::WithoutBraces));
-    payload.insert(QStringLiteral("reason"), reason);
-    payload.insert(QStringLiteral("timestampMs"), QDateTime::currentMSecsSinceEpoch());
-    payload.insert(QStringLiteral("origin"), QStringLiteral("client"));
-    payload.insert(QStringLiteral("senderId"), m_clientInstanceId);
-    payload.insert(QStringLiteral("requireAck"), true);
-    payload.insert(QStringLiteral("seq"), m_nextOutboundSeq++);
-    publishJson(m_controlPublishChannel, payload);
-    ++m_resyncRequestCount;
     refreshHealthSnapshot();
 }
 
