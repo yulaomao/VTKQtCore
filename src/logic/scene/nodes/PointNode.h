@@ -71,7 +71,6 @@ private:
     QString m_pointLabelFormat = QStringLiteral("%1");
     int m_selectedPointIndex = -1;
     QString m_pointRole;
-    QString m_parentTransformId;
     double m_defaultPointColor[4] = {1.0, 0.0, 0.0, 1.0};
     double m_defaultPointSize = 5.0;
     bool m_showPointLabelFlag = true;

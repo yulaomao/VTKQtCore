@@ -22,6 +22,7 @@ void ParamsModuleLogicHandler::handleAction(const UiAction& action)
     QVariantMap notifPayload;
     notifPayload.insert(QStringLiteral("parametersValid"), ready);
     notifPayload.insert(QStringLiteral("updatedKey"), key);
+    notifPayload.insert(QStringLiteral("parameterCount"), m_parameters.size());
 
     auto notification = LogicNotification::create(
         LogicNotification::ButtonStateChanged,
@@ -29,6 +30,37 @@ void ParamsModuleLogicHandler::handleAction(const UiAction& action)
         notifPayload);
     notification.setSourceActionId(action.actionId);
     emit logicNotification(notification);
+}
+
+void ParamsModuleLogicHandler::handleStateSample(const StateSample& sample)
+{
+    QVariantMap incomingParameters = sample.data.value(QStringLiteral("parameters")).toMap();
+    if (incomingParameters.isEmpty()) {
+        incomingParameters = sample.data.value(QStringLiteral("value")).toMap();
+    }
+
+    if (incomingParameters.isEmpty()) {
+        const QString key = sample.data.value(QStringLiteral("key")).toString();
+        const QVariant value = sample.data.value(QStringLiteral("value"));
+        if (!key.isEmpty() && value.isValid()) {
+            incomingParameters.insert(key, value);
+        }
+    }
+
+    if (incomingParameters.isEmpty()) {
+        return;
+    }
+
+    for (auto it = incomingParameters.cbegin(); it != incomingParameters.cend(); ++it) {
+        m_parameters.insert(it.key(), it.value());
+    }
+
+    emit logicNotification(LogicNotification::create(
+        LogicNotification::ButtonStateChanged,
+        LogicNotification::CurrentModule,
+        {{QStringLiteral("parametersValid"), !m_parameters.isEmpty()},
+         {QStringLiteral("parameterCount"), m_parameters.size()},
+         {QStringLiteral("sourceSampleId"), sample.sampleId}}));
 }
 
 void ParamsModuleLogicHandler::onModuleActivated()

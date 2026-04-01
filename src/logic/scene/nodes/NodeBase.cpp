@@ -1,10 +1,21 @@
 #include "NodeBase.h"
 
+namespace {
+
+const QString kParentTransformReferenceRole = QStringLiteral("parentTransform");
+
+}
+
 NodeBase::NodeBase(const QString& nodeTagName, QObject* parent)
     : QObject(parent)
     , m_nodeId(QUuid::createUuid().toString(QUuid::WithoutBraces))
     , m_nodeTagName(nodeTagName)
 {
+}
+
+const QString& NodeBase::parentTransformReferenceRole()
+{
+    return kParentTransformReferenceRole;
 }
 
 QString NodeBase::getNodeId() const
@@ -83,12 +94,32 @@ QVariantMap NodeBase::getAttributes() const
 
 void NodeBase::setReference(const QString& role, const QString& nodeId)
 {
-    m_referenceMap[role] = QStringList{nodeId};
+    if (role.isEmpty()) {
+        return;
+    }
+
+    if (nodeId.isEmpty()) {
+        if (m_referenceMap.remove(role) > 0) {
+            emitEvent(NodeEventType::ReferenceChanged);
+        }
+        return;
+    }
+
+    const QStringList nextValue{nodeId};
+    if (m_referenceMap.value(role) == nextValue) {
+        return;
+    }
+
+    m_referenceMap[role] = nextValue;
     emitEvent(NodeEventType::ReferenceChanged);
 }
 
 void NodeBase::addReference(const QString& role, const QString& nodeId)
 {
+    if (role.isEmpty() || nodeId.isEmpty()) {
+        return;
+    }
+
     QStringList& refs = m_referenceMap[role];
     if (!refs.contains(nodeId)) {
         refs.append(nodeId);
@@ -110,6 +141,12 @@ void NodeBase::removeReference(const QString& role, const QString& nodeId)
 QStringList NodeBase::getReferences(const QString& role) const
 {
     return m_referenceMap.value(role);
+}
+
+QString NodeBase::getFirstReference(const QString& role) const
+{
+    const QStringList refs = getReferences(role);
+    return refs.isEmpty() ? QString() : refs.first();
 }
 
 void NodeBase::startBatchModify()

@@ -15,6 +15,9 @@ public:
     QWidget* getTopWidget() const;
     QWidget* getRightWidget() const;
     QWidget* getBottomWidget() const;
+    QWidget* getRightShellHost() const;
+    QWidget* getBottomShellHost() const;
+    void refreshHostVisibility();
 
     void mountRightAuxiliary(QWidget* widget);
     void unmountRightAuxiliary(QWidget* widget);
@@ -25,8 +28,14 @@ public:
     void clearBottomAuxiliary();
 
 private:
+    void updateAuxiliaryVisibility();
+
     QWidget* m_topWidget;
     QStackedWidget* m_centerStack;
     QWidget* m_rightWidget;
     QWidget* m_bottomWidget;
+    QWidget* m_rightShellHost;
+    QWidget* m_rightAuxiliaryHost;
+    QWidget* m_bottomShellHost;
+    QWidget* m_bottomAuxiliaryHost;
 };

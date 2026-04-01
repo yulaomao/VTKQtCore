@@ -10,8 +10,8 @@ set(CMAKE_AUTOMOC ON)
 # ---------------------------------------------------------------------------
 # Qt – try Qt6 first, fall back to Qt5
 # ---------------------------------------------------------------------------
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Widgets Gui)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Gui)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Widgets Gui Network)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Gui Network)
 
 # ---------------------------------------------------------------------------
 # VTK
@@ -63,6 +63,7 @@ target_link_libraries(VTKQtCore PRIVATE
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::Gui
+    Qt${QT_VERSION_MAJOR}::Network
     ${VTK_LIBRARIES}
 )
 

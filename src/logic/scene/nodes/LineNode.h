@@ -52,7 +52,6 @@ private:
     bool m_closedFlag = false;
     QString m_lineRole;
     double m_cachedLength = 0.0;
-    QString m_parentTransformId;
     double m_colorRGBA[4] = {0.0, 1.0, 0.0, 1.0};
     double m_opacityValue = 1.0;
     double m_lineWidthValue = 2.0;

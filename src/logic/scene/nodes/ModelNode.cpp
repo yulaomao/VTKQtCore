@@ -1,5 +1,7 @@
 #include "ModelNode.h"
 
+#include "../SceneGraph.h"
+
 #include <vtkNew.h>
 #include <vtkTriangle.h>
 
@@ -149,15 +151,27 @@ void ModelNode::getColor(double out[4]) const
 
 void ModelNode::setParentTransform(const QString& transformId)
 {
-    if (m_parentTransformId != transformId) {
-        m_parentTransformId = transformId;
-        emitEvent(NodeEventType::TransformChanged);
+    SceneGraph* scene = qobject_cast<SceneGraph*>(parent());
+    const QString currentId = getParentTransform();
+    if (currentId == transformId) {
+        return;
     }
+
+    if (transformId == getNodeId()) {
+        return;
+    }
+
+    if (scene && !scene->canAssignParentTransform(getNodeId(), transformId)) {
+        return;
+    }
+
+    setReference(NodeBase::parentTransformReferenceRole(), transformId);
+    emitEvent(NodeEventType::TransformChanged);
 }
 
 QString ModelNode::getParentTransform() const
 {
-    return m_parentTransformId;
+    return getFirstReference(NodeBase::parentTransformReferenceRole());
 }
 
 void ModelNode::setRenderMode(const QString& mode)

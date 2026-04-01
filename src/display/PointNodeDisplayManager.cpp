@@ -1,6 +1,5 @@
 #include "PointNodeDisplayManager.h"
 #include "../logic/scene/nodes/PointNode.h"
-#include "../logic/scene/nodes/TransformNode.h"
 
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
@@ -59,6 +58,7 @@ void PointNodeDisplayManager::onNodeModified(const QString& nodeId, NodeEventTyp
         updateContent(nodeId);
         break;
     case NodeEventType::DisplayChanged:
+        updateContent(nodeId);
         updateDisplay(nodeId);
         break;
     case NodeEventType::TransformChanged:
@@ -95,6 +95,10 @@ void PointNodeDisplayManager::reconcileWithScene()
         const QString& id = pn->getNodeId();
         if (!m_entries.contains(id) && canHandleNode(pn)) {
             buildEntry(id);
+        } else if (m_entries.contains(id)) {
+            updateContent(id);
+            updateDisplay(id);
+            updateTransform(id);
         }
     }
 }
@@ -319,30 +323,16 @@ void PointNodeDisplayManager::updateDisplay(const QString& nodeId)
 
 void PointNodeDisplayManager::updateTransform(const QString& nodeId)
 {
-    PointNode* node = scene()->getNodeById<PointNode>(nodeId);
-    if (!node) {
-        return;
-    }
-
     auto it = m_entries.find(nodeId);
     if (it == m_entries.end()) {
         return;
     }
 
-    QString transformId = node->getParentTransform();
-    if (transformId.isEmpty()) {
-        it->actor->SetUserTransform(nullptr);
-        return;
-    }
-
-    TransformNode* transformNode = scene()->getNodeById<TransformNode>(transformId);
-    if (!transformNode) {
-        it->actor->SetUserTransform(nullptr);
-        return;
-    }
-
     double matrix[16];
-    transformNode->getMatrixTransformToParent(matrix);
+    if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
+        it->actor->SetUserTransform(nullptr);
+        return;
+    }
 
     auto transform = vtkSmartPointer<vtkTransform>::New();
     auto mat = vtkSmartPointer<vtkMatrix4x4>::New();

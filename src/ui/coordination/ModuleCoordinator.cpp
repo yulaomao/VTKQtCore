@@ -25,16 +25,25 @@ QWidget* ModuleCoordinator::getMainPage() const
     return m_mainPage;
 }
 
-void ModuleCoordinator::addAuxiliaryWidget(QWidget* widget)
+void ModuleCoordinator::addAuxiliaryWidget(QWidget* widget,
+                                           AuxiliaryRegion region)
 {
-    if (widget) {
-        m_auxiliaryWidgets.append(widget);
+    if (!widget) {
+        return;
+    }
+
+    if (region == AuxiliaryRegion::Bottom) {
+        m_bottomAuxiliaryWidgets.append(widget);
+    } else {
+        m_rightAuxiliaryWidgets.append(widget);
     }
 }
 
-QVector<QWidget*> ModuleCoordinator::getAuxiliaryWidgets() const
+QVector<QWidget*> ModuleCoordinator::getAuxiliaryWidgets(AuxiliaryRegion region) const
 {
-    return m_auxiliaryWidgets;
+    return region == AuxiliaryRegion::Bottom
+        ? m_bottomAuxiliaryWidgets
+        : m_rightAuxiliaryWidgets;
 }
 
 void ModuleCoordinator::activate()
@@ -42,9 +51,13 @@ void ModuleCoordinator::activate()
     if (m_mainPage) {
         m_mainPage->show();
     }
-    for (auto* w : m_auxiliaryWidgets) {
+    for (auto* w : m_rightAuxiliaryWidgets) {
         w->show();
     }
+    for (auto* w : m_bottomAuxiliaryWidgets) {
+        w->show();
+    }
+    emit activated();
 }
 
 void ModuleCoordinator::deactivate()
@@ -52,9 +65,13 @@ void ModuleCoordinator::deactivate()
     if (m_mainPage) {
         m_mainPage->hide();
     }
-    for (auto* w : m_auxiliaryWidgets) {
+    for (auto* w : m_rightAuxiliaryWidgets) {
         w->hide();
     }
+    for (auto* w : m_bottomAuxiliaryWidgets) {
+        w->hide();
+    }
+    emit deactivated();
 }
 
 void ModuleCoordinator::sendModuleAction(UiAction::ActionType type,
@@ -70,7 +87,9 @@ void ModuleCoordinator::sendModuleAction(UiAction::ActionType type,
 void ModuleCoordinator::onModuleNotification(const LogicNotification& notification)
 {
     if (notification.targetScope == LogicNotification::CurrentModule ||
-        notification.targetScope == LogicNotification::AllModules) {
+        notification.targetScope == LogicNotification::AllModules ||
+        (notification.targetScope == LogicNotification::ModuleList &&
+         notification.targetModules.contains(m_moduleId))) {
         emit notificationForPage(notification);
     }
 }

@@ -1,43 +1,81 @@
 #include "NavigationPage.h"
 
+#include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QWidget>
 
 NavigationPage::NavigationPage(QWidget* parent)
     : QWidget(parent)
 {
-    auto* mainLayout = new QVBoxLayout(this);
+    auto* mainLayout = new QHBoxLayout(this);
+    mainLayout->setContentsMargins(12, 12, 12, 12);
+    mainLayout->setSpacing(12);
 
-    auto* titleLabel = new QLabel(QStringLiteral("Surgical Navigation"), this);
-    mainLayout->addWidget(titleLabel);
+    auto* controlPanel = new QWidget(this);
+    controlPanel->setMinimumWidth(240);
+    auto* controlLayout = new QVBoxLayout(controlPanel);
+    controlLayout->setContentsMargins(0, 0, 0, 0);
+    controlLayout->setSpacing(8);
 
-    m_statusLabel = new QLabel(QStringLiteral("Status: Idle"), this);
-    mainLayout->addWidget(m_statusLabel);
+    auto* titleLabel = new QLabel(QStringLiteral("Surgical Navigation"), controlPanel);
+    controlLayout->addWidget(titleLabel);
 
-    m_startBtn = new QPushButton(QStringLiteral("Start Navigation"), this);
-    mainLayout->addWidget(m_startBtn);
+    m_statusLabel = new QLabel(QStringLiteral("Status: Idle"), controlPanel);
+    controlLayout->addWidget(m_statusLabel);
 
-    m_stopBtn = new QPushButton(QStringLiteral("Stop Navigation"), this);
+    m_startBtn = new QPushButton(QStringLiteral("Start Navigation"), controlPanel);
+    controlLayout->addWidget(m_startBtn);
+
+    m_stopBtn = new QPushButton(QStringLiteral("Stop Navigation"), controlPanel);
     m_stopBtn->setEnabled(false);
-    mainLayout->addWidget(m_stopBtn);
+    controlLayout->addWidget(m_stopBtn);
 
-    m_positionLabel = new QLabel(QStringLiteral("Position: -"), this);
-    mainLayout->addWidget(m_positionLabel);
+    m_positionLabel = new QLabel(QStringLiteral("Position: -"), controlPanel);
+    controlLayout->addWidget(m_positionLabel);
 
-    mainLayout->addStretch();
+    controlLayout->addStretch();
 
-    connect(m_startBtn, &QPushButton::clicked, this, [this]() {
-        emit startNavigationRequested();
-        m_startBtn->setEnabled(false);
-        m_stopBtn->setEnabled(true);
-    });
+    auto* scenePanel = new QWidget(this);
+    m_sceneLayout = new QVBoxLayout(scenePanel);
+    m_sceneLayout->setContentsMargins(0, 0, 0, 0);
+    m_sceneLayout->setSpacing(0);
 
-    connect(m_stopBtn, &QPushButton::clicked, this, [this]() {
-        emit stopNavigationRequested();
-        m_stopBtn->setEnabled(false);
-        m_startBtn->setEnabled(true);
-    });
+    auto* placeholderLabel = new QLabel(QStringLiteral("3D navigation window not attached"), scenePanel);
+    placeholderLabel->setAlignment(Qt::AlignCenter);
+    m_sceneLayout->addWidget(placeholderLabel);
+
+    mainLayout->addWidget(controlPanel, 0);
+    mainLayout->addWidget(scenePanel, 1);
+
+    connect(m_startBtn, &QPushButton::clicked,
+            this, &NavigationPage::startNavigationRequested);
+
+    connect(m_stopBtn, &QPushButton::clicked,
+            this, &NavigationPage::stopNavigationRequested);
+}
+
+void NavigationPage::setSceneWindow(QWidget* sceneWindow)
+{
+    if (!m_sceneLayout || m_sceneWindow == sceneWindow) {
+        return;
+    }
+
+    while (m_sceneLayout->count() > 0) {
+        QLayoutItem* item = m_sceneLayout->takeAt(0);
+        if (item->widget()) {
+            item->widget()->setParent(nullptr);
+            item->widget()->deleteLater();
+        }
+        delete item;
+    }
+
+    m_sceneWindow = sceneWindow;
+    if (m_sceneWindow) {
+        m_sceneWindow->setParent(m_sceneLayout->parentWidget());
+        m_sceneLayout->addWidget(m_sceneWindow);
+    }
 }
 
 void NavigationPage::setNavigationStatus(const QString& status)
@@ -52,4 +90,10 @@ void NavigationPage::setCurrentPosition(double x, double y, double z)
             .arg(x, 0, 'f', 2)
             .arg(y, 0, 'f', 2)
             .arg(z, 0, 'f', 2));
+}
+
+void NavigationPage::setNavigating(bool navigating)
+{
+    m_startBtn->setEnabled(!navigating);
+    m_stopBtn->setEnabled(navigating);
 }

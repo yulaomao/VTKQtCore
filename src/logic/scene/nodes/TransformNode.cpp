@@ -1,5 +1,7 @@
 #include "TransformNode.h"
 
+#include "../SceneGraph.h"
+
 #include <vtkMatrix4x4.h>
 #include <vtkNew.h>
 #include <cstring>
@@ -190,16 +192,27 @@ QString TransformNode::getTargetSpace() const
 
 void TransformNode::setParentTransform(const QString& transformId)
 {
-    if (m_parentTransformId != transformId) {
-        m_parentTransformId = transformId;
-        touchModified();
-        emitEvent(NodeEventType::TransformChanged);
+    SceneGraph* scene = qobject_cast<SceneGraph*>(parent());
+    const QString currentId = getParentTransform();
+    if (currentId == transformId) {
+        return;
     }
+
+    if (transformId == getNodeId()) {
+        return;
+    }
+
+    if (scene && !scene->canAssignParentTransform(getNodeId(), transformId)) {
+        return;
+    }
+
+    setReference(NodeBase::parentTransformReferenceRole(), transformId);
+    emitEvent(NodeEventType::TransformChanged);
 }
 
 QString TransformNode::getParentTransform() const
 {
-    return m_parentTransformId;
+    return getFirstReference(NodeBase::parentTransformReferenceRole());
 }
 
 void TransformNode::setShowAxes(bool show)

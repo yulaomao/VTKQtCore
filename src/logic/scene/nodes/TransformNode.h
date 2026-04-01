@@ -58,7 +58,6 @@ private:
     QString m_transformKind;
     QString m_sourceSpaceName;
     QString m_targetSpaceName;
-    QString m_parentTransformId;
     bool m_showAxesFlag = false;
     double m_axesLengthValue = 50.0;
     double m_axesColorX[4] = {1, 0, 0, 1};

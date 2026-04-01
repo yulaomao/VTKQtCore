@@ -51,3 +51,5 @@ private:
     double m_maxDispatchRateHz = 30.0;
     bool m_active = true;
 };
+
+Q_DECLARE_METATYPE(PollingTask*)

@@ -4,6 +4,8 @@
 
 class QLabel;
 class QPushButton;
+class QVBoxLayout;
+class VtkSceneWindow;
 
 class PlanningPage : public QWidget
 {
@@ -11,6 +13,9 @@ class PlanningPage : public QWidget
 
 public:
     explicit PlanningPage(QWidget* parent = nullptr);
+
+    void setSceneWindow(VtkSceneWindow* sceneWindow);
+    void setSecondarySceneWindow(VtkSceneWindow* sceneWindow);
 
 signals:
     void generatePlanRequested();
@@ -23,4 +28,8 @@ private:
     QLabel* m_statusLabel = nullptr;
     QPushButton* m_generateButton = nullptr;
     QPushButton* m_acceptButton = nullptr;
+    QVBoxLayout* m_sceneLayout = nullptr;
+    QVBoxLayout* m_secondarySceneLayout = nullptr;
+    VtkSceneWindow* m_sceneWindow = nullptr;
+    VtkSceneWindow* m_secondarySceneWindow = nullptr;
 };

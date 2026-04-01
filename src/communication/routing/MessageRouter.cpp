@@ -7,15 +7,22 @@
 
 MessageRouter::MessageRouter(QObject* parent)
     : QObject(parent)
+    , m_cleanupTimer(new QTimer(this))
 {
+    m_cleanupTimer->setInterval(5000);
+    connect(m_cleanupTimer, &QTimer::timeout, this, &MessageRouter::clearExpiredDedup);
+    m_cleanupTimer->start();
 }
 
 void MessageRouter::routeIncomingMessage(const QByteArray& rawMessage)
 {
+    clearExpiredDedup();
+
     QJsonParseError parseError;
     QJsonDocument doc = QJsonDocument::fromJson(rawMessage, &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
         qWarning() << "MessageRouter: invalid JSON message:" << parseError.errorString();
+        emit routingError(QStringLiteral("Invalid JSON message: %1").arg(parseError.errorString()));
         return;
     }
 
@@ -24,6 +31,11 @@ void MessageRouter::routeIncomingMessage(const QByteArray& rawMessage)
     QString msgId = obj.value(QStringLiteral("msgId")).toString();
     QString module = obj.value(QStringLiteral("module")).toString();
     QVariantMap payload = obj.toVariantMap();
+
+    if (category.isEmpty()) {
+        emit routingError(QStringLiteral("Message category is missing"));
+        return;
+    }
 
     if (!msgId.isEmpty()) {
         qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -36,10 +48,12 @@ void MessageRouter::routeIncomingMessage(const QByteArray& rawMessage)
         m_deduplicationWindow[msgId] = now;
     }
 
-    if (category == QStringLiteral("ActionRequest")) {
+    if (category == QStringLiteral("Ack")) {
+        emit ackReceived(payload);
+    } else if (category == QStringLiteral("ActionRequest")) {
         emit actionRequestRouted(module, payload);
     } else if (category == QStringLiteral("Heartbeat")) {
-        emit heartbeatReceived();
+        emit heartbeatReceived(payload);
     } else if (category == QStringLiteral("ResyncRequest")) {
         emit resyncRequestReceived(payload);
     } else if (category == QStringLiteral("ResyncResponse")) {
@@ -49,6 +63,7 @@ void MessageRouter::routeIncomingMessage(const QByteArray& rawMessage)
         emit serverCommandRouted(commandType, payload);
     } else {
         qDebug() << "MessageRouter: unrecognized category:" << category;
+        emit routingError(QStringLiteral("Unrecognized message category: %1").arg(category));
     }
 }
 

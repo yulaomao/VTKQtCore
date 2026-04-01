@@ -3,6 +3,83 @@
 #include <QReadLocker>
 #include <QWriteLocker>
 
+namespace {
+
+void setIdentityMatrix(double out[16])
+{
+    for (int index = 0; index < 16; ++index) {
+        out[index] = 0.0;
+    }
+    out[0] = 1.0;
+    out[5] = 1.0;
+    out[10] = 1.0;
+    out[15] = 1.0;
+}
+
+void multiplyColumnMajor(const double left[16], const double right[16], double out[16])
+{
+    double result[16] = {0.0};
+    for (int column = 0; column < 4; ++column) {
+        for (int row = 0; row < 4; ++row) {
+            double value = 0.0;
+            for (int term = 0; term < 4; ++term) {
+                value += left[term * 4 + row] * right[column * 4 + term];
+            }
+            result[column * 4 + row] = value;
+        }
+    }
+
+    for (int index = 0; index < 16; ++index) {
+        out[index] = result[index];
+    }
+}
+
+QString parentTransformIdForNode(const NodeBase* node)
+{
+    if (!node) {
+        return QString();
+    }
+
+    return node->getFirstReference(NodeBase::parentTransformReferenceRole());
+}
+
+bool resolveTransformWorldMatrixLocked(const QMap<QString, NodeBase*>& nodes,
+                                       const QString& transformId,
+                                       double out[16],
+                                       QSet<QString>& visited)
+{
+    auto* transformNode = dynamic_cast<TransformNode*>(nodes.value(transformId, nullptr));
+    if (!transformNode) {
+        return false;
+    }
+
+    if (visited.contains(transformId)) {
+        return false;
+    }
+    visited.insert(transformId);
+
+    double localMatrix[16];
+    transformNode->getMatrixTransformToParent(localMatrix);
+
+    const QString parentTransformId = parentTransformIdForNode(transformNode);
+    if (parentTransformId.isEmpty()) {
+        for (int index = 0; index < 16; ++index) {
+            out[index] = localMatrix[index];
+        }
+        return true;
+    }
+
+    double parentWorld[16];
+    if (!resolveTransformWorldMatrixLocked(nodes, parentTransformId, parentWorld, visited)) {
+        return false;
+    }
+
+    multiplyColumnMajor(parentWorld, localMatrix, out);
+    return true;
+}
+
+} // namespace
+
 SceneGraph::SceneGraph(QObject* parent)
     : QObject(parent)
 {
@@ -122,6 +199,83 @@ bool SceneGraph::containsNode(const QString& nodeId) const
 {
     QReadLocker locker(&m_lock);
     return m_nodes.contains(nodeId);
+}
+
+bool SceneGraph::canAssignParentTransform(const QString& nodeId, const QString& transformId) const
+{
+    if (nodeId.isEmpty()) {
+        return false;
+    }
+
+    if (transformId.isEmpty()) {
+        return true;
+    }
+
+    QReadLocker locker(&m_lock);
+
+    if (nodeId == transformId) {
+        return false;
+    }
+
+    auto* referencedTransform = dynamic_cast<TransformNode*>(m_nodes.value(transformId, nullptr));
+    if (!referencedTransform) {
+        return false;
+    }
+
+    auto* node = m_nodes.value(nodeId, nullptr);
+    if (!node) {
+        return true;
+    }
+
+    if (!dynamic_cast<TransformNode*>(node)) {
+        return true;
+    }
+
+    QString currentId = transformId;
+    QSet<QString> visited;
+    visited.insert(nodeId);
+
+    while (!currentId.isEmpty()) {
+        if (visited.contains(currentId)) {
+            return false;
+        }
+
+        visited.insert(currentId);
+        auto* currentTransform = dynamic_cast<TransformNode*>(m_nodes.value(currentId, nullptr));
+        if (!currentTransform) {
+            return false;
+        }
+
+        currentId = parentTransformIdForNode(currentTransform);
+    }
+
+    return true;
+}
+
+bool SceneGraph::getWorldTransformMatrix(const QString& nodeId, double out[16]) const
+{
+    if (!out) {
+        return false;
+    }
+
+    QReadLocker locker(&m_lock);
+    NodeBase* node = m_nodes.value(nodeId, nullptr);
+    if (!node) {
+        return false;
+    }
+
+    if (dynamic_cast<TransformNode*>(node)) {
+        QSet<QString> visited;
+        return resolveTransformWorldMatrixLocked(m_nodes, nodeId, out, visited);
+    }
+
+    const QString parentTransformId = parentTransformIdForNode(node);
+    if (parentTransformId.isEmpty()) {
+        return false;
+    }
+
+    QSet<QString> visited;
+    return resolveTransformWorldMatrixLocked(m_nodes, parentTransformId, out, visited);
 }
 
 void SceneGraph::startBatchModify()

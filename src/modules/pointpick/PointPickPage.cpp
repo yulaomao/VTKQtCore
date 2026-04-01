@@ -19,6 +19,9 @@ PointPickPage::PointPickPage(QWidget* parent)
     m_pointList = new QListWidget(this);
     mainLayout->addWidget(m_pointList);
 
+    m_statusLabel = new QLabel(QStringLiteral("Status: Waiting for confirmation"), this);
+    mainLayout->addWidget(m_statusLabel);
+
     m_confirmButton = new QPushButton(QStringLiteral("Confirm Points"), this);
     mainLayout->addWidget(m_confirmButton);
 
@@ -38,4 +41,12 @@ void PointPickPage::updatePointList(const QStringList& points)
 void PointPickPage::setPointCount(int count)
 {
     m_pointCountLabel->setText(QStringLiteral("Points: %1").arg(count));
+}
+
+void PointPickPage::setConfirmed(bool confirmed)
+{
+    m_statusLabel->setText(confirmed
+        ? QStringLiteral("Status: Points confirmed")
+        : QStringLiteral("Status: Waiting for confirmation"));
+    m_confirmButton->setEnabled(!confirmed);
 }

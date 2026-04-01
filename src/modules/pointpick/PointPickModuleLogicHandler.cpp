@@ -3,6 +3,79 @@
 #include "logic/scene/SceneGraph.h"
 #include "logic/scene/nodes/PointNode.h"
 
+#include <array>
+
+namespace {
+
+QVariantMap normalizedSampleData(const StateSample& sample)
+{
+    QVariantMap payload = sample.data.value(QStringLiteral("value")).toMap();
+    return payload.isEmpty() ? sample.data : payload;
+}
+
+bool extractPointPosition(const QVariant& value, std::array<double, 3>& position)
+{
+    const QVariantMap pointMap = value.toMap();
+    if (!pointMap.isEmpty()) {
+        if (pointMap.contains(QStringLiteral("position"))) {
+            return extractPointPosition(pointMap.value(QStringLiteral("position")), position);
+        }
+
+        if (pointMap.contains(QStringLiteral("x")) &&
+            pointMap.contains(QStringLiteral("y")) &&
+            pointMap.contains(QStringLiteral("z"))) {
+            position = {
+                pointMap.value(QStringLiteral("x")).toDouble(),
+                pointMap.value(QStringLiteral("y")).toDouble(),
+                pointMap.value(QStringLiteral("z")).toDouble()
+            };
+            return true;
+        }
+    }
+
+    const QVariantList coords = value.toList();
+    if (coords.size() < 3) {
+        return false;
+    }
+
+    position = {
+        coords.at(0).toDouble(),
+        coords.at(1).toDouble(),
+        coords.at(2).toDouble()
+    };
+    return true;
+}
+
+QVector<PointItem> extractPoints(const QVariantMap& payload)
+{
+    QVector<PointItem> points;
+    const QVariantList pointList = payload.value(QStringLiteral("points")).toList();
+    points.reserve(pointList.size());
+
+    for (const QVariant& entry : pointList) {
+        std::array<double, 3> position = {0.0, 0.0, 0.0};
+        if (!extractPointPosition(entry, position)) {
+            continue;
+        }
+
+        const QVariantMap pointMap = entry.toMap();
+        PointItem item;
+        item.pointId = pointMap.value(QStringLiteral("pointId")).toString();
+        item.label = pointMap.value(QStringLiteral("label")).toString();
+        item.selectedFlag = pointMap.value(QStringLiteral("selected")).toBool();
+        item.visibleFlag = pointMap.value(QStringLiteral("visible"), true).toBool();
+        item.lockedFlag = pointMap.value(QStringLiteral("locked")).toBool();
+        item.position[0] = position[0];
+        item.position[1] = position[1];
+        item.position[2] = position[2];
+        points.append(item);
+    }
+
+    return points;
+}
+
+} // namespace
+
 PointPickModuleLogicHandler::PointPickModuleLogicHandler(QObject* parent)
     : ModuleLogicHandler(QStringLiteral("pointpick"), parent)
 {
@@ -10,9 +83,123 @@ PointPickModuleLogicHandler::PointPickModuleLogicHandler(QObject* parent)
 
 void PointPickModuleLogicHandler::onModuleActivated()
 {
-    SceneGraph* scene = getSceneGraph();
-    if (!scene)
+    if (!ensureSelectionNode(getSceneGraph())) {
         return;
+    }
+
+    emitSelectionState();
+}
+
+void PointPickModuleLogicHandler::handleAction(const UiAction& action)
+{
+    if (action.actionType == UiAction::ConfirmPoints) {
+        if (!ensureSelectionNode(getSceneGraph())) {
+            return;
+        }
+
+        m_confirmed = true;
+        emitSelectionState(action.actionId);
+        return;
+    }
+
+    if (action.actionType != UiAction::CustomAction) {
+        return;
+    }
+
+    const QString subType = action.payload.value(QStringLiteral("subType")).toString();
+    if (subType != QStringLiteral("add_point")) {
+        return;
+    }
+
+    auto* pointNode = ensureSelectionNode(getSceneGraph());
+    if (!pointNode) {
+        return;
+    }
+
+    PointItem item;
+    item.position[0] = action.payload.value(QStringLiteral("x")).toDouble();
+    item.position[1] = action.payload.value(QStringLiteral("y")).toDouble();
+    item.position[2] = action.payload.value(QStringLiteral("z")).toDouble();
+    pointNode->addPoint(item);
+
+    emitSelectionState(action.actionId);
+}
+
+void PointPickModuleLogicHandler::handleStateSample(const StateSample& sample)
+{
+    SceneGraph* scene = getSceneGraph();
+    auto* pointNode = ensureSelectionNode(scene);
+    if (!pointNode) {
+        return;
+    }
+
+    const QVariantMap payloadData = normalizedSampleData(sample);
+    bool changed = false;
+
+    if (payloadData.contains(QStringLiteral("points"))) {
+        const QVector<PointItem> points = extractPoints(payloadData);
+        scene->startBatchModify();
+        pointNode->removeAllPoints();
+        for (const PointItem& point : points) {
+            pointNode->addPoint(point);
+        }
+        scene->endBatchModify();
+        changed = true;
+    } else {
+        std::array<double, 3> position = {0.0, 0.0, 0.0};
+        if (extractPointPosition(payloadData, position)) {
+            PointItem item;
+            item.label = payloadData.value(QStringLiteral("label")).toString();
+            item.selectedFlag = payloadData.value(QStringLiteral("selected")).toBool();
+            item.position[0] = position[0];
+            item.position[1] = position[1];
+            item.position[2] = position[2];
+            pointNode->addPoint(item);
+            changed = true;
+        }
+    }
+
+    if (payloadData.contains(QStringLiteral("confirmed"))) {
+        m_confirmed = payloadData.value(QStringLiteral("confirmed")).toBool();
+        changed = true;
+    }
+
+    if (payloadData.contains(QStringLiteral("selectedIndex"))) {
+        pointNode->setSelectedPointIndex(payloadData.value(QStringLiteral("selectedIndex")).toInt());
+        changed = true;
+    }
+
+    if (changed) {
+        emitSelectionState(sample.sampleId);
+    }
+}
+
+void PointPickModuleLogicHandler::onModuleDeactivated()
+{
+}
+
+void PointPickModuleLogicHandler::onResync()
+{
+    emitSelectionState();
+}
+
+PointNode* PointPickModuleLogicHandler::ensureSelectionNode(SceneGraph* scene)
+{
+    if (!scene) {
+        return nullptr;
+    }
+
+    if (!m_pointNodeId.isEmpty()) {
+        if (auto* existing = scene->getNodeById<PointNode>(m_pointNodeId)) {
+            return existing;
+        }
+        m_pointNodeId.clear();
+    }
+
+    if (auto* existing = findSelectionNode(scene)) {
+        m_pointNodeId = existing->getNodeId();
+        return existing;
+    }
 
     auto* pointNode = new PointNode(scene);
     pointNode->setPointRole(QStringLiteral("selection_points"));
@@ -28,75 +215,42 @@ void PointPickModuleLogicHandler::onModuleActivated()
 
     scene->addNode(pointNode);
     m_pointNodeId = pointNode->getNodeId();
-
-    QVariantMap payload;
-    payload.insert(QStringLiteral("pointNodeId"), m_pointNodeId);
-    emit logicNotification(LogicNotification::create(
-        LogicNotification::SceneNodesUpdated,
-        LogicNotification::CurrentModule,
-        payload));
+    return pointNode;
 }
 
-void PointPickModuleLogicHandler::handleAction(const UiAction& action)
+PointNode* PointPickModuleLogicHandler::findSelectionNode(SceneGraph* scene) const
 {
-    if (action.actionType == UiAction::ConfirmPoints) {
-        m_confirmed = true;
-
-        QVariantMap payload;
-        payload.insert(QStringLiteral("confirmed"), true);
-        payload.insert(QStringLiteral("pointNodeId"), m_pointNodeId);
-
-        auto notification = LogicNotification::create(
-            LogicNotification::SceneNodesUpdated,
-            LogicNotification::CurrentModule,
-            payload);
-        notification.setSourceActionId(action.actionId);
-        emit logicNotification(notification);
-        return;
+    if (!scene) {
+        return nullptr;
     }
 
-    if (action.actionType == UiAction::CustomAction) {
-        const QString subType = action.payload.value(QStringLiteral("subType")).toString();
-        if (subType == QStringLiteral("add_point")) {
-            SceneGraph* scene = getSceneGraph();
-            if (!scene)
-                return;
-
-            auto* pointNode = scene->getNodeById<PointNode>(m_pointNodeId);
-            if (!pointNode)
-                return;
-
-            PointItem item;
-            item.position[0] = action.payload.value(QStringLiteral("x")).toDouble();
-            item.position[1] = action.payload.value(QStringLiteral("y")).toDouble();
-            item.position[2] = action.payload.value(QStringLiteral("z")).toDouble();
-            pointNode->addPoint(item);
-
-            QVariantMap payload;
-            payload.insert(QStringLiteral("pointNodeId"), m_pointNodeId);
-            payload.insert(QStringLiteral("pointCount"), pointNode->getPointCount());
-
-            auto notification = LogicNotification::create(
-                LogicNotification::SceneNodesUpdated,
-                LogicNotification::CurrentModule,
-                payload);
-            notification.setSourceActionId(action.actionId);
-            emit logicNotification(notification);
+    const QVector<PointNode*> pointNodes = scene->getAllPointNodes();
+    for (PointNode* pointNode : pointNodes) {
+        if (pointNode && pointNode->getPointRole() == QStringLiteral("selection_points")) {
+            return pointNode;
         }
     }
+
+    return nullptr;
 }
 
-void PointPickModuleLogicHandler::onModuleDeactivated()
-{
-}
-
-void PointPickModuleLogicHandler::onResync()
+void PointPickModuleLogicHandler::emitSelectionState(const QString& sourceActionId) const
 {
     QVariantMap payload;
     payload.insert(QStringLiteral("pointNodeId"), m_pointNodeId);
     payload.insert(QStringLiteral("confirmed"), m_confirmed);
-    emit logicNotification(LogicNotification::create(
+
+    SceneGraph* scene = getSceneGraph();
+    if (scene) {
+        if (auto* pointNode = scene->getNodeById<PointNode>(m_pointNodeId)) {
+            payload.insert(QStringLiteral("pointCount"), pointNode->getPointCount());
+        }
+    }
+
+    LogicNotification notification = LogicNotification::create(
         LogicNotification::SceneNodesUpdated,
         LogicNotification::CurrentModule,
-        payload));
+        payload);
+    notification.setSourceActionId(sourceActionId);
+    emit logicNotification(notification);
 }

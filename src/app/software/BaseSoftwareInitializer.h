@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 
 class MainWindow;
 class LogicRuntime;
@@ -11,6 +12,7 @@ class CommunicationHub;
 class ApplicationCoordinator;
 class PageManager;
 class GlobalUiManager;
+class WorkflowStateMachine;
 
 enum class RunMode { Local, Redis };
 
@@ -23,20 +25,29 @@ public:
 
     void initialize(MainWindow* mainWindow, LogicRuntime* logicRuntime,
                     ILogicGateway* gateway, CommunicationHub* commHub);
+    void setSoftwareProfile(const QVariantMap& softwareProfile);
+    QVariantMap getSoftwareProfile() const;
 
     virtual QStringList getEnabledModules() const = 0;
     virtual QStringList getWorkflowSequence() const = 0;
     virtual QString getInitialModule() const = 0;
 
     virtual void registerModuleLogicHandlers(LogicRuntime* runtime) = 0;
-    virtual void registerModuleUIs(MainWindow* mainWindow, ApplicationCoordinator* appCoord,
+    virtual void registerModuleUIs(MainWindow* mainWindow, LogicRuntime* runtime,
+                                   ApplicationCoordinator* appCoord,
                                    ILogicGateway* gateway) = 0;
+    virtual void registerCommunicationSources(CommunicationHub* commHub);
     virtual void configureAdditionalSettings(LogicRuntime* runtime);
 
     QString getSoftwareType() const;
     RunMode getRunMode() const;
 
 protected:
+    QStringList configuredEnabledModules() const;
+    QStringList configuredWorkflowSequence() const;
+    QString configuredInitialModule() const;
+    bool isModuleEnabled(const QString& moduleId) const;
+
     ApplicationCoordinator* m_appCoordinator = nullptr;
     PageManager* m_pageManager = nullptr;
     GlobalUiManager* m_globalUiManager = nullptr;
@@ -45,4 +56,5 @@ protected:
 private:
     RunMode runMode;
     QString softwareType;
+    QVariantMap m_softwareProfile;
 };

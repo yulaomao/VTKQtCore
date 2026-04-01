@@ -88,6 +88,9 @@ void TransformNodeDisplayManager::reconcileWithScene()
         const QString& id = tn->getNodeId();
         if (!m_entries.contains(id) && canHandleNode(tn)) {
             buildEntry(id);
+        } else if (m_entries.contains(id)) {
+            updateAxes(id);
+            updateDisplay(id);
         }
     }
 }
@@ -103,20 +106,11 @@ void TransformNodeDisplayManager::clearAll()
 void TransformNodeDisplayManager::computeAxisEndpoint(const double matrix[16], int axisIndex,
                                                         double length, double out[3]) const
 {
-    // matrix is stored in row-major order (VTK convention):
-    // [m00 m01 m02 m03]   row 0: indices 0-3
-    // [m10 m11 m12 m13]   row 1: indices 4-7
-    // [m20 m21 m22 m23]   row 2: indices 8-11
-    // [m30 m31 m32 m33]   row 3: indices 12-15
-    //
-    // Column axisIndex gives the axis direction in parent space.
-    // Origin is at (m03, m13, m23) = (matrix[3], matrix[7], matrix[11])
-
-    double origin[3] = {matrix[3], matrix[7], matrix[11]};
+    double origin[3] = {matrix[12], matrix[13], matrix[14]};
     double direction[3] = {
-        matrix[0 + axisIndex],
-        matrix[4 + axisIndex],
-        matrix[8 + axisIndex]
+        matrix[axisIndex * 4 + 0],
+        matrix[axisIndex * 4 + 1],
+        matrix[axisIndex * 4 + 2]
     };
 
     // Normalize direction
@@ -182,8 +176,10 @@ void TransformNodeDisplayManager::buildEntry(const QString& nodeId)
     int layer = getNodeLayerInWindow(node);
 
     double matrix[16];
-    node->getMatrixTransformToParent(matrix);
-    double origin[3] = {matrix[3], matrix[7], matrix[11]};
+    if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
+        node->getMatrixTransformToParent(matrix);
+    }
+    double origin[3] = {matrix[12], matrix[13], matrix[14]};
     double axesLength = node->getAxesLength();
 
     // Compute endpoints for each axis
@@ -255,8 +251,10 @@ void TransformNodeDisplayManager::updateAxes(const QString& nodeId)
     }
 
     double matrix[16];
-    node->getMatrixTransformToParent(matrix);
-    double origin[3] = {matrix[3], matrix[7], matrix[11]};
+    if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
+        node->getMatrixTransformToParent(matrix);
+    }
+    double origin[3] = {matrix[12], matrix[13], matrix[14]};
     double axesLength = node->getAxesLength();
 
     double xEnd[3], yEnd[3], zEnd[3];

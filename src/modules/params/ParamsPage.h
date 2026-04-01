@@ -16,9 +16,13 @@ public:
 signals:
     void parameterApplied(const QVariantMap& params);
 
+public slots:
+    void setParameterStatus(bool valid, int parameterCount = -1);
+
 private:
     QLineEdit* m_patientNameEdit = nullptr;
     QLineEdit* m_studyIdEdit = nullptr;
     QLineEdit* m_procedureTypeEdit = nullptr;
     QPushButton* m_applyButton = nullptr;
+    class QLabel* m_statusLabel = nullptr;
 };

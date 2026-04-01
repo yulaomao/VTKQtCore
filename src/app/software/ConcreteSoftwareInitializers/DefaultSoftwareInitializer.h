@@ -14,6 +14,8 @@ public:
     QString getInitialModule() const override;
 
     void registerModuleLogicHandlers(LogicRuntime* runtime) override;
-    void registerModuleUIs(MainWindow* mainWindow, ApplicationCoordinator* appCoord,
+    void registerModuleUIs(MainWindow* mainWindow, LogicRuntime* runtime,
+                           ApplicationCoordinator* appCoord,
                            ILogicGateway* gateway) override;
+    void registerCommunicationSources(CommunicationHub* commHub) override;
 };

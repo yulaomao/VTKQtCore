@@ -17,11 +17,16 @@ GlobalUiManager::GlobalUiManager(QObject* parent)
 void GlobalUiManager::setOverlayLayer(QWidget* overlay)
 {
     m_overlayLayer = overlay;
+    updateOverlayLayerState();
 }
 
 void GlobalUiManager::setToolHost(QWidget* toolHost)
 {
     m_toolHost = toolHost;
+    ensureToolHostLayout();
+    if (m_toolHost) {
+        m_toolHost->hide();
+    }
 }
 
 void GlobalUiManager::showNotification(const QString& message, const QString& level)
@@ -57,6 +62,7 @@ void GlobalUiManager::showNotification(const QString& message, const QString& le
     label->raise();
 
     m_notificationWidget = label;
+    updateOverlayLayerState();
 }
 
 void GlobalUiManager::hideNotification()
@@ -66,6 +72,8 @@ void GlobalUiManager::hideNotification()
         m_notificationWidget->deleteLater();
         m_notificationWidget = nullptr;
     }
+
+    updateOverlayLayerState();
 }
 
 void GlobalUiManager::showConfirmation(const QString& title, const QString& message,
@@ -101,6 +109,7 @@ void GlobalUiManager::showOverlay(const QString& message)
 
     m_overlayWidget->show();
     m_overlayWidget->raise();
+    updateOverlayLayerState();
 }
 
 void GlobalUiManager::hideOverlay()
@@ -110,6 +119,8 @@ void GlobalUiManager::hideOverlay()
         m_overlayWidget->deleteLater();
         m_overlayWidget = nullptr;
     }
+
+    updateOverlayLayerState();
 }
 
 void GlobalUiManager::registerVtkWindow(VtkSceneWindow* window)
@@ -141,4 +152,34 @@ void GlobalUiManager::showError(const QString& errorCode, const QString& message
     }
 
     QMessageBox::critical(m_overlayLayer, "Error", detail);
+}
+
+void GlobalUiManager::ensureToolHostLayout()
+{
+    if (!m_toolHost || m_toolHost->layout()) {
+        return;
+    }
+
+    auto* layout = new QVBoxLayout(m_toolHost);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(8);
+}
+
+void GlobalUiManager::updateOverlayLayerState()
+{
+    if (!m_overlayLayer) {
+        return;
+    }
+
+    const bool hasOverlay = m_overlayWidget != nullptr;
+    const bool hasNotification = m_notificationWidget != nullptr;
+    const bool visible = hasOverlay || hasNotification;
+
+    m_overlayLayer->setVisible(visible);
+    m_overlayLayer->setAttribute(Qt::WA_TransparentForMouseEvents,
+                                 hasNotification && !hasOverlay);
+
+    if (visible) {
+        m_overlayLayer->raise();
+    }
 }

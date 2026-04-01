@@ -11,6 +11,7 @@
 #include <QVBoxLayout>
 #include <QVector>
 #include <QString>
+#include <QShowEvent>
 
 #include "display/NodeDisplayManager.h"
 #include "display/PointNodeDisplayManager.h"
@@ -42,12 +43,21 @@ public:
     void render();
     void reconcile();
 
+public slots:
+    void requestReconcile();
+
 private slots:
     void onInteraction();
     void resetCameraToInitial();
+    void scheduleRender();
+    void renderQueuedScene();
+
+protected:
+    void showEvent(QShowEvent* event) override;
 
 private:
     QString m_windowId;
+    SceneGraph* m_sceneGraph = nullptr;
     QVTKOpenGLNativeWidget* m_vtkWidget;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkSmartPointer<vtkRenderer> m_renderers[3];
@@ -62,4 +72,5 @@ private:
     double m_initialParallelScale;
     double m_initialViewAngle;
     double m_initialClippingRange[2];
+    bool m_renderQueued = false;
 };

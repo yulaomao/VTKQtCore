@@ -16,6 +16,11 @@ class ModuleCoordinator : public QObject
     Q_OBJECT
 
 public:
+    enum class AuxiliaryRegion {
+        Right,
+        Bottom
+    };
+
     ModuleCoordinator(const QString& moduleId, ILogicGateway* gateway,
                       QObject* parent = nullptr);
     ~ModuleCoordinator() override = default;
@@ -23,8 +28,9 @@ public:
     QString getModuleId() const;
     void setMainPage(QWidget* page);
     QWidget* getMainPage() const;
-    void addAuxiliaryWidget(QWidget* widget);
-    QVector<QWidget*> getAuxiliaryWidgets() const;
+    void addAuxiliaryWidget(QWidget* widget,
+                            AuxiliaryRegion region = AuxiliaryRegion::Right);
+    QVector<QWidget*> getAuxiliaryWidgets(AuxiliaryRegion region) const;
 
     void activate();
     void deactivate();
@@ -35,6 +41,8 @@ public slots:
     void onModuleNotification(const LogicNotification& notification);
 
 signals:
+    void activated();
+    void deactivated();
     void moduleAction(const UiAction& action);
     void notificationForPage(const LogicNotification& notification);
 
@@ -42,5 +50,6 @@ private:
     QString m_moduleId;
     ILogicGateway* m_gateway;
     QWidget* m_mainPage;
-    QVector<QWidget*> m_auxiliaryWidgets;
+    QVector<QWidget*> m_rightAuxiliaryWidgets;
+    QVector<QWidget*> m_bottomAuxiliaryWidgets;
 };

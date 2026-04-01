@@ -1,5 +1,7 @@
 #include "LineNode.h"
 
+#include "../SceneGraph.h"
+
 LineNode::LineNode(QObject* parent)
     : NodeBase(QStringLiteral("LineNode"), parent)
 {
@@ -101,15 +103,27 @@ double LineNode::getLength() const
 
 void LineNode::setParentTransform(const QString& transformId)
 {
-    if (m_parentTransformId != transformId) {
-        m_parentTransformId = transformId;
-        emitEvent(NodeEventType::TransformChanged);
+    SceneGraph* scene = qobject_cast<SceneGraph*>(parent());
+    const QString currentId = getParentTransform();
+    if (currentId == transformId) {
+        return;
     }
+
+    if (transformId == getNodeId()) {
+        return;
+    }
+
+    if (scene && !scene->canAssignParentTransform(getNodeId(), transformId)) {
+        return;
+    }
+
+    setReference(NodeBase::parentTransformReferenceRole(), transformId);
+    emitEvent(NodeEventType::TransformChanged);
 }
 
 QString LineNode::getParentTransform() const
 {
-    return m_parentTransformId;
+    return getFirstReference(NodeBase::parentTransformReferenceRole());
 }
 
 void LineNode::setColor(const double rgba[4])

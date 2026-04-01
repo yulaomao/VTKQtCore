@@ -1,5 +1,6 @@
 #include "VtkSceneWindow.h"
 
+#include <QMetaObject>
 #include <vtkCallbackCommand.h>
 #include <vtkRenderWindow.h>
 
@@ -9,6 +10,7 @@ VtkSceneWindow::VtkSceneWindow(const QString& windowId, SceneGraph* sceneGraph,
                                QWidget* parent)
     : QWidget(parent)
     , m_windowId(windowId)
+    , m_sceneGraph(sceneGraph)
     , m_vtkWidget(new QVTKOpenGLNativeWidget(this))
     , m_renderWindow(vtkSmartPointer<vtkGenericOpenGLRenderWindow>::New())
     , m_camera(vtkSmartPointer<vtkCamera>::New())
@@ -68,6 +70,22 @@ VtkSceneWindow::VtkSceneWindow(const QString& windowId, SceneGraph* sceneGraph,
     m_displayManagers.append(modelDM);
     m_displayManagers.append(transformDM);
 
+        if (m_sceneGraph) {
+        connect(m_sceneGraph, &SceneGraph::nodeAdded,
+            this, &VtkSceneWindow::scheduleRender);
+        connect(m_sceneGraph, &SceneGraph::nodeRemoved,
+            this, &VtkSceneWindow::scheduleRender);
+        connect(m_sceneGraph, &SceneGraph::nodeModified,
+            this, [this](const QString&, NodeEventType) {
+                scheduleRender();
+            });
+        connect(m_sceneGraph, &SceneGraph::batchModifyEnded,
+            this, [this]() {
+                reconcile();
+                scheduleRender();
+            });
+        }
+
     // Layout
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -88,8 +106,9 @@ VtkSceneWindow::VtkSceneWindow(const QString& windowId, SceneGraph* sceneGraph,
         auto* self = static_cast<VtkSceneWindow*>(clientData);
         QMetaObject::invokeMethod(self, "onInteraction", Qt::QueuedConnection);
     });
-    m_renderWindow->GetInteractor()->AddObserver(
-        vtkCommand::InteractionEvent, callback);
+    if (vtkRenderWindowInteractor* interactor = m_renderWindow->GetInteractor()) {
+        interactor->AddObserver(vtkCommand::InteractionEvent, callback);
+    }
 }
 
 QString VtkSceneWindow::getWindowId() const
@@ -142,9 +161,31 @@ void VtkSceneWindow::reconcile()
     }
 }
 
+void VtkSceneWindow::requestReconcile()
+{
+    reconcile();
+    scheduleRender();
+}
+
 void VtkSceneWindow::onInteraction()
 {
     m_cameraResetTimer->start();
+}
+
+void VtkSceneWindow::scheduleRender()
+{
+    if (m_renderQueued) {
+        return;
+    }
+
+    m_renderQueued = true;
+    QMetaObject::invokeMethod(this, "renderQueuedScene", Qt::QueuedConnection);
+}
+
+void VtkSceneWindow::renderQueuedScene()
+{
+    m_renderQueued = false;
+    render();
 }
 
 void VtkSceneWindow::resetCameraToInitial()
@@ -157,4 +198,10 @@ void VtkSceneWindow::resetCameraToInitial()
     m_camera->SetViewAngle(m_initialViewAngle);
     m_camera->SetClippingRange(m_initialClippingRange);
     m_renderWindow->Render();
+}
+
+void VtkSceneWindow::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+    requestReconcile();
 }

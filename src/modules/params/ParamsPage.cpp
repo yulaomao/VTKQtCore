@@ -30,6 +30,9 @@ ParamsPage::ParamsPage(QWidget* parent)
     m_applyButton = new QPushButton(QStringLiteral("Apply Parameters"), this);
     mainLayout->addWidget(m_applyButton);
 
+    m_statusLabel = new QLabel(QStringLiteral("Status: Parameters not applied"), this);
+    mainLayout->addWidget(m_statusLabel);
+
     mainLayout->addStretch();
 
     connect(m_applyButton, &QPushButton::clicked, this, [this]() {
@@ -39,4 +42,17 @@ ParamsPage::ParamsPage(QWidget* parent)
         params.insert(QStringLiteral("procedureType"), m_procedureTypeEdit->text());
         emit parameterApplied(params);
     });
+}
+
+void ParamsPage::setParameterStatus(bool valid, int parameterCount)
+{
+    QString text = valid
+        ? QStringLiteral("Status: Parameters valid")
+        : QStringLiteral("Status: Parameters incomplete");
+
+    if (parameterCount >= 0) {
+        text += QStringLiteral(" (%1 entries)").arg(parameterCount);
+    }
+
+    m_statusLabel->setText(text);
 }

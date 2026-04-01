@@ -1,5 +1,7 @@
 #include "NodeDisplayManager.h"
 
+#include "../logic/scene/nodes/TransformNode.h"
+
 #include <vtkRenderer.h>
 
 NodeDisplayManager::NodeDisplayManager(SceneGraph* scene, const QString& windowId,
@@ -38,6 +40,12 @@ void NodeDisplayManager::handleNodeModified(const QString& nodeId, NodeEventType
     NodeBase* node = m_sceneGraph->getNodeById(nodeId);
     if (node && canHandleNode(node)) {
         onNodeModified(nodeId, eventType);
+        return;
+    }
+
+    if (eventType == NodeEventType::TransformChanged &&
+        dynamic_cast<TransformNode*>(node) != nullptr) {
+        reconcileWithScene();
     }
 }
 

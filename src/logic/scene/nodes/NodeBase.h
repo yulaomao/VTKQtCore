@@ -29,6 +29,8 @@ public:
     explicit NodeBase(const QString& nodeTagName, QObject* parent = nullptr);
     ~NodeBase() override = default;
 
+    static const QString& parentTransformReferenceRole();
+
     QString getNodeId() const;
     QString getNodeTagName() const;
 
@@ -51,6 +53,7 @@ public:
     void addReference(const QString& role, const QString& nodeId);
     void removeReference(const QString& role, const QString& nodeId);
     QStringList getReferences(const QString& role) const;
+    QString getFirstReference(const QString& role) const;
 
     void startBatchModify();
     void endBatchModify();

@@ -4,6 +4,7 @@
 #include <QUuid>
 #include <QVariantMap>
 #include <QDateTime>
+#include <QMetaType>
 
 struct StateSample {
     QString sampleId;
@@ -26,3 +27,5 @@ struct StateSample {
         return s;
     }
 };
+
+Q_DECLARE_METATYPE(StateSample)

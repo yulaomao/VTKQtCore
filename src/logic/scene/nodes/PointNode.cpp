@@ -1,4 +1,7 @@
 #include "PointNode.h"
+
+#include "../SceneGraph.h"
+
 #include <QUuid>
 
 PointNode::PointNode(QObject* parent)
@@ -120,7 +123,7 @@ void PointNode::setPointSelected(int index, bool selected)
     } else if (m_selectedPointIndex == index) {
         m_selectedPointIndex = -1;
     }
-    touchModified();
+    emitEvent(NodeEventType::DisplayChanged);
 }
 
 void PointNode::setPointLocked(int index, bool locked)
@@ -134,15 +137,27 @@ void PointNode::setPointLocked(int index, bool locked)
 
 void PointNode::setParentTransform(const QString& transformId)
 {
-    if (m_parentTransformId != transformId) {
-        m_parentTransformId = transformId;
-        emitEvent(NodeEventType::TransformChanged);
+    SceneGraph* scene = qobject_cast<SceneGraph*>(parent());
+    const QString currentId = getParentTransform();
+    if (currentId == transformId) {
+        return;
     }
+
+    if (transformId == getNodeId()) {
+        return;
+    }
+
+    if (scene && !scene->canAssignParentTransform(getNodeId(), transformId)) {
+        return;
+    }
+
+    setReference(NodeBase::parentTransformReferenceRole(), transformId);
+    emitEvent(NodeEventType::TransformChanged);
 }
 
 QString PointNode::getParentTransform() const
 {
-    return m_parentTransformId;
+    return getFirstReference(NodeBase::parentTransformReferenceRole());
 }
 
 void PointNode::setPointColor(int index, const double rgba[4])
@@ -154,7 +169,7 @@ void PointNode::setPointColor(int index, const double rgba[4])
     for (int i = 0; i < 4; ++i) {
         pt.colorRGBA[i] = rgba[i];
     }
-    touchModified();
+    emitEvent(NodeEventType::DisplayChanged);
 }
 
 void PointNode::getPointColor(int index, double out[4]) const
@@ -177,7 +192,7 @@ void PointNode::setPointSize(int index, double size)
         return;
     }
     m_controlPoints[index].sizeValue = size;
-    touchModified();
+    emitEvent(NodeEventType::DisplayChanged);
 }
 
 double PointNode::getPointSize(int index) const
@@ -194,7 +209,7 @@ void PointNode::setDefaultPointColor(const double rgba[4])
     for (int i = 0; i < 4; ++i) {
         m_defaultPointColor[i] = rgba[i];
     }
-    touchModified();
+    emitEvent(NodeEventType::DisplayChanged);
 }
 
 void PointNode::getDefaultPointColor(double out[4]) const
@@ -207,7 +222,7 @@ void PointNode::getDefaultPointColor(double out[4]) const
 void PointNode::setDefaultPointSize(double size)
 {
     m_defaultPointSize = size;
-    touchModified();
+    emitEvent(NodeEventType::DisplayChanged);
 }
 
 double PointNode::getDefaultPointSize() const
@@ -219,7 +234,7 @@ void PointNode::setShowPointLabel(bool show)
 {
     if (m_showPointLabelFlag != show) {
         m_showPointLabelFlag = show;
-        touchModified();
+        emitEvent(NodeEventType::DisplayChanged);
     }
 }
 
@@ -232,7 +247,7 @@ void PointNode::setPointLabelFormat(const QString& format)
 {
     if (m_pointLabelFormat != format) {
         m_pointLabelFormat = format;
-        touchModified();
+        emitEvent(NodeEventType::DisplayChanged);
     }
 }
 
@@ -245,7 +260,7 @@ void PointNode::setSelectedPointIndex(int index)
 {
     if (m_selectedPointIndex != index) {
         m_selectedPointIndex = index;
-        touchModified();
+        emitEvent(NodeEventType::DisplayChanged);
     }
 }
 

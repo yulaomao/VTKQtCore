@@ -1,6 +1,5 @@
 #include "LineNodeDisplayManager.h"
 #include "../logic/scene/nodes/LineNode.h"
-#include "../logic/scene/nodes/TransformNode.h"
 
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
@@ -89,6 +88,10 @@ void LineNodeDisplayManager::reconcileWithScene()
         const QString& id = ln->getNodeId();
         if (!m_entries.contains(id) && canHandleNode(ln)) {
             buildEntry(id);
+        } else if (m_entries.contains(id)) {
+            updateContent(id);
+            updateDisplay(id);
+            updateTransform(id);
         }
     }
 }
@@ -251,30 +254,16 @@ void LineNodeDisplayManager::updateDisplay(const QString& nodeId)
 
 void LineNodeDisplayManager::updateTransform(const QString& nodeId)
 {
-    LineNode* node = scene()->getNodeById<LineNode>(nodeId);
-    if (!node) {
-        return;
-    }
-
     auto it = m_entries.find(nodeId);
     if (it == m_entries.end()) {
         return;
     }
 
-    QString transformId = node->getParentTransform();
-    if (transformId.isEmpty()) {
-        it->actor->SetUserTransform(nullptr);
-        return;
-    }
-
-    TransformNode* transformNode = scene()->getNodeById<TransformNode>(transformId);
-    if (!transformNode) {
-        it->actor->SetUserTransform(nullptr);
-        return;
-    }
-
     double matrix[16];
-    transformNode->getMatrixTransformToParent(matrix);
+    if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
+        it->actor->SetUserTransform(nullptr);
+        return;
+    }
 
     auto transform = vtkSmartPointer<vtkTransform>::New();
     auto mat = vtkSmartPointer<vtkMatrix4x4>::New();

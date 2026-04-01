@@ -5,6 +5,7 @@
 
 #include "contracts/UiAction.h"
 #include "contracts/LogicNotification.h"
+#include "communication/datasource/StateSample.h"
 
 class SceneGraph;
 
@@ -20,6 +21,10 @@ public:
     SceneGraph* getSceneGraph() const;
 
     virtual void handleAction(const UiAction& action) = 0;
+    virtual void handleStateSample(const StateSample& sample)
+    {
+        Q_UNUSED(sample);
+    }
 
     virtual void onModuleActivated() {}
     virtual void onModuleDeactivated() {}

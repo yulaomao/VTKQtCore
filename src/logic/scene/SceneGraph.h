@@ -38,6 +38,8 @@ public:
     QVector<NodeBase*> getAllNodes() const;
     int getNodeCount() const;
     bool containsNode(const QString& nodeId) const;
+    bool canAssignParentTransform(const QString& nodeId, const QString& transformId) const;
+    bool getWorldTransformMatrix(const QString& nodeId, double out[16]) const;
 
     // Batch modify (scene level)
     void startBatchModify();

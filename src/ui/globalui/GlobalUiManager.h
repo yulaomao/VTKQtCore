@@ -41,6 +41,9 @@ public:
                    bool recoverable, const QString& suggestedAction);
 
 private:
+    void ensureToolHostLayout();
+    void updateOverlayLayerState();
+
     QWidget* m_overlayLayer;
     QWidget* m_toolHost;
     QMap<QString, VtkSceneWindow*> m_vtkWindows;

@@ -74,7 +74,6 @@ private:
     double m_colorValue[4] = {0.8, 0.8, 0.8, 1.0};
     QString m_modelRole;
     double m_cachedBounds[6] = {0, 0, 0, 0, 0, 0};
-    QString m_parentTransformId;
     QString m_renderMode = QStringLiteral("surface");
     bool m_showEdgesFlag = false;
     double m_edgeColorRGBA[4] = {0.0, 0.0, 0.0, 1.0};

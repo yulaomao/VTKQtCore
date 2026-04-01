@@ -4,6 +4,27 @@
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
+
+struct WorkflowDecision
+{
+    bool allowed = false;
+    QString reasonCode;
+    QString message;
+    QString targetModule;
+    QString currentModule;
+
+    QVariantMap toVariantMap() const
+    {
+        return {
+            {QStringLiteral("allowed"), allowed},
+            {QStringLiteral("reasonCode"), reasonCode},
+            {QStringLiteral("message"), message},
+            {QStringLiteral("targetModule"), targetModule},
+            {QStringLiteral("currentModule"), currentModule}
+        };
+    }
+};
 
 class WorkflowStateMachine : public QObject
 {
@@ -25,11 +46,17 @@ public:
     void addEnterableModule(const QString& module);
     void removeEnterableModule(const QString& module);
     bool isModuleEnterable(const QString& module) const;
+    bool isModuleKnown(const QString& module) const;
 
     bool canAdvanceToNext() const;
     bool canGoToPrev() const;
     QString getNextModule() const;
     QString getPrevModule() const;
+
+    WorkflowDecision evaluateSwitchTo(const QString& module) const;
+    WorkflowDecision evaluateAdvanceToNext() const;
+    WorkflowDecision evaluateGoToPrev() const;
+    QVariantMap createSnapshot() const;
 
     int getModuleIndex(const QString& module) const;
 
