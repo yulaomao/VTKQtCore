@@ -19,8 +19,12 @@ public:
         Disconnected
     };
 
-    explicit ILogicGateway(QObject* parent = nullptr) : QObject(parent) {}
     ~ILogicGateway() override = default;
+
+protected:
+    explicit ILogicGateway(QObject* parent = nullptr) : QObject(parent) {}
+
+public:
 
     virtual bool sendAction(const UiAction& action) = 0;
 
