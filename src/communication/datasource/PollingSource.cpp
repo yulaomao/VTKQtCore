@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <limits>
 
+namespace {
+constexpr int MIN_TIMER_INTERVAL_MS = 10;
+}
+
 PollingSource::PollingSource(const QString& sourceId, QObject* parent)
     : SourceBase(sourceId, parent)
     , m_timer(new QTimer(this))
@@ -122,5 +126,5 @@ void PollingSource::recalculateTimerInterval()
         }
     }
 
-    m_timer->setInterval(std::max(10, minInterval));
+    m_timer->setInterval(std::max(MIN_TIMER_INTERVAL_MS, minInterval));
 }
