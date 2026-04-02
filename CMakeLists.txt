@@ -44,6 +44,13 @@ if(MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
+# hiredis (prebuilt under thirtyPart/hiredis)
+# ---------------------------------------------------------------------------
+find_package(hiredis CONFIG REQUIRED
+    PATHS "${CMAKE_CURRENT_SOURCE_DIR}/thirtyPart/hiredis"
+    NO_DEFAULT_PATH)
+
+# ---------------------------------------------------------------------------
 # Sources – collect every .h and .cpp under src/
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
@@ -82,6 +89,7 @@ target_link_libraries(VTKQtCore PRIVATE
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::OpenGL
     Qt${QT_VERSION_MAJOR}::OpenGLWidgets
+    hiredis::hiredis
     ${VTK_LIBRARIES}
 )
 

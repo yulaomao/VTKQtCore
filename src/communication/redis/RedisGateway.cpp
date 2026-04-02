@@ -1,175 +1,104 @@
 #include "RedisGateway.h"
 
-#include <QAbstractSocket>
-#include <QCoreApplication>
-#include <QDebug>
+#include <hiredis/hiredis.h>
+
 #include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QTcpSocket>
+#include <QMetaObject>
 #include <QTimer>
+
+#include <memory>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
-struct RespValue {
-    enum class Type {
-        SimpleString,
-        Error,
-        Integer,
-        BulkString,
-        Array,
-        Null
-    };
-
-    Type type = Type::Null;
-    QByteArray stringValue;
-    qint64 integerValue = 0;
-    QList<RespValue> arrayValue;
-};
-
-QByteArray encodeRespCommand(const QList<QByteArray>& arguments)
+QString redisErrorMessage(const redisContext* context, const QString& fallback)
 {
-    QByteArray payload;
-    payload += '*';
-    payload += QByteArray::number(arguments.size());
-    payload += "\r\n";
-    for (const QByteArray& argument : arguments) {
-        payload += '$';
-        payload += QByteArray::number(argument.size());
-        payload += "\r\n";
-        payload += argument;
-        payload += "\r\n";
+    if (context && context->errstr[0] != '\0') {
+        return QStringLiteral("%1: %2").arg(fallback, QString::fromUtf8(context->errstr));
     }
-    return payload;
+
+    return fallback;
 }
 
-bool parseLine(const QByteArray& buffer, int start, QByteArray& line, int& nextPos)
+QByteArray replyBytes(const redisReply* reply)
 {
-    const int separator = buffer.indexOf("\r\n", start);
-    if (separator < 0) {
-        return false;
+    if (!reply || !reply->str || reply->len == 0) {
+        return QByteArray();
     }
 
-    line = buffer.mid(start, separator - start);
-    nextPos = separator + 2;
-    return true;
+    return QByteArray(reply->str, static_cast<int>(reply->len));
 }
 
-bool parseRespValue(const QByteArray& buffer, int start, RespValue& value, int& consumed)
+QString replyString(const redisReply* reply)
 {
-    if (start >= buffer.size()) {
-        return false;
-    }
-
-    const char prefix = buffer.at(start);
-    QByteArray line;
-    int cursor = 0;
-
-    switch (prefix) {
-    case '+':
-        if (!parseLine(buffer, start + 1, line, cursor)) {
-            return false;
-        }
-        value.type = RespValue::Type::SimpleString;
-        value.stringValue = line;
-        consumed = cursor;
-        return true;
-    case '-':
-        if (!parseLine(buffer, start + 1, line, cursor)) {
-            return false;
-        }
-        value.type = RespValue::Type::Error;
-        value.stringValue = line;
-        consumed = cursor;
-        return true;
-    case ':':
-        if (!parseLine(buffer, start + 1, line, cursor)) {
-            return false;
-        }
-        value.type = RespValue::Type::Integer;
-        value.integerValue = line.toLongLong();
-        consumed = cursor;
-        return true;
-    case '$': {
-        if (!parseLine(buffer, start + 1, line, cursor)) {
-            return false;
-        }
-
-        const int length = line.toInt();
-        if (length < 0) {
-            value.type = RespValue::Type::Null;
-            consumed = cursor;
-            return true;
-        }
-
-        if (cursor + length + 2 > buffer.size()) {
-            return false;
-        }
-
-        value.type = RespValue::Type::BulkString;
-        value.stringValue = buffer.mid(cursor, length);
-        consumed = cursor + length + 2;
-        return true;
-    }
-    case '*': {
-        if (!parseLine(buffer, start + 1, line, cursor)) {
-            return false;
-        }
-
-        const int count = line.toInt();
-        if (count < 0) {
-            value.type = RespValue::Type::Null;
-            consumed = cursor;
-            return true;
-        }
-
-        value.type = RespValue::Type::Array;
-        value.arrayValue.clear();
-        int current = cursor;
-        for (int index = 0; index < count; ++index) {
-            RespValue child;
-            int nextConsumed = 0;
-            if (!parseRespValue(buffer, current, child, nextConsumed)) {
-                return false;
-            }
-            value.arrayValue.append(child);
-            current = nextConsumed;
-        }
-        consumed = current;
-        return true;
-    }
-    default:
-        return false;
-    }
+    return QString::fromUtf8(replyBytes(reply));
 }
 
-QVariant respToVariant(const RespValue& value)
+QVariant replyToVariant(const redisReply* reply)
 {
-    switch (value.type) {
-    case RespValue::Type::SimpleString:
-        return QString::fromUtf8(value.stringValue);
-    case RespValue::Type::BulkString:
-        return value.stringValue;
-    case RespValue::Type::Integer:
-        return value.integerValue;
-    case RespValue::Type::Null:
+    if (!reply) {
         return QVariant();
-    case RespValue::Type::Array: {
+    }
+
+    switch (reply->type) {
+    case REDIS_REPLY_NIL:
+        return QVariant();
+    case REDIS_REPLY_STRING:
+    case REDIS_REPLY_BIGNUM:
+    case REDIS_REPLY_VERB:
+        return replyBytes(reply);
+    case REDIS_REPLY_STATUS:
+        return replyString(reply);
+    case REDIS_REPLY_INTEGER:
+        return static_cast<qlonglong>(reply->integer);
+    case REDIS_REPLY_DOUBLE:
+        return reply->str ? QVariant(QString::fromUtf8(reply->str)) : QVariant(reply->dval);
+    case REDIS_REPLY_BOOL:
+        return reply->integer != 0;
+    case REDIS_REPLY_ARRAY:
+    case REDIS_REPLY_SET:
+    case REDIS_REPLY_PUSH:
+    case REDIS_REPLY_MAP: {
         QVariantList list;
-        for (const RespValue& item : value.arrayValue) {
-            list.append(respToVariant(item));
+        for (size_t index = 0; index < reply->elements; ++index) {
+            list.append(replyToVariant(reply->element[index]));
         }
         return list;
     }
-    case RespValue::Type::Error:
     default:
-        return QString::fromUtf8(value.stringValue);
+        return replyString(reply);
     }
 }
 
-bool isSocketConnected(const QTcpSocket* socket)
+int waitForReadable(redisFD fd, int timeoutMs)
 {
-    return socket && socket->state() == QAbstractSocket::ConnectedState;
+    if (fd == REDIS_INVALID_FD) {
+        return -1;
+    }
+
+    fd_set readSet;
+    FD_ZERO(&readSet);
+
+    timeval timeout;
+    timeout.tv_sec = timeoutMs / 1000;
+    timeout.tv_usec = (timeoutMs % 1000) * 1000;
+
+#ifdef _WIN32
+    FD_SET(static_cast<SOCKET>(fd), &readSet);
+    return ::select(0, &readSet, nullptr, nullptr, &timeout);
+#else
+    FD_SET(fd, &readSet);
+    return ::select(fd + 1, &readSet, nullptr, nullptr, &timeout);
+#endif
 }
 
 } // namespace
@@ -183,33 +112,40 @@ RedisGateway::RedisGateway(QObject* parent)
             this, &RedisGateway::onReconnectTimeout);
 }
 
+RedisGateway::~RedisGateway()
+{
+    disconnect();
+}
+
 void RedisGateway::connectToServer(const QString& host, int port)
 {
-    m_host = host;
-    m_port = port;
-    m_manualDisconnect = false;
-    ensureSockets();
-    connectSockets();
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        m_host = host;
+        m_port = port;
+    }
+
+    m_manualDisconnect.store(false);
+    m_shutdownRequested.store(false);
+    attemptConnection();
 }
 
 void RedisGateway::disconnect()
 {
-    m_manualDisconnect = true;
+    m_manualDisconnect.store(true);
+    m_shutdownRequested.store(true);
+
     if (m_reconnectTimer->isActive()) {
         m_reconnectTimer->stop();
     }
 
-    if (m_commandSocket) {
-        m_commandSocket->disconnectFromHost();
-        m_commandSocket->abort();
+    stopSubscriberWorker();
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        clearCommandContextLocked();
     }
-
-    if (m_subscriberSocket) {
-        m_subscriberSocket->disconnectFromHost();
-        m_subscriberSocket->abort();
-    }
-
-    clearPendingCommands(QStringLiteral("Disconnected by client"));
+    clearPendingSubscriptionCommands();
+    cleanupAsyncWorkers(true);
     setConnectionState(Disconnected);
 }
 
@@ -244,7 +180,6 @@ bool RedisGateway::waitForConnected(int timeoutMs)
     timeoutTimer.start(timeoutMs);
     loop.exec();
     QObject::disconnect(stateConnection);
-
     return m_connectionState == Connected;
 }
 
@@ -254,13 +189,17 @@ void RedisGateway::subscribe(const QString& channel)
         return;
     }
 
-    if (m_subscribedChannels.contains(channel)) {
-        return;
+    bool inserted = false;
+    {
+        std::lock_guard<std::mutex> lock(m_subscriptionMutex);
+        inserted = !m_subscribedChannels.contains(channel);
+        if (inserted) {
+            m_subscribedChannels.insert(channel);
+        }
     }
 
-    m_subscribedChannels.insert(channel);
-    if (isSocketConnected(m_subscriberSocket)) {
-        sendCommand(m_subscriberSocket, {QByteArrayLiteral("SUBSCRIBE"), channel.toUtf8()});
+    if (inserted && m_connectionState == Connected) {
+        queueSubscriptionCommand(SubscriptionCommandType::Subscribe, channel);
     }
 }
 
@@ -270,76 +209,130 @@ void RedisGateway::unsubscribe(const QString& channel)
         return;
     }
 
-    m_subscribedChannels.remove(channel);
-    if (isSocketConnected(m_subscriberSocket)) {
-        sendCommand(m_subscriberSocket, {QByteArrayLiteral("UNSUBSCRIBE"), channel.toUtf8()});
+    bool removed = false;
+    {
+        std::lock_guard<std::mutex> lock(m_subscriptionMutex);
+        removed = m_subscribedChannels.remove(channel);
+    }
+
+    if (removed && m_connectionState == Connected) {
+        queueSubscriptionCommand(SubscriptionCommandType::Unsubscribe, channel);
     }
 }
 
 void RedisGateway::publish(const QString& channel, const QByteArray& message)
 {
-    if (!isSocketConnected(m_commandSocket)) {
-        emit errorOccurred(QStringLiteral("Redis command socket is not connected"));
+    if (channel.isEmpty()) {
         return;
     }
 
-    auto* pending = new PendingCommand;
-    pending->kind = CommandKind::Publish;
-    pending->key = channel;
-    m_pendingCommands.append(pending);
-    sendCommand(m_commandSocket, {QByteArrayLiteral("PUBLISH"), channel.toUtf8(), message});
+    const QByteArray channelBytes = channel.toUtf8();
+    redisReply* reply = nullptr;
+    QString errorMessage;
+    bool connectionLost = false;
+
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        if (!m_commandContext) {
+            errorMessage = QStringLiteral("Redis command connection is not connected");
+            connectionLost = true;
+        } else {
+            reply = static_cast<redisReply*>(redisCommand(
+                m_commandContext,
+                "PUBLISH %b %b",
+                channelBytes.constData(), static_cast<size_t>(channelBytes.size()),
+                message.constData(), static_cast<size_t>(message.size())));
+            if (!reply) {
+                errorMessage = redisErrorMessage(
+                    m_commandContext,
+                    QStringLiteral("Redis publish failed for channel '%1'").arg(channel));
+                clearCommandContextLocked();
+                connectionLost = true;
+            }
+        }
+    }
+
+    if (reply) {
+        if (reply->type == REDIS_REPLY_ERROR) {
+            errorMessage = QStringLiteral("Redis publish failed: %1").arg(replyString(reply));
+        }
+        freeReplyObject(reply);
+    }
+
+    if (!errorMessage.isEmpty()) {
+        if (connectionLost) {
+            handleConnectionFailure(errorMessage);
+        } else {
+            emit errorOccurred(errorMessage);
+        }
+    }
 }
 
 QVariant RedisGateway::readKey(const QString& key)
 {
-    if (!isSocketConnected(m_commandSocket)) {
-        emit errorOccurred(QStringLiteral("Redis command socket is not connected"));
+    QString errorMessage;
+    QVariant result;
+    bool connectionLost = false;
+
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        if (!m_commandContext) {
+            errorMessage = QStringLiteral("Redis command connection is not connected");
+            connectionLost = true;
+        } else {
+            result = executeGet(m_commandContext, key, &errorMessage);
+            if (!errorMessage.isEmpty() && m_commandContext->err != REDIS_OK) {
+                clearCommandContextLocked();
+                connectionLost = true;
+            }
+        }
+    }
+
+    if (!errorMessage.isEmpty()) {
+        if (connectionLost) {
+            handleConnectionFailure(errorMessage);
+        } else {
+            emit errorOccurred(errorMessage);
+        }
         return QVariant();
     }
 
-    auto* pending = new PendingCommand;
-    pending->kind = CommandKind::Read;
-    pending->key = key;
-
-    QEventLoop loop;
-    QTimer timeoutTimer;
-    timeoutTimer.setSingleShot(true);
-    connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
-    pending->loop = &loop;
-    m_pendingCommands.append(pending);
-    sendCommand(m_commandSocket, {QByteArrayLiteral("GET"), key.toUtf8()});
-
-    timeoutTimer.start(2000);
-    loop.exec();
-
-    if (m_pendingCommands.removeOne(pending)) {
-        emit errorOccurred(QStringLiteral("Timed out reading Redis key '%1' from %2:%3")
-                               .arg(key, m_host).arg(m_port));
-        delete pending;
-        return QVariant();
-    }
-
-    const QString error = pending->error;
-    const QVariant result = pending->result;
-    delete pending;
-    if (!error.isEmpty()) {
-        emit errorOccurred(error);
-    }
     return result;
 }
 
 void RedisGateway::asyncReadKey(const QString& key)
 {
-    if (!isSocketConnected(m_commandSocket)) {
-        emit errorOccurred(QStringLiteral("Redis command socket is not connected"));
-        return;
-    }
+    cleanupAsyncWorkers(false);
 
-    auto* pending = new PendingCommand;
-    pending->kind = CommandKind::AsyncRead;
-    pending->key = key;
-    m_pendingCommands.append(pending);
-    sendCommand(m_commandSocket, {QByteArrayLiteral("GET"), key.toUtf8()});
+    auto done = std::make_shared<std::atomic_bool>(false);
+    std::thread worker([this, key, done]() {
+        QString errorMessage;
+        QVariant result;
+
+        if (!m_shutdownRequested.load()) {
+            std::unique_ptr<redisContext, decltype(&redisFree)> context(createContext(&errorMessage), &redisFree);
+            if (context) {
+                result = executeGet(context.get(), key, &errorMessage);
+            }
+        }
+
+        if (!m_shutdownRequested.load()) {
+            QMetaObject::invokeMethod(this,
+                                      [this, key, result, errorMessage]() {
+                                          if (!errorMessage.isEmpty()) {
+                                              emit errorOccurred(errorMessage);
+                                              return;
+                                          }
+                                          emit keyValueReceived(key, result);
+                                      },
+                                      Qt::QueuedConnection);
+        }
+
+        done->store(true);
+    });
+
+    std::lock_guard<std::mutex> lock(m_asyncMutex);
+    m_asyncWorkers.push_back(AsyncWorker{done, std::move(worker)});
 }
 
 QString RedisGateway::readString(const QString& key)
@@ -349,140 +342,25 @@ QString RedisGateway::readString(const QString& key)
 
 QVariantMap RedisGateway::readJson(const QString& key)
 {
-    QVariant val = readKey(key);
-    if (val.typeId() == QMetaType::QByteArray || val.typeId() == QMetaType::QString) {
-        QJsonDocument doc = QJsonDocument::fromJson(val.toByteArray());
+    const QVariant value = readKey(key);
+    const QByteArray json = value.toByteArray();
+    if (!json.isEmpty()) {
+        const QJsonDocument doc = QJsonDocument::fromJson(json);
         if (doc.isObject()) {
             return doc.object().toVariantMap();
         }
     }
-    return val.toMap();
-}
 
-void RedisGateway::onCommandSocketConnected()
-{
-    if (isSocketConnected(m_commandSocket) && isSocketConnected(m_subscriberSocket)) {
-        if (m_reconnectTimer->isActive()) {
-            m_reconnectTimer->stop();
-        }
-        setConnectionState(Connected);
-    } else {
-        setConnectionState(Reconnecting);
-    }
-}
-
-void RedisGateway::onCommandSocketDisconnected()
-{
-    if (m_manualDisconnect) {
-        return;
-    }
-    scheduleReconnect(QStringLiteral("Redis command socket disconnected"));
-}
-
-void RedisGateway::onCommandSocketReadyRead()
-{
-    if (!m_commandSocket) {
-        return;
-    }
-
-    m_commandBuffer.append(m_commandSocket->readAll());
-    processCommandBuffer();
-}
-
-void RedisGateway::onCommandSocketError()
-{
-    if (!m_commandSocket) {
-        return;
-    }
-
-    const QString message = m_commandSocket->errorString();
-    emit errorOccurred(QStringLiteral("Redis command socket error: %1").arg(message));
-    if (!m_manualDisconnect) {
-        scheduleReconnect(message);
-    }
-}
-
-void RedisGateway::onSubscriberSocketConnected()
-{
-    for (const QString& channel : m_subscribedChannels) {
-        sendCommand(m_subscriberSocket, {QByteArrayLiteral("SUBSCRIBE"), channel.toUtf8()});
-    }
-
-    if (isSocketConnected(m_commandSocket) && isSocketConnected(m_subscriberSocket)) {
-        if (m_reconnectTimer->isActive()) {
-            m_reconnectTimer->stop();
-        }
-        setConnectionState(Connected);
-    } else {
-        setConnectionState(Reconnecting);
-    }
-}
-
-void RedisGateway::onSubscriberSocketDisconnected()
-{
-    if (m_manualDisconnect) {
-        return;
-    }
-    scheduleReconnect(QStringLiteral("Redis subscriber socket disconnected"));
-}
-
-void RedisGateway::onSubscriberSocketReadyRead()
-{
-    if (!m_subscriberSocket) {
-        return;
-    }
-
-    m_subscriberBuffer.append(m_subscriberSocket->readAll());
-    processSubscriberBuffer();
-}
-
-void RedisGateway::onSubscriberSocketError()
-{
-    if (!m_subscriberSocket) {
-        return;
-    }
-
-    const QString message = m_subscriberSocket->errorString();
-    emit errorOccurred(QStringLiteral("Redis subscriber socket error: %1").arg(message));
-    if (!m_manualDisconnect) {
-        scheduleReconnect(message);
-    }
+    return value.toMap();
 }
 
 void RedisGateway::onReconnectTimeout()
 {
-    if (m_manualDisconnect || m_host.isEmpty() || m_port <= 0) {
+    if (m_manualDisconnect.load() || m_shutdownRequested.load()) {
         return;
     }
 
-    connectSockets();
-}
-
-void RedisGateway::ensureSockets()
-{
-    if (!m_commandSocket) {
-        m_commandSocket = new QTcpSocket(this);
-        connect(m_commandSocket, &QTcpSocket::connected,
-                this, &RedisGateway::onCommandSocketConnected);
-        connect(m_commandSocket, &QTcpSocket::disconnected,
-                this, &RedisGateway::onCommandSocketDisconnected);
-        connect(m_commandSocket, &QTcpSocket::readyRead,
-                this, &RedisGateway::onCommandSocketReadyRead);
-        connect(m_commandSocket, &QAbstractSocket::errorOccurred,
-                this, &RedisGateway::onCommandSocketError);
-    }
-
-    if (!m_subscriberSocket) {
-        m_subscriberSocket = new QTcpSocket(this);
-        connect(m_subscriberSocket, &QTcpSocket::connected,
-                this, &RedisGateway::onSubscriberSocketConnected);
-        connect(m_subscriberSocket, &QTcpSocket::disconnected,
-                this, &RedisGateway::onSubscriberSocketDisconnected);
-        connect(m_subscriberSocket, &QTcpSocket::readyRead,
-                this, &RedisGateway::onSubscriberSocketReadyRead);
-        connect(m_subscriberSocket, &QAbstractSocket::errorOccurred,
-                this, &RedisGateway::onSubscriberSocketError);
-    }
+    attemptConnection();
 }
 
 void RedisGateway::setConnectionState(ConnectionState state)
@@ -495,124 +373,354 @@ void RedisGateway::setConnectionState(ConnectionState state)
     emit connectionStateChanged(m_connectionState);
 }
 
-void RedisGateway::connectSockets()
+void RedisGateway::attemptConnection()
 {
-    if (m_host.isEmpty() || m_port <= 0) {
+    QString host;
+    int port = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        host = m_host;
+        port = m_port;
+    }
+
+    if (host.isEmpty() || port <= 0) {
         emit errorOccurred(QStringLiteral("Redis host or port is not configured"));
         return;
     }
 
-    ensureSockets();
     setConnectionState(Reconnecting);
 
-    if (m_commandSocket->state() == QAbstractSocket::UnconnectedState) {
-        m_commandSocket->connectToHost(m_host, static_cast<quint16>(m_port));
+    QString commandError;
+    std::unique_ptr<redisContext, decltype(&redisFree)> newCommandContext(createContext(&commandError), &redisFree);
+    if (!newCommandContext) {
+        emit errorOccurred(commandError);
+        if (!m_reconnectTimer->isActive()) {
+            m_reconnectTimer->start();
+        }
+        return;
     }
 
-    if (m_subscriberSocket->state() == QAbstractSocket::UnconnectedState) {
-        m_subscriberSocket->connectToHost(m_host, static_cast<quint16>(m_port));
+    QString subscriberError;
+    std::unique_ptr<redisContext, decltype(&redisFree)> newSubscriberContext(createContext(&subscriberError), &redisFree);
+    if (!newSubscriberContext) {
+        emit errorOccurred(subscriberError);
+        if (!m_reconnectTimer->isActive()) {
+            m_reconnectTimer->start();
+        }
+        return;
+    }
+
+    stopSubscriberWorker();
+    clearPendingSubscriptionCommands();
+
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        clearCommandContextLocked();
+        m_commandContext = newCommandContext.release();
+    }
+
+    m_subscriberContext = newSubscriberContext.release();
+    m_stopSubscriber.store(false);
+    m_subscriberThread = std::thread(&RedisGateway::subscriberLoop, this);
+
+    if (m_reconnectTimer->isActive()) {
+        m_reconnectTimer->stop();
+    }
+    setConnectionState(Connected);
+}
+
+redisContext* RedisGateway::createContext(QString* errorMessage) const
+{
+    QString host;
+    int port = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        host = m_host;
+        port = m_port;
+    }
+
+    if (host.isEmpty() || port <= 0) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Redis host or port is not configured");
+        }
+        return nullptr;
+    }
+
+    const QByteArray hostBytes = host.toUtf8();
+    const timeval timeout {
+        m_connectTimeoutMs / 1000,
+        (m_connectTimeoutMs % 1000) * 1000
+    };
+
+    redisContext* context = redisConnectWithTimeout(hostBytes.constData(), port, timeout);
+    if (!context) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Failed to allocate hiredis context for %1:%2")
+                                .arg(host)
+                                .arg(port);
+        }
+        return nullptr;
+    }
+
+    if (context->err != REDIS_OK) {
+        if (errorMessage) {
+            *errorMessage = redisErrorMessage(
+                context,
+                QStringLiteral("Failed to connect to Redis at %1:%2").arg(host).arg(port));
+        }
+        redisFree(context);
+        return nullptr;
+    }
+
+    redisEnableKeepAlive(context);
+    redisSetTimeout(context, timeout);
+    return context;
+}
+
+void RedisGateway::clearCommandContextLocked()
+{
+    if (m_commandContext) {
+        redisFree(m_commandContext);
+        m_commandContext = nullptr;
     }
 }
 
-void RedisGateway::scheduleReconnect(const QString& reason)
+void RedisGateway::clearPendingSubscriptionCommands()
 {
-    clearPendingCommands(QStringLiteral("Redis connection dropped: %1").arg(reason));
+    std::lock_guard<std::mutex> lock(m_subscriptionMutex);
+    m_pendingSubscriptionCommands.clear();
+}
+
+void RedisGateway::stopSubscriberWorker()
+{
+    m_stopSubscriber.store(true);
+    if (m_subscriberThread.joinable()) {
+        m_subscriberThread.join();
+    }
+
+    if (m_subscriberContext) {
+        redisFree(m_subscriberContext);
+        m_subscriberContext = nullptr;
+    }
+}
+
+void RedisGateway::handleConnectionFailure(const QString& reason)
+{
+    emit errorOccurred(reason);
+
+    if (m_manualDisconnect.load() || m_shutdownRequested.load()) {
+        return;
+    }
+
+    stopSubscriberWorker();
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        clearCommandContextLocked();
+    }
+
     setConnectionState(Reconnecting);
     if (!m_reconnectTimer->isActive()) {
         m_reconnectTimer->start();
     }
 }
 
-void RedisGateway::clearPendingCommands(const QString& reason)
+void RedisGateway::queueSubscriptionCommand(SubscriptionCommandType type, const QString& channel)
 {
-    while (!m_pendingCommands.isEmpty()) {
-        PendingCommand* pending = m_pendingCommands.takeFirst();
-        pending->error = reason;
-        if (pending->kind == CommandKind::AsyncRead) {
-            emit errorOccurred(reason);
-        }
-        if (pending->loop) {
-            pending->loop->quit();
-        } else {
-            delete pending;
-        }
-    }
+    std::lock_guard<std::mutex> lock(m_subscriptionMutex);
+    m_pendingSubscriptionCommands.push_back(SubscriptionCommand{type, channel});
 }
 
-void RedisGateway::sendCommand(QTcpSocket* socket, const QList<QByteArray>& arguments)
+void RedisGateway::subscriberLoop()
 {
-    if (!socket || arguments.isEmpty()) {
+    redisContext* context = m_subscriberContext;
+    if (!context) {
         return;
     }
 
-    socket->write(encodeRespCommand(arguments));
-    socket->flush();
-}
+    if (!processInitialSubscriptions(context)) {
+        return;
+    }
 
-void RedisGateway::processCommandBuffer()
-{
-    while (!m_pendingCommands.isEmpty()) {
-        RespValue value;
-        int consumed = 0;
-        if (!parseRespValue(m_commandBuffer, 0, value, consumed)) {
+    while (!m_stopSubscriber.load()) {
+        if (!processPendingSubscriptionCommands(context)) {
             return;
         }
 
-        m_commandBuffer.remove(0, consumed);
-        PendingCommand* pending = m_pendingCommands.takeFirst();
-        if (value.type == RespValue::Type::Error) {
-            pending->error = QStringLiteral("Redis command failed: %1")
-                                 .arg(QString::fromUtf8(value.stringValue));
-        } else if (pending->kind == CommandKind::Read ||
-                   pending->kind == CommandKind::AsyncRead) {
-            pending->result = respToVariant(value);
+        const int ready = waitForReadable(context->fd, m_subscriberPollIntervalMs);
+        if (m_stopSubscriber.load()) {
+            return;
         }
-
-        if (pending->kind == CommandKind::AsyncRead) {
-            if (!pending->error.isEmpty()) {
-                emit errorOccurred(pending->error);
-            } else {
-                emit keyValueReceived(pending->key, pending->result);
-            }
-            delete pending;
+        if (ready < 0) {
+            const QString reason = redisErrorMessage(context, QStringLiteral("Redis subscriber select failed"));
+            QMetaObject::invokeMethod(this,
+                                      [this, reason]() { handleConnectionFailure(reason); },
+                                      Qt::QueuedConnection);
+            return;
+        }
+        if (ready == 0) {
             continue;
         }
 
-        if (pending->loop) {
-            pending->loop->quit();
-        } else {
-            if (!pending->error.isEmpty()) {
-                emit errorOccurred(pending->error);
+        if (redisBufferRead(context) != REDIS_OK) {
+            const QString reason = redisErrorMessage(context, QStringLiteral("Redis subscriber read failed"));
+            QMetaObject::invokeMethod(this,
+                                      [this, reason]() { handleConnectionFailure(reason); },
+                                      Qt::QueuedConnection);
+            return;
+        }
+
+        while (!m_stopSubscriber.load()) {
+            void* replyObject = nullptr;
+            if (redisGetReplyFromReader(context, &replyObject) != REDIS_OK) {
+                const QString reason = redisErrorMessage(context, QStringLiteral("Redis subscriber reply parsing failed"));
+                QMetaObject::invokeMethod(this,
+                                          [this, reason]() { handleConnectionFailure(reason); },
+                                          Qt::QueuedConnection);
+                return;
             }
-            delete pending;
+
+            if (!replyObject) {
+                break;
+            }
+
+            dispatchSubscriberReply(replyObject);
+            freeReplyObject(replyObject);
         }
     }
 }
 
-void RedisGateway::processSubscriberBuffer()
+bool RedisGateway::processInitialSubscriptions(redisContext* context)
 {
-    while (true) {
-        RespValue value;
-        int consumed = 0;
-        if (!parseRespValue(m_subscriberBuffer, 0, value, consumed)) {
-            return;
-        }
+    QList<QString> channels;
+    {
+        std::lock_guard<std::mutex> lock(m_subscriptionMutex);
+        channels = m_subscribedChannels.values();
+    }
 
-        m_subscriberBuffer.remove(0, consumed);
-        if (value.type != RespValue::Type::Array || value.arrayValue.isEmpty()) {
+    for (const QString& channel : channels) {
+        if (!appendSubscriptionCommand(context, SubscriptionCommand{SubscriptionCommandType::Subscribe, channel})) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool RedisGateway::processPendingSubscriptionCommands(redisContext* context)
+{
+    std::deque<SubscriptionCommand> commands;
+    {
+        std::lock_guard<std::mutex> lock(m_subscriptionMutex);
+        commands.swap(m_pendingSubscriptionCommands);
+    }
+
+    for (const SubscriptionCommand& command : commands) {
+        if (!appendSubscriptionCommand(context, command)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool RedisGateway::appendSubscriptionCommand(redisContext* context, const SubscriptionCommand& command)
+{
+    const QByteArray channelBytes = command.channel.toUtf8();
+    const QByteArray commandBytes =
+        command.type == SubscriptionCommandType::Subscribe ? QByteArrayLiteral("SUBSCRIBE")
+                                                           : QByteArrayLiteral("UNSUBSCRIBE");
+
+    const char* argv[] = {commandBytes.constData(), channelBytes.constData()};
+    const size_t argvLen[] = {
+        static_cast<size_t>(commandBytes.size()),
+        static_cast<size_t>(channelBytes.size())
+    };
+
+    if (redisAppendCommandArgv(context, 2, argv, argvLen) != REDIS_OK) {
+        const QString reason = redisErrorMessage(
+            context,
+            QStringLiteral("Redis subscriber command queue failed for channel '%1'").arg(command.channel));
+        QMetaObject::invokeMethod(this,
+                                  [this, reason]() { handleConnectionFailure(reason); },
+                                  Qt::QueuedConnection);
+        return false;
+    }
+
+    int done = 0;
+    while (!done) {
+        if (redisBufferWrite(context, &done) != REDIS_OK) {
+            const QString reason = redisErrorMessage(
+                context,
+                QStringLiteral("Redis subscriber command flush failed for channel '%1'").arg(command.channel));
+            QMetaObject::invokeMethod(this,
+                                      [this, reason]() { handleConnectionFailure(reason); },
+                                      Qt::QueuedConnection);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void RedisGateway::dispatchSubscriberReply(void* replyObject)
+{
+    const redisReply* reply = static_cast<const redisReply*>(replyObject);
+    if (!reply || reply->type != REDIS_REPLY_ARRAY || reply->elements < 1) {
+        return;
+    }
+
+    const QString messageType = replyString(reply->element[0]).toLower();
+    if (messageType == QStringLiteral("message") && reply->elements >= 3) {
+        const QString channel = replyString(reply->element[1]);
+        const QByteArray payload = replyBytes(reply->element[2]);
+        QMetaObject::invokeMethod(this,
+                                  [this, channel, payload]() {
+                                      emit messageReceived(channel, payload);
+                                  },
+                                  Qt::QueuedConnection);
+    }
+}
+
+QVariant RedisGateway::executeGet(redisContext* context, const QString& key, QString* errorMessage) const
+{
+    const QByteArray keyBytes = key.toUtf8();
+    redisReply* reply = static_cast<redisReply*>(redisCommand(
+        context,
+        "GET %b",
+        keyBytes.constData(), static_cast<size_t>(keyBytes.size())));
+
+    if (!reply) {
+        if (errorMessage) {
+            *errorMessage = redisErrorMessage(
+                context,
+                QStringLiteral("Timed out reading Redis key '%1'").arg(key));
+        }
+        return QVariant();
+    }
+
+    std::unique_ptr<redisReply, decltype(&freeReplyObject)> guard(reply, &freeReplyObject);
+    if (reply->type == REDIS_REPLY_ERROR) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Redis command failed for key '%1': %2")
+                                .arg(key, replyString(reply));
+        }
+        return QVariant();
+    }
+
+    return replyToVariant(reply);
+}
+
+void RedisGateway::cleanupAsyncWorkers(bool waitForAll)
+{
+    std::lock_guard<std::mutex> lock(m_asyncMutex);
+    for (auto it = m_asyncWorkers.begin(); it != m_asyncWorkers.end();) {
+        if (waitForAll || it->done->load()) {
+            if (it->thread.joinable()) {
+                it->thread.join();
+            }
+            it = m_asyncWorkers.erase(it);
             continue;
         }
-
-        const QString messageType = QString::fromUtf8(value.arrayValue.first().stringValue).toLower();
-        if (messageType == QStringLiteral("message") && value.arrayValue.size() >= 3) {
-            const QString channel = QString::fromUtf8(value.arrayValue.at(1).stringValue);
-            const QByteArray payload = value.arrayValue.at(2).stringValue;
-            emit messageReceived(channel, payload);
-        } else if (messageType == QStringLiteral("subscribe") ||
-                   messageType == QStringLiteral("unsubscribe")) {
-            continue;
-        } else if (messageType == QStringLiteral("pong")) {
-            emit messageReceived(QStringLiteral("__redis_internal__"), value.arrayValue.value(1).stringValue);
-        }
+        ++it;
     }
 }

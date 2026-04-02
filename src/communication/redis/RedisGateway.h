@@ -5,12 +5,17 @@
 #include <QVariant>
 #include <QVariantMap>
 #include <QByteArray>
-#include <QList>
 #include <QSet>
 
-class QTcpSocket;
+#include <atomic>
+#include <deque>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <vector>
+
+struct redisContext;
 class QTimer;
-class QEventLoop;
 
 class RedisGateway : public QObject
 {
@@ -25,7 +30,7 @@ public:
     Q_ENUM(ConnectionState)
 
     explicit RedisGateway(QObject* parent = nullptr);
-    ~RedisGateway() override = default;
+    ~RedisGateway() override;
 
     void connectToServer(const QString& host, int port);
     void disconnect();
@@ -49,51 +54,56 @@ signals:
     void errorOccurred(const QString& errorMessage);
 
 private slots:
-    void onCommandSocketConnected();
-    void onCommandSocketDisconnected();
-    void onCommandSocketReadyRead();
-    void onCommandSocketError();
-    void onSubscriberSocketConnected();
-    void onSubscriberSocketDisconnected();
-    void onSubscriberSocketReadyRead();
-    void onSubscriberSocketError();
     void onReconnectTimeout();
 
 private:
-    enum class CommandKind {
-        Read,
-        AsyncRead,
-        Publish,
-        Generic
+    enum class SubscriptionCommandType {
+        Subscribe,
+        Unsubscribe
     };
 
-    struct PendingCommand {
-        CommandKind kind = CommandKind::Generic;
-        QString key;
-        QVariant result;
-        QString error;
-        QEventLoop* loop = nullptr;
+    struct SubscriptionCommand {
+        SubscriptionCommandType type = SubscriptionCommandType::Subscribe;
+        QString channel;
     };
 
-    void ensureSockets();
     void setConnectionState(ConnectionState state);
-    void connectSockets();
-    void scheduleReconnect(const QString& reason);
-    void clearPendingCommands(const QString& reason);
-    void sendCommand(QTcpSocket* socket, const QList<QByteArray>& arguments);
-    void processCommandBuffer();
-    void processSubscriberBuffer();
+    void attemptConnection();
+    redisContext* createContext(QString* errorMessage) const;
+    void clearCommandContextLocked();
+    void clearPendingSubscriptionCommands();
+    void stopSubscriberWorker();
+    void handleConnectionFailure(const QString& reason);
+    void queueSubscriptionCommand(SubscriptionCommandType type, const QString& channel);
+    void subscriberLoop();
+    bool processInitialSubscriptions(redisContext* context);
+    bool processPendingSubscriptionCommands(redisContext* context);
+    bool appendSubscriptionCommand(redisContext* context, const SubscriptionCommand& command);
+    void dispatchSubscriberReply(void* replyObject);
+    QVariant executeGet(redisContext* context, const QString& key, QString* errorMessage) const;
+    void cleanupAsyncWorkers(bool waitForAll);
 
     ConnectionState m_connectionState = Disconnected;
     QString m_host;
     int m_port = 0;
-    QTcpSocket* m_commandSocket = nullptr;
-    QTcpSocket* m_subscriberSocket = nullptr;
+    mutable std::mutex m_commandMutex;
+    std::mutex m_subscriptionMutex;
+    std::mutex m_asyncMutex;
+    redisContext* m_commandContext = nullptr;
+    redisContext* m_subscriberContext = nullptr;
     QTimer* m_reconnectTimer = nullptr;
-    QByteArray m_commandBuffer;
-    QByteArray m_subscriberBuffer;
-    QList<PendingCommand*> m_pendingCommands;
     QSet<QString> m_subscribedChannels;
-    bool m_manualDisconnect = false;
+    std::deque<SubscriptionCommand> m_pendingSubscriptionCommands;
+    struct AsyncWorker {
+        std::shared_ptr<std::atomic_bool> done;
+        std::thread thread;
+    };
+    std::vector<AsyncWorker> m_asyncWorkers;
+    std::thread m_subscriberThread;
+    std::atomic_bool m_manualDisconnect{false};
+    std::atomic_bool m_shutdownRequested{false};
+    std::atomic_bool m_stopSubscriber{false};
     int m_reconnectDelayMs = 1000;
+    int m_connectTimeoutMs = 2000;
+    int m_subscriberPollIntervalMs = 200;
 };
