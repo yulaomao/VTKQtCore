@@ -1,4 +1,6 @@
 #include <QApplication>
+#include <QSurfaceFormat>
+#include <QVTKOpenGLNativeWidget.h>
 #include <QStringList>
 
 #include "app/software/BaseSoftwareInitializer.h"
@@ -26,6 +28,7 @@ QString softwareTypeFromProfile(const QVariantMap& profile)
 
 int main(int argc, char* argv[])
 {
+    QSurfaceFormat::setDefaultFormat(QVTKOpenGLNativeWidget::defaultFormat());
     QApplication app(argc, argv);
 
     const QStringList arguments = QCoreApplication::arguments();

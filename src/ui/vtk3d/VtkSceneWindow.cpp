@@ -99,16 +99,42 @@ VtkSceneWindow::VtkSceneWindow(const QString& windowId, SceneGraph* sceneGraph,
             this, &VtkSceneWindow::resetCameraToInitial);
 
     // Connect interactor's InteractionEvent to restart the timer
-    vtkSmartPointer<vtkCallbackCommand> callback =
-        vtkSmartPointer<vtkCallbackCommand>::New();
-    callback->SetClientData(this);
-    callback->SetCallback([](vtkObject*, unsigned long, void* clientData, void*) {
+    m_interactionCallback = vtkSmartPointer<vtkCallbackCommand>::New();
+    m_interactionCallback->SetClientData(this);
+    m_interactionCallback->SetCallback([](vtkObject*, unsigned long, void* clientData, void*) {
         auto* self = static_cast<VtkSceneWindow*>(clientData);
         QMetaObject::invokeMethod(self, "onInteraction", Qt::QueuedConnection);
     });
     if (vtkRenderWindowInteractor* interactor = m_renderWindow->GetInteractor()) {
-        interactor->AddObserver(vtkCommand::InteractionEvent, callback);
+        m_interactionObserverTag = interactor->AddObserver(
+            vtkCommand::InteractionEvent,
+            m_interactionCallback);
     }
+}
+
+VtkSceneWindow::~VtkSceneWindow()
+{
+    m_isShuttingDown = true;
+    m_renderQueued = false;
+
+    if (m_cameraResetTimer) {
+        m_cameraResetTimer->stop();
+    }
+
+    if (m_sceneGraph) {
+        disconnect(m_sceneGraph, nullptr, this, nullptr);
+    }
+
+    detachInteractorObserver();
+
+    for (auto* dm : m_displayManagers) {
+        if (dm) {
+            dm->clearAll();
+        }
+    }
+    m_displayManagers.clear();
+
+    teardownRenderWindow();
 }
 
 QString VtkSceneWindow::getWindowId() const
@@ -151,6 +177,10 @@ void VtkSceneWindow::setInitialCameraParams(const double position[3],
 
 void VtkSceneWindow::render()
 {
+    if (m_isShuttingDown || !m_renderWindow) {
+        return;
+    }
+
     m_renderWindow->Render();
 }
 
@@ -163,18 +193,26 @@ void VtkSceneWindow::reconcile()
 
 void VtkSceneWindow::requestReconcile()
 {
+    if (m_isShuttingDown) {
+        return;
+    }
+
     reconcile();
     scheduleRender();
 }
 
 void VtkSceneWindow::onInteraction()
 {
+    if (m_isShuttingDown) {
+        return;
+    }
+
     m_cameraResetTimer->start();
 }
 
 void VtkSceneWindow::scheduleRender()
 {
-    if (m_renderQueued) {
+    if (m_isShuttingDown || m_renderQueued) {
         return;
     }
 
@@ -185,11 +223,20 @@ void VtkSceneWindow::scheduleRender()
 void VtkSceneWindow::renderQueuedScene()
 {
     m_renderQueued = false;
+
+    if (m_isShuttingDown) {
+        return;
+    }
+
     render();
 }
 
 void VtkSceneWindow::resetCameraToInitial()
 {
+    if (m_isShuttingDown || !m_camera || !m_renderWindow) {
+        return;
+    }
+
     m_camera->SetPosition(m_initialPosition);
     m_camera->SetFocalPoint(m_initialFocalPoint);
     m_camera->SetViewUp(m_initialViewUp);
@@ -198,6 +245,41 @@ void VtkSceneWindow::resetCameraToInitial()
     m_camera->SetViewAngle(m_initialViewAngle);
     m_camera->SetClippingRange(m_initialClippingRange);
     m_renderWindow->Render();
+}
+
+void VtkSceneWindow::detachInteractorObserver()
+{
+    if (!m_renderWindow || !m_interactionObserverTag) {
+        return;
+    }
+
+    if (vtkRenderWindowInteractor* interactor = m_renderWindow->GetInteractor()) {
+        interactor->RemoveObserver(m_interactionObserverTag);
+    }
+
+    m_interactionObserverTag = 0;
+    m_interactionCallback = nullptr;
+}
+
+void VtkSceneWindow::teardownRenderWindow()
+{
+    if (!m_renderWindow) {
+        return;
+    }
+
+    if (m_vtkWidget) {
+        m_vtkWidget->setUpdatesEnabled(false);
+        m_vtkWidget->setRenderWindow(static_cast<vtkGenericOpenGLRenderWindow*>(nullptr));
+    }
+
+    for (vtkSmartPointer<vtkRenderer>& renderer : m_renderers) {
+        if (renderer) {
+            m_renderWindow->RemoveRenderer(renderer);
+            renderer = nullptr;
+        }
+    }
+
+    m_renderWindow = nullptr;
 }
 
 void VtkSceneWindow::showEvent(QShowEvent* event)

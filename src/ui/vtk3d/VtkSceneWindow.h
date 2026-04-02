@@ -5,6 +5,7 @@
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkRenderer.h>
 #include <vtkCamera.h>
+#include <vtkCallbackCommand.h>
 #include <vtkSmartPointer.h>
 #include <vtkRenderWindowInteractor.h>
 #include <QTimer>
@@ -27,7 +28,7 @@ class VtkSceneWindow : public QWidget
 public:
     VtkSceneWindow(const QString& windowId, SceneGraph* sceneGraph,
                    QWidget* parent = nullptr);
-    ~VtkSceneWindow() override = default;
+    ~VtkSceneWindow() override;
 
     QString getWindowId() const;
     vtkRenderWindow* getRenderWindow() const;
@@ -56,12 +57,16 @@ protected:
     void showEvent(QShowEvent* event) override;
 
 private:
+    void detachInteractorObserver();
+    void teardownRenderWindow();
+
     QString m_windowId;
     SceneGraph* m_sceneGraph = nullptr;
     QVTKOpenGLNativeWidget* m_vtkWidget;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkSmartPointer<vtkRenderer> m_renderers[3];
     vtkSmartPointer<vtkCamera> m_camera;
+    vtkSmartPointer<vtkCallbackCommand> m_interactionCallback;
     QVector<NodeDisplayManager*> m_displayManagers;
     QTimer* m_cameraResetTimer;
 
@@ -72,5 +77,7 @@ private:
     double m_initialParallelScale;
     double m_initialViewAngle;
     double m_initialClippingRange[2];
+    unsigned long m_interactionObserverTag = 0;
+    bool m_isShuttingDown = false;
     bool m_renderQueued = false;
 };

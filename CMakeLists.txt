@@ -31,6 +31,16 @@ find_package(VTK REQUIRED COMPONENTS
     CommonTransforms
 )
 
+if(MSVC)
+    get_target_property(VTK_QT_SUPPORT_LOCATION_DEBUG VTK::GUISupportQt IMPORTED_LOCATION_DEBUG)
+    if(NOT VTK_QT_SUPPORT_LOCATION_DEBUG)
+        message(WARNING
+            "Bundled VTK package does not provide Debug binaries. "
+            "The Debug configuration will mix Debug Qt with Release VTK and is unsupported on Windows. "
+            "Use Release/RelWithDebInfo, or provide a Debug build of VTK.")
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # Sources – collect every .h and .cpp under src/
 # ---------------------------------------------------------------------------
