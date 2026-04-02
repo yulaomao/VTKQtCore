@@ -2,12 +2,11 @@
 
 #include "communication/hub/IRedisCommandAccess.h"
 #include "scene/SceneGraph.h"
-#include "workflow/WorkflowStateMachine.h"
+#include "workflow/ActiveModuleState.h"
 #include "registry/ModuleLogicRegistry.h"
 #include "registry/ModuleLogicHandler.h"
 
 #include <limits>
-#include <QSet>
 
 namespace {
 
@@ -77,22 +76,19 @@ LogicNotification createShellError(const QString& errorCode,
     return notification;
 }
 
-LogicNotification createWorkflowRejectedNotification(const WorkflowDecision& decision,
-                                                    UiAction::ActionType actionType,
-                                                    const QString& actionId)
+QString resolveSwitchTargetModule(const UiAction& action)
 {
-    LogicNotification notification = createShellError(
-        QStringLiteral("WORKFLOW_ACTION_REJECTED"),
-        decision.message,
-        true,
-        QStringLiteral("Wait for workflow update or choose an enterable module."),
-        {{QStringLiteral("reasonCode"), decision.reasonCode},
-         {QStringLiteral("targetModule"), decision.targetModule},
-         {QStringLiteral("currentModule"), decision.currentModule},
-            {QStringLiteral("actionType"), UiAction::toString(actionType)}});
-    notification.setSourceActionId(actionId);
-    notification.setLevel(LogicNotification::Warning);
-    return notification;
+    const QString targetModule = action.payload.value(QStringLiteral("targetModule")).toString().trimmed();
+    if (!targetModule.isEmpty()) {
+        return targetModule;
+    }
+
+    const QString actionModule = action.module.trimmed();
+    if (!actionModule.isEmpty() && actionModule != QStringLiteral("shell")) {
+        return actionModule;
+    }
+
+    return QString();
 }
 
 } // namespace
@@ -100,7 +96,7 @@ LogicNotification createWorkflowRejectedNotification(const WorkflowDecision& dec
 LogicRuntime::LogicRuntime(QObject* parent)
     : QObject(parent)
     , m_sceneGraph(new SceneGraph(this))
-    , m_workflowStateMachine(new WorkflowStateMachine(this))
+    , m_activeModuleState(new ActiveModuleState(this))
     , m_moduleLogicRegistry(new ModuleLogicRegistry(this))
 {
 }
@@ -110,9 +106,9 @@ SceneGraph* LogicRuntime::getSceneGraph() const
     return m_sceneGraph;
 }
 
-WorkflowStateMachine* LogicRuntime::getWorkflowStateMachine() const
+ActiveModuleState* LogicRuntime::getActiveModuleState() const
 {
-    return m_workflowStateMachine;
+    return m_activeModuleState;
 }
 
 ModuleLogicRegistry* LogicRuntime::getModuleLogicRegistry() const
@@ -173,32 +169,68 @@ void LogicRuntime::registerModuleHandler(ModuleLogicHandler* handler)
 
     handler->setSceneGraph(m_sceneGraph);
     handler->setRedisCommandAccess(m_redisCommandAccess);
+    handler->setModuleInvoker(this);
     m_moduleLogicRegistry->registerHandler(handler);
 
     connect(handler, &ModuleLogicHandler::logicNotification,
             this, &LogicRuntime::logicNotification);
 }
 
-void LogicRuntime::onActionReceived(const UiAction& action)
+ModuleInvokeResult LogicRuntime::invokeModule(const ModuleInvokeRequest& request)
 {
-    const WorkflowDecision actionDecision = m_workflowStateMachine->evaluateAction(action);
-    if (!actionDecision.allowed) {
-        emit logicNotification(createWorkflowRejectedNotification(
-            actionDecision, action.actionType, action.actionId));
-        return;
+    if (request.targetModule.trimmed().isEmpty()) {
+        return ModuleInvokeResult::failure(
+            QStringLiteral("target_module_empty"),
+            QStringLiteral("Target module is empty"),
+            {{QStringLiteral("sourceModule"), request.sourceModule},
+             {QStringLiteral("method"), request.method}});
     }
 
+    ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(request.targetModule);
+    if (!handler) {
+        return ModuleInvokeResult::failure(
+            QStringLiteral("target_module_unregistered"),
+            QStringLiteral("No handler registered for target module '%1'")
+                .arg(request.targetModule),
+            {{QStringLiteral("sourceModule"), request.sourceModule},
+             {QStringLiteral("targetModule"), request.targetModule},
+             {QStringLiteral("method"), request.method}});
+    }
+
+    return handler->handleModuleInvoke(request);
+}
+
+void LogicRuntime::onActionReceived(const UiAction& action)
+{
     switch (action.actionType) {
-    case UiAction::NextStep: {
-        switchToModule(actionDecision.targetModule, action.actionId);
-        break;
-    }
-    case UiAction::PrevStep: {
-        switchToModule(actionDecision.targetModule, action.actionId);
-        break;
-    }
     case UiAction::RequestSwitchModule: {
-        switchToModule(actionDecision.targetModule, action.actionId);
+        const QString targetModule = resolveSwitchTargetModule(action);
+        if (targetModule.isEmpty()) {
+            LogicNotification notification = createShellError(
+                QStringLiteral("LOGIC_SWITCH_TARGET_EMPTY"),
+                QStringLiteral("Module switch action is missing targetModule"),
+                true,
+                QStringLiteral("Provide payload.targetModule when requesting a shell-level module switch."));
+            notification.setSourceActionId(action.actionId);
+            notification.setLevel(LogicNotification::Error);
+            emit logicNotification(notification);
+            return;
+        }
+
+        if (!m_moduleLogicRegistry->getHandler(targetModule)) {
+            LogicNotification notification = createShellError(
+                QStringLiteral("LOGIC_SWITCH_TARGET_UNREGISTERED"),
+                QStringLiteral("No module handler registered for switch target '%1'").arg(targetModule),
+                true,
+                QStringLiteral("Check module registration and the requested targetModule."),
+                {{QStringLiteral("targetModule"), targetModule}});
+            notification.setSourceActionId(action.actionId);
+            notification.setLevel(LogicNotification::Error);
+            emit logicNotification(notification);
+            return;
+        }
+
+        switchToModule(targetModule, action.actionId);
         break;
     }
     default:
@@ -232,9 +264,12 @@ void LogicRuntime::onControlMessageReceived(const QString& module, const QVarian
         targetModule = payload.value(QStringLiteral("module")).toString();
     }
     if (targetModule.isEmpty()) {
+        targetModule = payload.value(QStringLiteral("targetModule")).toString();
+    }
+    if (targetModule.isEmpty()) {
         targetModule = actionType == UiAction::RequestSwitchModule
             ? QStringLiteral("shell")
-            : m_workflowStateMachine->getCurrentModule();
+            : m_activeModuleState->getCurrentModule();
     }
 
     UiAction action = UiAction::create(actionType, targetModule, extractPayloadMap(payload));
@@ -287,11 +322,20 @@ void LogicRuntime::onServerCommandReceived(const QString& commandType, const QVa
 
     if (normalizedCommand == QStringLiteral("next_step") ||
         normalizedCommand == QStringLiteral("prev_step")) {
+        QString targetModule = commandPayload.value(QStringLiteral("targetModule")).toString();
+        if (targetModule.isEmpty()) {
+            targetModule = commandPayload.value(QStringLiteral("module")).toString();
+        }
+        if (targetModule.isEmpty()) {
+            targetModule = m_activeModuleState->getCurrentModule();
+        }
+
         UiAction action = UiAction::create(
             normalizedCommand == QStringLiteral("next_step")
                 ? UiAction::NextStep
                 : UiAction::PrevStep,
-            QStringLiteral("shell"));
+            targetModule,
+            commandPayload);
         const QString sourceActionId = payload.value(QStringLiteral("msgId")).toString();
         if (!sourceActionId.isEmpty()) {
             action.actionId = sourceActionId;
@@ -307,48 +351,57 @@ void LogicRuntime::onServerCommandReceived(const QString& commandType, const QVa
         return;
     }
 
-    if (normalizedCommand == QStringLiteral("set_enterable_modules") ||
-        normalizedCommand == QStringLiteral("workflow_update")) {
-        const QStringList moduleIds = toStringList(commandPayload.value(QStringLiteral("enterableModules")));
-        if (!moduleIds.isEmpty()) {
-            QSet<QString> enterableModules;
-            for (const QString& moduleId : moduleIds) {
-                enterableModules.insert(moduleId);
-            }
-            m_workflowStateMachine->setEnterableModules(enterableModules);
+    if (normalizedCommand == QStringLiteral("datagen_test_action") ||
+        normalizedCommand == QStringLiteral("datagen_custom_action")) {
+        ModuleInvokeRequest request = ModuleInvokeRequest::create(
+            QStringLiteral("server"),
+            QStringLiteral("datagen"),
+            commandPayload.value(QStringLiteral("command")).toString(),
+            commandPayload);
+        const ModuleInvokeResult result = invokeModule(request);
+        if (!result.ok) {
+            emit logicNotification(createShellError(
+                QStringLiteral("SERVER_COMMAND_INVOKE_FAILED"),
+                result.message,
+                true,
+                QStringLiteral("Verify datagen invoke routing and payload."),
+                {{QStringLiteral("targetModule"), QStringLiteral("datagen")},
+                 {QStringLiteral("method"), request.method},
+                 {QStringLiteral("errorCode"), result.errorCode}}));
         }
+        return;
+    }
 
+    if (normalizedCommand == QStringLiteral("active_module_sync")) {
         const QString currentModule = commandPayload.value(QStringLiteral("currentModule")).toString();
         const QString sourceActionId = payload.value(QStringLiteral("msgId")).toString();
         if (!currentModule.isEmpty()) {
-            const WorkflowDecision decision = m_workflowStateMachine->evaluateSwitchTo(currentModule);
-            if (decision.allowed && currentModule != m_workflowStateMachine->getCurrentModule()) {
+            if (m_moduleLogicRegistry->getHandler(currentModule) &&
+                currentModule != m_activeModuleState->getCurrentModule()) {
                 switchToModule(currentModule, sourceActionId);
-            } else if (!decision.allowed) {
+            } else if (!m_moduleLogicRegistry->getHandler(currentModule)) {
                 LogicNotification notification = createShellError(
-                    QStringLiteral("WORKFLOW_UPDATE_REJECTED"),
-                    decision.message,
+                    QStringLiteral("ACTIVE_MODULE_SYNC_TARGET_UNREGISTERED"),
+                    QStringLiteral("Active module sync references unregistered module '%1'").arg(currentModule),
                     true,
-                    QStringLiteral("Verify the server workflow update payload."),
-                    {{QStringLiteral("reasonCode"), decision.reasonCode},
-                     {QStringLiteral("targetModule"), decision.targetModule},
-                     {QStringLiteral("currentModule"), decision.currentModule}});
+                    QStringLiteral("Verify the server active_module_sync payload and module registration."),
+                    {{QStringLiteral("targetModule"), currentModule}});
                 notification.setSourceActionId(sourceActionId);
                 notification.setLevel(LogicNotification::Warning);
                 emit logicNotification(notification);
             } else {
                 LogicNotification notification = LogicNotification::create(
-                    LogicNotification::WorkflowChanged,
+                    LogicNotification::ActiveModuleChanged,
                     LogicNotification::Shell,
-                    m_workflowStateMachine->createSnapshot());
+                    m_activeModuleState->createSnapshot());
                 notification.setSourceActionId(sourceActionId);
                 emit logicNotification(notification);
             }
         } else {
             LogicNotification notification = LogicNotification::create(
-                LogicNotification::WorkflowChanged,
+                LogicNotification::ActiveModuleChanged,
                 LogicNotification::Shell,
-                m_workflowStateMachine->createSnapshot());
+                m_activeModuleState->createSnapshot());
             notification.setSourceActionId(sourceActionId);
             emit logicNotification(notification);
         }
@@ -366,7 +419,7 @@ void LogicRuntime::onStateSampleReceived(const StateSample& sample)
 {
     QString targetModule = sample.module;
     if (targetModule.isEmpty()) {
-        targetModule = m_workflowStateMachine->getCurrentModule();
+        targetModule = m_activeModuleState->getCurrentModule();
     }
 
     ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(targetModule);
@@ -456,9 +509,9 @@ void LogicRuntime::requestResync(const QString& reason)
     }
 
     LogicNotification notification = LogicNotification::create(
-        LogicNotification::WorkflowChanged,
+        LogicNotification::ActiveModuleChanged,
         LogicNotification::Shell,
-        m_workflowStateMachine->createSnapshot());
+        m_activeModuleState->createSnapshot());
     notification.payload.insert(QStringLiteral("resyncRequested"), true);
     notification.payload.insert(QStringLiteral("reason"), reason);
     emit logicNotification(notification);
@@ -466,7 +519,7 @@ void LogicRuntime::requestResync(const QString& reason)
 
 void LogicRuntime::switchToModule(const QString& targetModule, const QString& sourceActionId)
 {
-    const QString oldModule = m_workflowStateMachine->getCurrentModule();
+    const QString oldModule = m_activeModuleState->getCurrentModule();
 
     if (targetModule.isEmpty() || targetModule == oldModule) {
         return;
@@ -480,8 +533,8 @@ void LogicRuntime::switchToModule(const QString& targetModule, const QString& so
         }
     }
 
-    // Update workflow state
-    m_workflowStateMachine->setCurrentModule(targetModule);
+    // Update active module state
+    m_activeModuleState->setCurrentModule(targetModule);
 
     // Activate new module handler
     ModuleLogicHandler* newHandler = m_moduleLogicRegistry->getHandler(targetModule);
@@ -498,19 +551,41 @@ void LogicRuntime::switchToModule(const QString& targetModule, const QString& so
     notification.setSourceActionId(sourceActionId);
     emit logicNotification(notification);
 
-    LogicNotification workflowNotification = LogicNotification::create(
-        LogicNotification::WorkflowChanged,
+    LogicNotification activeModuleNotification = LogicNotification::create(
+        LogicNotification::ActiveModuleChanged,
         LogicNotification::Shell,
-        m_workflowStateMachine->createSnapshot());
-    workflowNotification.setSourceActionId(sourceActionId);
-    emit logicNotification(workflowNotification);
+        m_activeModuleState->createSnapshot());
+    activeModuleNotification.setSourceActionId(sourceActionId);
+    emit logicNotification(activeModuleNotification);
 }
 
 void LogicRuntime::routeToModuleHandler(const UiAction& action)
 {
-    const QString targetModule = action.module.isEmpty()
-        ? m_workflowStateMachine->getCurrentModule()
-        : action.module;
+    QString targetModule = action.payload.value(QStringLiteral("targetModule")).toString().trimmed();
+    if (targetModule.isEmpty()) {
+        targetModule = action.module.trimmed();
+    }
+    if (targetModule == QStringLiteral("shell")) {
+        targetModule.clear();
+    }
+    if (targetModule.isEmpty()) {
+        targetModule = m_activeModuleState->getCurrentModule();
+    }
+
+    if (targetModule.isEmpty()) {
+        LogicNotification notification = createShellError(
+            QStringLiteral("LOGIC_ACTION_TARGET_EMPTY"),
+            QStringLiteral("No active module is available for action '%1'")
+                .arg(UiAction::toString(action.actionType)),
+            true,
+            QStringLiteral("Set payload.targetModule explicitly or switch to an active module first."),
+            {{QStringLiteral("actionType"), UiAction::toString(action.actionType)}});
+        notification.setSourceActionId(action.actionId);
+        notification.setLevel(LogicNotification::Error);
+        emit logicNotification(notification);
+        return;
+    }
+
     ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(targetModule);
     if (handler) {
         handler->handleAction(action);

@@ -18,6 +18,7 @@ struct ModuleUiAssemblyContext
 };
 
 void registerParamsModuleUi(const ModuleUiAssemblyContext& context);
+void registerDataGenModuleUi(const ModuleUiAssemblyContext& context);
 void registerPointPickModuleUi(const ModuleUiAssemblyContext& context);
 void registerPlanningModuleUi(const ModuleUiAssemblyContext& context);
 void registerNavigationModuleUi(const ModuleUiAssemblyContext& context);

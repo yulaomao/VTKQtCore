@@ -32,6 +32,9 @@ NavigationPage::NavigationPage(QWidget* parent)
     m_stopBtn->setEnabled(false);
     controlLayout->addWidget(m_stopBtn);
 
+    m_datagenTestBtn = new QPushButton(QStringLiteral("Test Datagen: Create Transform"), controlPanel);
+    controlLayout->addWidget(m_datagenTestBtn);
+
     m_positionLabel = new QLabel(QStringLiteral("Position: -"), controlPanel);
     controlLayout->addWidget(m_positionLabel);
 
@@ -54,6 +57,8 @@ NavigationPage::NavigationPage(QWidget* parent)
 
     connect(m_stopBtn, &QPushButton::clicked,
             this, &NavigationPage::stopNavigationRequested);
+        connect(m_datagenTestBtn, &QPushButton::clicked,
+            this, &NavigationPage::datagenTransformCreateRequested);
 }
 
 void NavigationPage::setSceneWindow(QWidget* sceneWindow)

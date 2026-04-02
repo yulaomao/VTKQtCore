@@ -12,6 +12,6 @@ public:
                                                    QObject* parent = nullptr);
 
     QStringList getEnabledModules() const override;
-    QStringList getWorkflowSequence() const override;
+    QStringList getModuleDisplayOrder() const override;
     QString getInitialModule() const override;
 };

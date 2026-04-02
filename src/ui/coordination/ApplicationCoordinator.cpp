@@ -77,11 +77,6 @@ QString ApplicationCoordinator::getCurrentModule() const
     return m_currentModuleId;
 }
 
-QStringList ApplicationCoordinator::getEnterableModules() const
-{
-    return m_enterableModules;
-}
-
 void ApplicationCoordinator::requestSwitchModule(const QString& moduleId)
 {
     if (moduleId.isEmpty()) {
@@ -91,16 +86,6 @@ void ApplicationCoordinator::requestSwitchModule(const QString& moduleId)
     dispatchShellAction(
         UiAction::RequestSwitchModule,
         {{QStringLiteral("targetModule"), moduleId}});
-}
-
-void ApplicationCoordinator::requestNextStep()
-{
-    dispatchShellAction(UiAction::NextStep);
-}
-
-void ApplicationCoordinator::requestPrevStep()
-{
-    dispatchShellAction(UiAction::PrevStep);
 }
 
 void ApplicationCoordinator::requestResync(const QString& reason)
@@ -118,7 +103,6 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
         if (!newModuleId.isEmpty()) {
             setCurrentModule(newModuleId);
         }
-        emit workflowDecisionChanged(QString(), QString());
         break;
     }
 
@@ -139,13 +123,7 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
         }
         break;
 
-    case LogicNotification::WorkflowChanged:
-        if (notification.payload.contains(QStringLiteral("enterableModules"))) {
-            m_enterableModules = notification.payload.value(
-                QStringLiteral("enterableModules")).toStringList();
-            emit enterableModulesChanged(m_enterableModules);
-        }
-
+    case LogicNotification::ActiveModuleChanged:
         if (notification.payload.contains(QStringLiteral("currentModule"))) {
             const QString moduleId = notification.payload.value(
                 QStringLiteral("currentModule")).toString();
@@ -153,8 +131,6 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
                 setCurrentModule(moduleId);
             }
         }
-
-        emit workflowDecisionChanged(QString(), QString());
         break;
 
     case LogicNotification::ErrorOccurred:
@@ -164,13 +140,7 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
             bool recoverable = notification.payload.value("recoverable", true).toBool();
             QString suggestedAction =
                 notification.payload.value("suggestedAction").toString();
-            if (errorCode == QStringLiteral("WORKFLOW_ACTION_REJECTED") ||
-                errorCode == QStringLiteral("WORKFLOW_UPDATE_REJECTED")) {
-                emit workflowDecisionChanged(
-                    notification.payload.value(QStringLiteral("reasonCode")).toString(),
-                    message);
-                m_globalUiManager->showNotification(message, QStringLiteral("warning"));
-            } else if (notification.level == LogicNotification::Warning) {
+            if (notification.level == LogicNotification::Warning) {
                 m_globalUiManager->showNotification(message, QStringLiteral("warning"));
             } else {
                 m_globalUiManager->showError(errorCode, message,

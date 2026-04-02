@@ -3,7 +3,43 @@
 #include "logic/scene/SceneGraph.h"
 #include "logic/scene/nodes/TransformNode.h"
 
+#include <QDateTime>
+#include <QVariantList>
+
 namespace {
+
+struct NavigationTransformDescriptor {
+    const char* remoteId;
+    const char* parentRemoteId;
+    const char* displayName;
+    const char* transformKind;
+    double axesLength;
+    int layer;
+};
+
+constexpr NavigationTransformDescriptor kNavigationTransformDescriptors[] = {
+    {"navigation-world-transform", "", "World", "navigation_world", 44.0, 2},
+    {"navigation-reference-transform", "navigation-world-transform", "Reference", "navigation_reference", 34.0, 2},
+    {"navigation-patient-transform", "navigation-reference-transform", "Patient", "navigation_patient", 28.0, 2},
+    {"navigation-instrument-transform", "navigation-reference-transform", "Instrument", "navigation_instrument", 22.0, 3},
+    {"navigation-guide-transform", "navigation-instrument-transform", "Guide", "navigation_guide", 16.0, 3},
+    {"navigation-tip-transform", "navigation-guide-transform", "Tip", "navigation_tip", 12.0, 3},
+};
+
+QString toQString(const char* text)
+{
+    return QString::fromLatin1(text);
+}
+
+const NavigationTransformDescriptor* findDescriptor(const QString& remoteId)
+{
+    for (const NavigationTransformDescriptor& descriptor : kNavigationTransformDescriptors) {
+        if (remoteId == QLatin1String(descriptor.remoteId)) {
+            return &descriptor;
+        }
+    }
+    return nullptr;
+}
 
 QVariantMap normalizedSampleData(const StateSample& sample)
 {
@@ -48,6 +84,25 @@ bool extractMatrix(const QVariantMap& payload, double matrix[16])
     return true;
 }
 
+bool extractMatrixToParent(const QVariantMap& payload, double matrix[16])
+{
+    const QVariantList rows = payload.value(QStringLiteral("matrixToParent")).toList();
+    if (rows.size() != 4) {
+        return false;
+    }
+
+    for (int rowIndex = 0; rowIndex < 4; ++rowIndex) {
+        const QVariantList row = rows.at(rowIndex).toList();
+        if (row.size() != 4) {
+            return false;
+        }
+        for (int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+            matrix[columnIndex * 4 + rowIndex] = row.at(columnIndex).toDouble();
+        }
+    }
+    return true;
+}
+
 void setTranslationMatrix(double matrix[16], double x, double y, double z)
 {
     for (int index = 0; index < 16; ++index) {
@@ -63,6 +118,43 @@ void setTranslationMatrix(double matrix[16], double x, double y, double z)
     matrix[14] = z;
 }
 
+void configureTrackedTransformNode(TransformNode* transformNode,
+                                  const NavigationTransformDescriptor& descriptor)
+{
+    if (!transformNode) {
+        return;
+    }
+
+    transformNode->setName(toQString(descriptor.displayName));
+    transformNode->setAttribute(QStringLiteral("remoteTransformId"),
+                                toQString(descriptor.remoteId));
+    transformNode->setTransformKind(toQString(descriptor.transformKind));
+    transformNode->setSourceSpace(toQString(descriptor.displayName).toLower());
+    transformNode->setTargetSpace(QStringLiteral("navigation"));
+    transformNode->setShowAxes(true);
+    transformNode->setAxesLength(descriptor.axesLength);
+
+    DisplayTarget target;
+    target.visible = true;
+    target.layer = descriptor.layer;
+    transformNode->setWindowDisplayTarget(QStringLiteral("navigation_main"), target);
+}
+
+QVariantList buildTransformStatusList(const QMap<QString, qint64>& lastSampleTimestamps)
+{
+    QVariantList transforms;
+    for (const NavigationTransformDescriptor& descriptor : kNavigationTransformDescriptors) {
+        const QString remoteId = toQString(descriptor.remoteId);
+        QVariantMap entry;
+        entry.insert(QStringLiteral("nodeId"), remoteId);
+        entry.insert(QStringLiteral("displayName"), toQString(descriptor.displayName));
+        entry.insert(QStringLiteral("lastSampleTimestampMs"),
+                     lastSampleTimestamps.value(remoteId, 0));
+        transforms.append(entry);
+    }
+    return transforms;
+}
+
 } // namespace
 
 NavigationModuleLogicHandler::NavigationModuleLogicHandler(QObject* parent)
@@ -72,45 +164,61 @@ NavigationModuleLogicHandler::NavigationModuleLogicHandler(QObject* parent)
 
 void NavigationModuleLogicHandler::onModuleActivated()
 {
-    if (!ensureToolTransformNode(getSceneGraph())) {
-        return;
+    SceneGraph* scene = getSceneGraph();
+    for (const NavigationTransformDescriptor& descriptor : kNavigationTransformDescriptors) {
+        ensureTrackedTransformNode(scene, toQString(descriptor.remoteId));
     }
 
     emitNavigationState();
+    emitTransformHealth(true);
 }
 
 void NavigationModuleLogicHandler::handleAction(const UiAction& action)
 {
     if (action.actionType == UiAction::StartNavigation) {
-        ensureToolTransformNode(getSceneGraph());
+        SceneGraph* scene = getSceneGraph();
+        for (const NavigationTransformDescriptor& descriptor : kNavigationTransformDescriptors) {
+            ensureTrackedTransformNode(scene, toQString(descriptor.remoteId));
+        }
         m_navigating = true;
         m_navigationStatus = QStringLiteral("Navigating");
         emitNavigationState(action.actionId);
+        emitTransformHealth(true);
         return;
     }
 
     if (action.actionType == UiAction::StopNavigation) {
-        ensureToolTransformNode(getSceneGraph());
         m_navigating = false;
         m_navigationStatus = QStringLiteral("Idle");
         emitNavigationState(action.actionId);
+        emitTransformHealth(true);
+        return;
+    }
+
+    if (action.actionType == UiAction::CustomAction) {
+        Q_UNUSED(action);
     }
 }
 
 void NavigationModuleLogicHandler::handleStateSample(const StateSample& sample)
 {
-    SceneGraph* scene = getSceneGraph();
-    auto* transformNode = ensureToolTransformNode(scene);
-    if (!transformNode) {
+    const QVariantMap payloadData = normalizedSampleData(sample);
+
+    if (payloadData.contains(QStringLiteral("nodeId")) &&
+        payloadData.contains(QStringLiteral("matrixToParent"))) {
+        applyTransformSample(payloadData);
+        emitTransformHealth(false, sample.sampleId);
         return;
     }
 
-    const QVariantMap payloadData = normalizedSampleData(sample);
     bool changed = false;
 
     if (payloadData.contains(QStringLiteral("navigating"))) {
-        m_navigating = payloadData.value(QStringLiteral("navigating")).toBool();
-        changed = true;
+        const bool navigating = payloadData.value(QStringLiteral("navigating")).toBool();
+        if (m_navigating != navigating) {
+            m_navigating = navigating;
+            changed = true;
+        }
     }
 
     double x = 0.0;
@@ -118,23 +226,18 @@ void NavigationModuleLogicHandler::handleStateSample(const StateSample& sample)
     double z = 0.0;
     const bool hasPosition = extractPosition(payloadData, x, y, z);
 
-    if (payloadData.contains(QStringLiteral("matrix"))) {
-        double matrix[16];
-        if (extractMatrix(payloadData, matrix)) {
-            transformNode->setMatrixTransformToParent(matrix);
-            changed = true;
-        }
-    } else if (hasPosition) {
-        double matrix[16];
-        setTranslationMatrix(matrix, x, y, z);
-        transformNode->setMatrixTransformToParent(matrix);
-        changed = true;
+    if (hasPosition) {
+        m_currentPositionX = x;
+        m_currentPositionY = y;
+        m_currentPositionZ = z;
     }
 
     const QString status = payloadData.value(QStringLiteral("status")).toString();
     if (!status.isEmpty()) {
-        m_navigationStatus = status;
-        changed = true;
+        if (m_navigationStatus != status) {
+            m_navigationStatus = status;
+            changed = true;
+        }
     } else if (changed || m_navigationStatus.isEmpty()) {
         m_navigationStatus = m_navigating
             ? QStringLiteral("Navigating")
@@ -153,53 +256,61 @@ void NavigationModuleLogicHandler::onModuleDeactivated()
 void NavigationModuleLogicHandler::onResync()
 {
     emitNavigationState();
+    emitTransformHealth(true);
 }
 
-TransformNode* NavigationModuleLogicHandler::ensureToolTransformNode(SceneGraph* scene)
+TransformNode* NavigationModuleLogicHandler::ensureTrackedTransformNode(
+    SceneGraph* scene,
+    const QString& remoteNodeId)
 {
-    if (!scene) {
+    if (!scene || remoteNodeId.isEmpty()) {
         return nullptr;
     }
 
-    if (!m_toolTransformNodeId.isEmpty()) {
-        if (auto* existing = scene->getNodeById<TransformNode>(m_toolTransformNodeId)) {
-            if (existing->getSourceSpace().isEmpty()) {
-                existing->setSourceSpace(QStringLiteral("tool"));
-            }
-            if (existing->getTargetSpace().isEmpty()) {
-                existing->setTargetSpace(QStringLiteral("patient"));
+    const NavigationTransformDescriptor* descriptor = findDescriptor(remoteNodeId);
+    if (!descriptor) {
+        return nullptr;
+    }
+
+    const QString localNodeId = m_localTransformNodeIdsByRemoteId.value(remoteNodeId);
+    if (!localNodeId.isEmpty()) {
+        if (auto* existing = scene->getNodeById<TransformNode>(localNodeId)) {
+            configureTrackedTransformNode(existing, *descriptor);
+            if (QString parentRemoteId = toQString(descriptor->parentRemoteId);
+                parentRemoteId.isEmpty()) {
+                existing->setParentTransform(QString());
+            } else if (auto* parentNode = ensureTrackedTransformNode(scene, parentRemoteId)) {
+                existing->setParentTransform(parentNode->getNodeId());
             }
             return existing;
         }
-        m_toolTransformNodeId.clear();
+        m_localTransformNodeIdsByRemoteId.remove(remoteNodeId);
     }
 
-    if (auto* existing = findToolTransformNode(scene)) {
-        m_toolTransformNodeId = existing->getNodeId();
-        if (existing->getSourceSpace().isEmpty()) {
-            existing->setSourceSpace(QStringLiteral("tool"));
-        }
-        if (existing->getTargetSpace().isEmpty()) {
-            existing->setTargetSpace(QStringLiteral("patient"));
-        }
+    if (auto* existing = findTrackedTransformNode(scene, remoteNodeId)) {
+        configureTrackedTransformNode(existing, *descriptor);
+        m_localTransformNodeIdsByRemoteId.insert(remoteNodeId, existing->getNodeId());
         return existing;
     }
 
     auto* transformNode = new TransformNode(scene);
-    transformNode->setTransformKind(QStringLiteral("tool_tracking"));
-    transformNode->setSourceSpace(QStringLiteral("tool"));
-    transformNode->setTargetSpace(QStringLiteral("patient"));
-    transformNode->setShowAxes(true);
-    DisplayTarget navigationTarget;
-    navigationTarget.visible = true;
-    navigationTarget.layer = 3;
-    transformNode->setWindowDisplayTarget(QStringLiteral("navigation_main"), navigationTarget);
+    configureTrackedTransformNode(transformNode, *descriptor);
     scene->addNode(transformNode);
-    m_toolTransformNodeId = transformNode->getNodeId();
+
+    m_localTransformNodeIdsByRemoteId.insert(remoteNodeId, transformNode->getNodeId());
+    if (const QString parentRemoteId = toQString(descriptor->parentRemoteId);
+        !parentRemoteId.isEmpty()) {
+        if (auto* parentNode = ensureTrackedTransformNode(scene, parentRemoteId)) {
+            transformNode->setParentTransform(parentNode->getNodeId());
+        }
+    }
+
     return transformNode;
 }
 
-TransformNode* NavigationModuleLogicHandler::findToolTransformNode(SceneGraph* scene) const
+TransformNode* NavigationModuleLogicHandler::findTrackedTransformNode(
+    SceneGraph* scene,
+    const QString& remoteNodeId) const
 {
     if (!scene) {
         return nullptr;
@@ -207,7 +318,9 @@ TransformNode* NavigationModuleLogicHandler::findToolTransformNode(SceneGraph* s
 
     const QVector<TransformNode*> transformNodes = scene->getAllTransformNodes();
     for (TransformNode* transformNode : transformNodes) {
-        if (transformNode && transformNode->getTransformKind() == QStringLiteral("tool_tracking")) {
+        if (transformNode &&
+            transformNode->getAttribute(QStringLiteral("remoteTransformId")).toString() ==
+                remoteNodeId) {
             return transformNode;
         }
     }
@@ -215,24 +328,53 @@ TransformNode* NavigationModuleLogicHandler::findToolTransformNode(SceneGraph* s
     return nullptr;
 }
 
+void NavigationModuleLogicHandler::applyTransformSample(const QVariantMap& payload)
+{
+    SceneGraph* scene = getSceneGraph();
+    if (!scene) {
+        return;
+    }
+
+    const QString remoteNodeId = payload.value(QStringLiteral("nodeId")).toString();
+    auto* transformNode = ensureTrackedTransformNode(scene, remoteNodeId);
+    if (!transformNode) {
+        return;
+    }
+
+    const NavigationTransformDescriptor* descriptor = findDescriptor(remoteNodeId);
+    if (descriptor) {
+        configureTrackedTransformNode(transformNode, *descriptor);
+        if (const QString parentRemoteId = toQString(descriptor->parentRemoteId);
+            !parentRemoteId.isEmpty()) {
+            if (auto* parentNode = ensureTrackedTransformNode(scene, parentRemoteId)) {
+                transformNode->setParentTransform(parentNode->getNodeId());
+            }
+        } else {
+            transformNode->setParentTransform(QString());
+        }
+    }
+
+    double matrix[16];
+    if (!extractMatrixToParent(payload, matrix)) {
+        return;
+    }
+
+    transformNode->setMatrixTransformToParent(matrix);
+    const qint64 timestampMs = payload.value(QStringLiteral("timestampMs")).toLongLong();
+    m_lastSampleTimestampMsByRemoteId.insert(
+        remoteNodeId,
+        timestampMs > 0 ? timestampMs : QDateTime::currentMSecsSinceEpoch());
+}
+
 void NavigationModuleLogicHandler::emitNavigationState(const QString& sourceActionId,
                                                        const QString& sourceSampleId)
 {
     QVariantMap payload;
-    payload.insert(QStringLiteral("toolTransformNodeId"), m_toolTransformNodeId);
     payload.insert(QStringLiteral("navigating"), m_navigating);
     payload.insert(QStringLiteral("status"), m_navigationStatus);
-
-    SceneGraph* scene = getSceneGraph();
-    if (scene) {
-        if (auto* transformNode = scene->getNodeById<TransformNode>(m_toolTransformNodeId)) {
-            double matrix[16];
-            transformNode->getMatrixTransformToParent(matrix);
-            payload.insert(QStringLiteral("x"), matrix[12]);
-            payload.insert(QStringLiteral("y"), matrix[13]);
-            payload.insert(QStringLiteral("z"), matrix[14]);
-        }
-    }
+    payload.insert(QStringLiteral("x"), m_currentPositionX);
+    payload.insert(QStringLiteral("y"), m_currentPositionY);
+    payload.insert(QStringLiteral("z"), m_currentPositionZ);
 
     if (!sourceSampleId.isEmpty()) {
         payload.insert(QStringLiteral("sourceSampleId"), sourceSampleId);
@@ -243,5 +385,35 @@ void NavigationModuleLogicHandler::emitNavigationState(const QString& sourceActi
         LogicNotification::CurrentModule,
         payload);
     notification.setSourceActionId(sourceActionId);
+    emit logicNotification(notification);
+}
+
+void NavigationModuleLogicHandler::emitTransformHealth(bool force,
+                                                       const QString& sourceSampleId)
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (!force && m_lastTransformHealthEmitMs > 0 &&
+        (nowMs - m_lastTransformHealthEmitMs) < 33) {
+        return;
+    }
+
+    m_lastTransformHealthEmitMs = nowMs;
+
+    QVariantMap payload;
+    payload.insert(QStringLiteral("eventName"),
+                   QStringLiteral("navigation_transform_health"));
+    payload.insert(QStringLiteral("transforms"),
+                   buildTransformStatusList(m_lastSampleTimestampMsByRemoteId));
+    payload.insert(QStringLiteral("timestampMs"), nowMs);
+    payload.insert(QStringLiteral("navigating"), m_navigating);
+    payload.insert(QStringLiteral("status"), m_navigationStatus);
+    if (!sourceSampleId.isEmpty()) {
+        payload.insert(QStringLiteral("sourceSampleId"), sourceSampleId);
+    }
+
+    LogicNotification notification = LogicNotification::create(
+        LogicNotification::CustomEvent,
+        LogicNotification::Shell,
+        payload);
     emit logicNotification(notification);
 }

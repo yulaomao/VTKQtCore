@@ -16,6 +16,23 @@
 #include <vtkTransform.h>
 #include <vtkMatrix4x4.h>
 
+namespace {
+
+void deepCopyColumnMajorToVtkMatrix(vtkMatrix4x4* vtkMatrix, const double columnMajor[16])
+{
+    if (!vtkMatrix || !columnMajor) {
+        return;
+    }
+
+    for (int row = 0; row < 4; ++row) {
+        for (int column = 0; column < 4; ++column) {
+            vtkMatrix->SetElement(row, column, columnMajor[column * 4 + row]);
+        }
+    }
+}
+
+}
+
 PointNodeDisplayManager::PointNodeDisplayManager(SceneGraph* scene, const QString& windowId,
                                                    vtkRenderer* layer1, vtkRenderer* layer2,
                                                    vtkRenderer* layer3, QObject* parent)
@@ -336,7 +353,7 @@ void PointNodeDisplayManager::updateTransform(const QString& nodeId)
 
     auto transform = vtkSmartPointer<vtkTransform>::New();
     auto mat = vtkSmartPointer<vtkMatrix4x4>::New();
-    mat->DeepCopy(matrix);
+    deepCopyColumnMajorToVtkMatrix(mat, matrix);
     transform->SetMatrix(mat);
 
     it->actor->SetUserTransform(transform);

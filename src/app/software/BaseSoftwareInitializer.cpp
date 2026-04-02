@@ -6,13 +6,8 @@
 #include "ApplicationCoordinator.h"
 #include "PageManager.h"
 #include "GlobalUiManager.h"
-#include "WorkflowStateMachine.h"
+#include "ActiveModuleState.h"
 #include "WorkspaceShell.h"
-#include "shell/ShellWorkflowMenu.h"
-#include "shell/ShellStatusBar.h"
-
-#include <QLayout>
-#include <QSet>
 
 namespace {
 
@@ -31,23 +26,6 @@ QStringList variantToStringList(const QVariant& value)
         }
     }
     return result;
-}
-
-QString gatewayStateName(ILogicGateway* gateway)
-{
-    if (!gateway) {
-        return QStringLiteral("Disconnected");
-    }
-
-    switch (gateway->getConnectionState()) {
-    case ILogicGateway::Connected:
-        return QStringLiteral("Connected");
-    case ILogicGateway::Degraded:
-        return QStringLiteral("Degraded");
-    case ILogicGateway::Disconnected:
-    default:
-        return QStringLiteral("Disconnected");
-    }
 }
 
 }
@@ -72,7 +50,7 @@ QVariantMap BaseSoftwareInitializer::getSoftwareProfile() const
 void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* logicRuntime,
                                          ILogicGateway* gateway, CommunicationHub* commHub)
 {
-    const QStringList sequence = configuredWorkflowSequence();
+    const QStringList moduleDisplayOrder = configuredModuleDisplayOrder();
     const QString initialModule = configuredInitialModule();
 
     // 1. Create PageManager and set its stack widget
@@ -92,70 +70,19 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
         mainWindow->getWorkspaceShell(),
         this);
 
-    // 4. Configure the runtime-owned WorkflowStateMachine
-    m_workflowStateMachine = logicRuntime->getWorkflowStateMachine();
-    m_workflowStateMachine->setWorkflowSequence(sequence);
-    m_workflowStateMachine->setInitialModule(initialModule);
-    m_workflowStateMachine->setCurrentModule(QString());
+    // 4. Configure the runtime-owned active-module state
+    m_activeModuleState = logicRuntime->getActiveModuleState();
+    m_activeModuleState->setInitialModule(initialModule);
+    m_activeModuleState->setCurrentModule(QString());
 
-    // 5. Set enterable modules (initially first module is enterable)
-    if (!sequence.isEmpty()) {
-        QSet<QString> enterable;
-        if (getRunMode() == RunMode::Local) {
-            for (const QString& moduleId : sequence) {
-                enterable.insert(moduleId);
-            }
-        } else {
-            enterable.insert(sequence.first());
-        }
-        m_workflowStateMachine->setEnterableModules(enterable);
-    }
-
-    auto* workflowMenu = new ShellWorkflowMenu(mainWindow->getWorkspaceShell());
-    workflowMenu->setWorkflowSequence(sequence);
-    workflowMenu->setEnterableModules(m_workflowStateMachine->getEnterableModules().values());
-
-    auto* statusBar = new ShellStatusBar(mainWindow->getWorkspaceShell());
-    statusBar->setWorkflowSequence(sequence);
-    statusBar->setEnterableModules(m_workflowStateMachine->getEnterableModules().values());
-    statusBar->setConnectionState(gatewayStateName(gateway));
-
-    if (QWidget* rightShellHost = mainWindow->getWorkspaceShell()->getRightShellHost()) {
-        rightShellHost->layout()->addWidget(workflowMenu);
-    }
-    if (QWidget* bottomShellHost = mainWindow->getWorkspaceShell()->getBottomShellHost()) {
-        bottomShellHost->layout()->addWidget(statusBar);
-    }
-    mainWindow->getWorkspaceShell()->refreshHostVisibility();
-
-    QObject::connect(workflowMenu, &ShellWorkflowMenu::moduleSelected,
-                     m_appCoordinator, &ApplicationCoordinator::requestSwitchModule);
-    QObject::connect(statusBar, &ShellStatusBar::nextRequested,
-                     m_appCoordinator, &ApplicationCoordinator::requestNextStep);
-    QObject::connect(statusBar, &ShellStatusBar::prevRequested,
-                     m_appCoordinator, &ApplicationCoordinator::requestPrevStep);
-    QObject::connect(statusBar, &ShellStatusBar::resyncRequested,
-                     m_appCoordinator, &ApplicationCoordinator::requestResync);
-    QObject::connect(m_appCoordinator, &ApplicationCoordinator::currentModuleChanged,
-                     workflowMenu, &ShellWorkflowMenu::setCurrentModule);
-    QObject::connect(m_appCoordinator, &ApplicationCoordinator::currentModuleChanged,
-                     statusBar, &ShellStatusBar::setCurrentModule);
-    QObject::connect(m_appCoordinator, &ApplicationCoordinator::enterableModulesChanged,
-                     workflowMenu, &ShellWorkflowMenu::setEnterableModules);
-    QObject::connect(m_appCoordinator, &ApplicationCoordinator::enterableModulesChanged,
-                     statusBar, &ShellStatusBar::setEnterableModules);
-    QObject::connect(m_appCoordinator, &ApplicationCoordinator::connectionStateChanged,
-                     statusBar, &ShellStatusBar::setConnectionState);
-    QObject::connect(m_appCoordinator, &ApplicationCoordinator::healthSnapshotChanged,
-                     statusBar, &ShellStatusBar::setHealthSnapshot);
-    QObject::connect(m_appCoordinator, &ApplicationCoordinator::workflowDecisionChanged,
-                     statusBar, &ShellStatusBar::setWorkflowDecision);
-
-    // 6. Register module logic handlers
+    // 5. Register module logic handlers
     registerModuleLogicHandlers(logicRuntime);
 
-    // 7. Register module UIs
+    // 6. Register module UIs
     registerModuleUIs(mainWindow, logicRuntime, m_appCoordinator, gateway);
+
+    // 7. Register optional shell modules
+    registerShellModules(mainWindow, logicRuntime, m_appCoordinator, gateway);
 
     // 8. Configure additional settings
     configureAdditionalSettings(logicRuntime);
@@ -194,6 +121,17 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
     gateway->sendAction(initialAction);
 }
 
+void BaseSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
+                                                   LogicRuntime* runtime,
+                                                   ApplicationCoordinator* appCoord,
+                                                   ILogicGateway* gateway)
+{
+    Q_UNUSED(mainWindow);
+    Q_UNUSED(runtime);
+    Q_UNUSED(appCoord);
+    Q_UNUSED(gateway);
+}
+
 void BaseSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
 {
     Q_UNUSED(commHub);
@@ -223,12 +161,16 @@ QStringList BaseSoftwareInitializer::configuredEnabledModules() const
     return result.isEmpty() ? defaults : result;
 }
 
-QStringList BaseSoftwareInitializer::configuredWorkflowSequence() const
+QStringList BaseSoftwareInitializer::configuredModuleDisplayOrder() const
 {
     const QStringList enabled = configuredEnabledModules();
-    const QStringList defaults = getWorkflowSequence();
-    const QStringList requested = variantToStringList(
-        m_softwareProfile.value(QStringLiteral("workflowSequence")));
+    const QStringList defaults = getModuleDisplayOrder();
+    QStringList requested = variantToStringList(
+        m_softwareProfile.value(QStringLiteral("moduleDisplayOrder")));
+    if (requested.isEmpty()) {
+        requested = variantToStringList(
+            m_softwareProfile.value(QStringLiteral("workflowSequence")));
+    }
 
     QStringList result;
     const QStringList source = requested.isEmpty() ? defaults : requested;
@@ -249,7 +191,7 @@ QStringList BaseSoftwareInitializer::configuredWorkflowSequence() const
 
 QString BaseSoftwareInitializer::configuredInitialModule() const
 {
-    const QStringList sequence = configuredWorkflowSequence();
+    const QStringList sequence = configuredModuleDisplayOrder();
     const QString requested = m_softwareProfile.value(QStringLiteral("initialModule")).toString();
     if (!requested.isEmpty() && sequence.contains(requested)) {
         return requested;

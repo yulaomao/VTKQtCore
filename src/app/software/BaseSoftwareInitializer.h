@@ -12,7 +12,7 @@ class CommunicationHub;
 class ApplicationCoordinator;
 class PageManager;
 class GlobalUiManager;
-class WorkflowStateMachine;
+class ActiveModuleState;
 
 enum class RunMode { Local, Redis };
 
@@ -29,13 +29,16 @@ public:
     QVariantMap getSoftwareProfile() const;
 
     virtual QStringList getEnabledModules() const = 0;
-    virtual QStringList getWorkflowSequence() const = 0;
+    virtual QStringList getModuleDisplayOrder() const = 0;
     virtual QString getInitialModule() const = 0;
 
     virtual void registerModuleLogicHandlers(LogicRuntime* runtime) = 0;
     virtual void registerModuleUIs(MainWindow* mainWindow, LogicRuntime* runtime,
                                    ApplicationCoordinator* appCoord,
                                    ILogicGateway* gateway) = 0;
+    virtual void registerShellModules(MainWindow* mainWindow, LogicRuntime* runtime,
+                                      ApplicationCoordinator* appCoord,
+                                      ILogicGateway* gateway);
     virtual void registerCommunicationSources(CommunicationHub* commHub);
     virtual void configureAdditionalSettings(LogicRuntime* runtime);
 
@@ -44,14 +47,14 @@ public:
 
 protected:
     QStringList configuredEnabledModules() const;
-    QStringList configuredWorkflowSequence() const;
+    QStringList configuredModuleDisplayOrder() const;
     QString configuredInitialModule() const;
     bool isModuleEnabled(const QString& moduleId) const;
 
     ApplicationCoordinator* m_appCoordinator = nullptr;
     PageManager* m_pageManager = nullptr;
     GlobalUiManager* m_globalUiManager = nullptr;
-    WorkflowStateMachine* m_workflowStateMachine = nullptr;
+    ActiveModuleState* m_activeModuleState = nullptr;
 
 private:
     RunMode runMode;

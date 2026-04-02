@@ -58,6 +58,9 @@ PlanningPage::PlanningPage(QWidget* parent)
     m_acceptButton = new QPushButton(QStringLiteral("Accept Plan"), controlPanel);
     controlLayout->addWidget(m_acceptButton);
 
+    m_datagenTestButton = new QPushButton(QStringLiteral("Test Datagen: Create Model"), controlPanel);
+    controlLayout->addWidget(m_datagenTestButton);
+
     controlLayout->addStretch();
 
     auto* scenePanel = new QWidget(this);
@@ -97,6 +100,8 @@ PlanningPage::PlanningPage(QWidget* parent)
             this, &PlanningPage::generatePlanRequested);
     connect(m_acceptButton, &QPushButton::clicked,
             this, &PlanningPage::acceptPlanRequested);
+        connect(m_datagenTestButton, &QPushButton::clicked,
+            this, &PlanningPage::datagenModelCreateRequested);
 }
 
 void PlanningPage::setSceneWindow(VtkSceneWindow* sceneWindow)

@@ -2,15 +2,26 @@
 
 #include "ModuleUiAssemblers.h"
 #include "SoftwareInitializerFactory.h"
+#include "ApplicationCoordinator.h"
+#include "ILogicGateway.h"
 #include "LogicRuntime.h"
+#include "MainWindow.h"
+#include "WorkflowStateMachine.h"
 #include "communication/hub/CommunicationHub.h"
 #include "communication/datasource/PollingTask.h"
 #include "communication/datasource/SubscriptionSource.h"
+#include "modules/workflowshell/WorkflowMenuModule.h"
+#include "modules/workflowshell/WorkflowStatusBarModule.h"
+#include "shell/WorkspaceShell.h"
 
 #include "ParamsModuleLogicHandler.h"
+#include "DataGenModuleLogicHandler.h"
 #include "PointPickModuleLogicHandler.h"
 #include "PlanningModuleLogicHandler.h"
 #include "NavigationModuleLogicHandler.h"
+
+#include <QLayout>
+#include <QVector>
 
 namespace {
 
@@ -122,6 +133,74 @@ double dispatchRateForModule(const QVariantMap& profile, const QString& moduleId
     return rate > 0.0 ? rate : 30.0;
 }
 
+struct NavigationTransformPollingSpec {
+    QString nodeId;
+    QString redisKey;
+};
+
+QVector<NavigationTransformPollingSpec> navigationTransformPollingSpecsFromProfile(
+    const QVariantMap& profile)
+{
+    struct DefaultSpec {
+        const char* nodeId;
+        const char* redisKey;
+    };
+
+    static const DefaultSpec defaults[] = {
+        {"navigation-world-transform", "demo:navigation:transform:world"},
+        {"navigation-reference-transform", "demo:navigation:transform:reference"},
+        {"navigation-patient-transform", "demo:navigation:transform:patient"},
+        {"navigation-instrument-transform", "demo:navigation:transform:instrument"},
+        {"navigation-guide-transform", "demo:navigation:transform:guide"},
+        {"navigation-tip-transform", "demo:navigation:transform:tip"},
+    };
+
+    const QVariantMap overrides = communicationProfile(profile).value(
+        QStringLiteral("navigationTransformPollingKeys")).toMap();
+
+    QVector<NavigationTransformPollingSpec> specs;
+    specs.reserve(static_cast<int>(std::size(defaults)));
+    for (const DefaultSpec& spec : defaults) {
+        const QString nodeId = QString::fromLatin1(spec.nodeId);
+        const QString redisKey = stringFromVariantOrDefault(
+            overrides.value(nodeId),
+            QString::fromLatin1(spec.redisKey));
+        specs.push_back({nodeId, redisKey});
+    }
+    return specs;
+}
+
+int navigationTransformPollingIntervalMs(const QVariantMap& profile)
+{
+    const int interval = communicationProfile(profile).value(
+        QStringLiteral("navigationTransformPollingIntervalMs")).toInt();
+    return interval > 0 ? interval : 16;
+}
+
+double navigationTransformDispatchRateHz(const QVariantMap& profile)
+{
+    const double rate = communicationProfile(profile).value(
+        QStringLiteral("navigationTransformMaxDispatchRateHz")).toDouble();
+    return rate > 0.0 ? rate : 60.0;
+}
+
+QString gatewayStateName(ILogicGateway* gateway)
+{
+    if (!gateway) {
+        return QStringLiteral("Disconnected");
+    }
+
+    switch (gateway->getConnectionState()) {
+    case ILogicGateway::Connected:
+        return QStringLiteral("Connected");
+    case ILogicGateway::Degraded:
+        return QStringLiteral("Degraded");
+    case ILogicGateway::Disconnected:
+    default:
+        return QStringLiteral("Disconnected");
+    }
+}
+
 const bool s_registered = [] {
     SoftwareInitializerFactory::registerInitializer(
         QStringLiteral("default"),
@@ -143,6 +222,7 @@ DefaultSoftwareInitializer::DefaultSoftwareInitializer(const QString& softwareTy
 QStringList DefaultSoftwareInitializer::getEnabledModules() const
 {
     return {
+        QStringLiteral("datagen"),
         QStringLiteral("params"),
         QStringLiteral("pointpick"),
         QStringLiteral("planning"),
@@ -153,6 +233,7 @@ QStringList DefaultSoftwareInitializer::getEnabledModules() const
 QStringList DefaultSoftwareInitializer::getWorkflowSequence() const
 {
     return {
+        QStringLiteral("datagen"),
         QStringLiteral("params"),
         QStringLiteral("pointpick"),
         QStringLiteral("planning"),
@@ -162,11 +243,14 @@ QStringList DefaultSoftwareInitializer::getWorkflowSequence() const
 
 QString DefaultSoftwareInitializer::getInitialModule() const
 {
-    return QStringLiteral("params");
+    return QStringLiteral("datagen");
 }
 
 void DefaultSoftwareInitializer::registerModuleLogicHandlers(LogicRuntime* runtime)
 {
+    if (isModuleEnabled(QStringLiteral("datagen"))) {
+        runtime->registerModuleHandler(new DataGenModuleLogicHandler(runtime));
+    }
     if (isModuleEnabled(QStringLiteral("params"))) {
         runtime->registerModuleHandler(new ParamsModuleLogicHandler(runtime));
     }
@@ -195,6 +279,9 @@ void DefaultSoftwareInitializer::registerModuleUIs(MainWindow* mainWindow,
         m_globalUiManager
     };
 
+    if (isModuleEnabled(QStringLiteral("datagen"))) {
+        registerDataGenModuleUi(context);
+    }
     if (isModuleEnabled(QStringLiteral("params"))) {
         registerParamsModuleUi(context);
     }
@@ -207,6 +294,63 @@ void DefaultSoftwareInitializer::registerModuleUIs(MainWindow* mainWindow,
     if (isModuleEnabled(QStringLiteral("navigation"))) {
         registerNavigationModuleUi(context);
     }
+}
+
+void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
+                                                      LogicRuntime* runtime,
+                                                      ApplicationCoordinator* appCoord,
+                                                      ILogicGateway* gateway)
+{
+    Q_UNUSED(runtime);
+
+    if (!mainWindow || !appCoord || !gateway || !m_workflowStateMachine) {
+        return;
+    }
+
+    WorkspaceShell* workspaceShell = mainWindow->getWorkspaceShell();
+    if (!workspaceShell) {
+        return;
+    }
+
+    workspaceShell->getRightWidget()->setFixedWidth(320);
+
+    const QStringList workflowSequence = configuredWorkflowSequence();
+
+    auto* workflowMenu = new WorkflowMenuModule(workspaceShell);
+    workflowMenu->setWorkflowSequence(workflowSequence);
+    workflowMenu->setConnectionState(gatewayStateName(gateway));
+
+    auto* statusBar = new WorkflowStatusBarModule(workspaceShell);
+    statusBar->setWorkflowSequence(workflowSequence);
+    statusBar->setConnectionState(gatewayStateName(gateway));
+
+    if (QWidget* rightShellHost = workspaceShell->getRightShellHost()) {
+        rightShellHost->layout()->addWidget(workflowMenu);
+    }
+    if (QWidget* bottomShellHost = workspaceShell->getBottomShellHost()) {
+        bottomShellHost->layout()->addWidget(statusBar);
+    }
+    workspaceShell->refreshHostVisibility();
+
+    QObject::connect(workflowMenu, &WorkflowMenuModule::moduleSelected,
+                     appCoord, &ApplicationCoordinator::requestSwitchModule);
+    QObject::connect(workflowMenu, &WorkflowMenuModule::resyncRequested,
+                     appCoord, &ApplicationCoordinator::requestResync);
+    QObject::connect(statusBar, &WorkflowStatusBarModule::resyncRequested,
+                     appCoord, &ApplicationCoordinator::requestResync);
+
+    QObject::connect(appCoord, &ApplicationCoordinator::currentModuleChanged,
+                     workflowMenu, &WorkflowMenuModule::setCurrentModule);
+    QObject::connect(appCoord, &ApplicationCoordinator::currentModuleChanged,
+                     statusBar, &WorkflowStatusBarModule::setCurrentModule);
+    QObject::connect(appCoord, &ApplicationCoordinator::connectionStateChanged,
+                     workflowMenu, &WorkflowMenuModule::setConnectionState);
+    QObject::connect(appCoord, &ApplicationCoordinator::connectionStateChanged,
+                     statusBar, &WorkflowStatusBarModule::setConnectionState);
+    QObject::connect(appCoord, &ApplicationCoordinator::healthSnapshotChanged,
+                     statusBar, &WorkflowStatusBarModule::setHealthSnapshot);
+    QObject::connect(gateway, &ILogicGateway::notificationReceived,
+                     workflowMenu, &WorkflowMenuModule::onGatewayNotification);
 }
 
 void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
@@ -243,6 +387,24 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
             task->setLatestWins(true);
             task->setChangeDetection(true);
             task->setMaxDispatchRateHz(dispatchRateForModule(profile, moduleId));
+            commHub->addPollingTask(task);
+        }
+    }
+
+    if (modules.contains(QStringLiteral("navigation"))) {
+        const int intervalMs = navigationTransformPollingIntervalMs(profile);
+        const double dispatchRateHz = navigationTransformDispatchRateHz(profile);
+        const QVector<NavigationTransformPollingSpec> specs =
+            navigationTransformPollingSpecsFromProfile(profile);
+        for (const NavigationTransformPollingSpec& spec : specs) {
+            auto* task = new PollingTask(
+                QStringLiteral("%1_poll").arg(spec.nodeId),
+                QStringLiteral("navigation"),
+                spec.redisKey,
+                intervalMs);
+            task->setLatestWins(true);
+            task->setChangeDetection(true);
+            task->setMaxDispatchRateHz(dispatchRateHz);
             commHub->addPollingTask(task);
         }
     }

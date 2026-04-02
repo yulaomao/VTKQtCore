@@ -19,6 +19,7 @@ public:
 signals:
     void startNavigationRequested();
     void stopNavigationRequested();
+    void datagenTransformCreateRequested();
 
 public slots:
     void setNavigationStatus(const QString& status);
@@ -29,6 +30,7 @@ private:
     QLabel* m_statusLabel = nullptr;
     QPushButton* m_startBtn = nullptr;
     QPushButton* m_stopBtn = nullptr;
+    QPushButton* m_datagenTestBtn = nullptr;
     QLabel* m_positionLabel = nullptr;
     QVBoxLayout* m_sceneLayout = nullptr;
     QWidget* m_sceneWindow = nullptr;

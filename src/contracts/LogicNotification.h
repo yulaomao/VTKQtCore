@@ -14,7 +14,7 @@ struct LogicNotification
         ButtonStateChanged,
         TipChanged,
         SceneNodesUpdated,
-        WorkflowChanged,
+        ActiveModuleChanged,
         ConnectionStateChanged,
         ErrorOccurred,
         CustomEvent

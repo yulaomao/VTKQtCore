@@ -32,7 +32,7 @@ QStringList PlanningNavigationSoftwareInitializer::getEnabledModules() const
     };
 }
 
-QStringList PlanningNavigationSoftwareInitializer::getWorkflowSequence() const
+QStringList PlanningNavigationSoftwareInitializer::getModuleDisplayOrder() const
 {
     return {
         QStringLiteral("params"),

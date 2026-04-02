@@ -6,8 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Enable Qt MOC auto-generation
 set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTORCC ON)
 
 # ---------------------------------------------------------------------------
 # Qt – try Qt6 first, fall back to Qt5
@@ -33,31 +31,12 @@ find_package(VTK REQUIRED COMPONENTS
     CommonTransforms
 )
 
-if(MSVC)
-    get_target_property(VTK_QT_SUPPORT_LOCATION_DEBUG VTK::GUISupportQt IMPORTED_LOCATION_DEBUG)
-    if(NOT VTK_QT_SUPPORT_LOCATION_DEBUG)
-        message(WARNING
-            "Bundled VTK package does not provide Debug binaries. "
-            "The Debug configuration will mix Debug Qt with Release VTK and is unsupported on Windows. "
-            "Use Release/RelWithDebInfo, or provide a Debug build of VTK.")
-    endif()
-endif()
-
-# ---------------------------------------------------------------------------
-# hiredis (prebuilt under thirtyPart/hiredis)
-# ---------------------------------------------------------------------------
-find_package(hiredis CONFIG REQUIRED
-    PATHS "${CMAKE_CURRENT_SOURCE_DIR}/thirtyPart/hiredis"
-    NO_DEFAULT_PATH)
-
 # ---------------------------------------------------------------------------
 # Sources – collect every .h and .cpp under src/
 # ---------------------------------------------------------------------------
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+file(GLOB_RECURSE SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.ui
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.qrc
 )
 
 # ---------------------------------------------------------------------------
@@ -68,7 +47,7 @@ add_executable(VTKQtCore ${SOURCES})
 # ---------------------------------------------------------------------------
 # Include directories – src/ and every subdirectory beneath it
 # ---------------------------------------------------------------------------
-file(GLOB_RECURSE ALL_SRC_FILES CONFIGURE_DEPENDS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/src/*)
+file(GLOB_RECURSE ALL_SRC_FILES LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/src/*)
 set(INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
 foreach(ENTRY ${ALL_SRC_FILES})
     if(IS_DIRECTORY ${ENTRY})
@@ -89,7 +68,6 @@ target_link_libraries(VTKQtCore PRIVATE
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::OpenGL
     Qt${QT_VERSION_MAJOR}::OpenGLWidgets
-    hiredis::hiredis
     ${VTK_LIBRARIES}
 )
 

@@ -16,8 +16,13 @@ ParamsModuleLogicHandler::ParamsModuleLogicHandler(QObject* parent)
 
 void ParamsModuleLogicHandler::handleAction(const UiAction& action)
 {
-    if (action.actionType != UiAction::UpdateParameter)
+    if (action.actionType == UiAction::CustomAction) {
         return;
+    }
+
+    if (action.actionType != UiAction::UpdateParameter) {
+        return;
+    }
 
     const QString key = action.payload.value(QStringLiteral("key")).toString();
     const QVariant value = action.payload.value(QStringLiteral("value"));

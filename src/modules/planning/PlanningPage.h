@@ -20,6 +20,7 @@ public:
 signals:
     void generatePlanRequested();
     void acceptPlanRequested();
+    void datagenModelCreateRequested();
 
 public slots:
     void setPlanStatus(const QString& status);
@@ -28,6 +29,7 @@ private:
     QLabel* m_statusLabel = nullptr;
     QPushButton* m_generateButton = nullptr;
     QPushButton* m_acceptButton = nullptr;
+    QPushButton* m_datagenTestButton = nullptr;
     QVBoxLayout* m_sceneLayout = nullptr;
     QVBoxLayout* m_secondarySceneLayout = nullptr;
     VtkSceneWindow* m_sceneWindow = nullptr;

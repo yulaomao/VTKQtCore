@@ -10,6 +10,7 @@
 #include "ui/coordination/ModuleCoordinator.h"
 
 #include "ParamsPage.h"
+#include "DataGenPage.h"
 #include "PointPickPage.h"
 #include "PointPickStatusPanel.h"
 #include "PlanningPage.h"
@@ -60,6 +61,21 @@ SceneGraph* sceneGraphFromContext(const ModuleUiAssemblyContext& context)
     return context.runtime ? context.runtime->getSceneGraph() : nullptr;
 }
 
+QVariantMap createCustomCommandPayload(const QString& command)
+{
+    return {{QStringLiteral("command"), command}};
+}
+
+QVariantMap createTargetedCustomCommandPayload(const QString& targetModule,
+                                              const QString& command,
+                                              const QVariantMap& payload = {})
+{
+    QVariantMap result = payload;
+    result.insert(QStringLiteral("targetModule"), targetModule);
+    result.insert(QStringLiteral("command"), command);
+    return result;
+}
+
 }
 
 void registerParamsModuleUi(const ModuleUiAssemblyContext& context)
@@ -95,6 +111,20 @@ void registerParamsModuleUi(const ModuleUiAssemblyContext& context)
                          }
                      });
 
+    QObject::connect(page, &ParamsPage::datagenPointCreateRequested,
+                     coordinator, [coordinator]() {
+                         coordinator->sendModuleAction(
+                             UiAction::CustomAction,
+                             createTargetedCustomCommandPayload(
+                                 QStringLiteral("datagen"),
+                                 QStringLiteral("create_node"),
+                                 {{QStringLiteral("nodeType"), QStringLiteral("point")},
+                                  {QStringLiteral("name"), QStringLiteral("Params Relay Points")},
+                                  {QStringLiteral("count"), 4},
+                                  {QStringLiteral("spacing"), 12.0},
+                                  {QStringLiteral("relaySourceModule"), QStringLiteral("params")}}));
+                     });
+
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
                      page, [page, summaryStatus](const LogicNotification& notification) {
                          if (notification.eventType != LogicNotification::ButtonStateChanged) {
@@ -111,6 +141,82 @@ void registerParamsModuleUi(const ModuleUiAssemblyContext& context)
                                  QStringLiteral("参数状态: %1, 数量: %2")
                                      .arg(valid ? QStringLiteral("有效") : QStringLiteral("待检查"))
                                      .arg(parameterCount));
+                         }
+                     });
+}
+
+void registerDataGenModuleUi(const ModuleUiAssemblyContext& context)
+{
+    if (!isContextValid(context)) {
+        return;
+    }
+
+    QLabel* summaryStatus = nullptr;
+    auto* coordinator = new ModuleCoordinator(
+        QStringLiteral("datagen"),
+        context.gateway,
+        context.applicationCoordinator);
+    auto* page = new DataGenPage();
+    coordinator->addAuxiliaryWidget(
+        createModuleSummaryPanel(
+            QStringLiteral("Data Generator"),
+            QStringLiteral("创建 Point/Line/Model/Transform 节点，维护显示属性与父子变换。"),
+            &summaryStatus,
+            context.mainWindow->getWorkspaceShell()),
+        ModuleCoordinator::AuxiliaryRegion::Right);
+
+    auto* dataGenWindow = new VtkSceneWindow(
+        QStringLiteral("datagen_main"),
+        sceneGraphFromContext(context),
+        page);
+    const double cameraPosition[3] = {220.0, -260.0, 180.0};
+    const double cameraFocalPoint[3] = {0.0, 0.0, 20.0};
+    const double cameraViewUp[3] = {0.0, 0.0, 1.0};
+    const double clippingRange[2] = {1.0, 4000.0};
+    dataGenWindow->setInitialCameraParams(
+        cameraPosition,
+        cameraFocalPoint,
+        cameraViewUp,
+        false,
+        1.0,
+        30.0,
+        clippingRange);
+    page->setSceneWindow(dataGenWindow);
+    dataGenWindow->reconcile();
+
+    if (context.globalUiManager) {
+        context.globalUiManager->registerVtkWindow(dataGenWindow);
+    }
+
+    coordinator->setMainPage(page);
+    context.pageManager->registerPage(QStringLiteral("datagen"), page);
+    context.applicationCoordinator->registerModuleCoordinator(coordinator);
+
+    QObject::connect(coordinator, &ModuleCoordinator::activated,
+                     dataGenWindow, &VtkSceneWindow::requestReconcile);
+
+    QObject::connect(page, &DataGenPage::customActionRequested,
+                     coordinator, [coordinator](const QVariantMap& payload) {
+                         coordinator->sendModuleAction(UiAction::CustomAction, payload);
+                     });
+
+    QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
+                     page, [page, summaryStatus](const LogicNotification& notification) {
+                         if (notification.eventType != LogicNotification::SceneNodesUpdated &&
+                             notification.eventType != LogicNotification::CustomEvent) {
+                             return;
+                         }
+
+                         page->updateModuleState(notification.payload);
+                         if (summaryStatus) {
+                             const QVariantList nodeSummaries = notification.payload.value(
+                                 QStringLiteral("nodeSummaries")).toList();
+                             summaryStatus->setText(
+                                 QStringLiteral("当前节点数: %1\n%2")
+                                     .arg(nodeSummaries.size())
+                                     .arg(notification.payload.value(
+                                         QStringLiteral("statusText"),
+                                         QStringLiteral("等待数据生成操作")).toString()));
                          }
                      });
 }
@@ -137,6 +243,21 @@ void registerPointPickModuleUi(const ModuleUiAssemblyContext& context)
     QObject::connect(page, &PointPickPage::confirmPointsRequested,
                      coordinator, [coordinator]() {
                          coordinator->sendModuleAction(UiAction::ConfirmPoints);
+                     });
+
+    QObject::connect(page, &PointPickPage::datagenLineCreateRequested,
+                     coordinator, [coordinator]() {
+                         coordinator->sendModuleAction(
+                             UiAction::CustomAction,
+                             createTargetedCustomCommandPayload(
+                                 QStringLiteral("datagen"),
+                                 QStringLiteral("create_node"),
+                                 {{QStringLiteral("nodeType"), QStringLiteral("line")},
+                                  {QStringLiteral("name"), QStringLiteral("PointPick Relay Path")},
+                                  {QStringLiteral("count"), 5},
+                                  {QStringLiteral("spacing"), 20.0},
+                                  {QStringLiteral("closed"), false},
+                                  {QStringLiteral("relaySourceModule"), QStringLiteral("pointpick")}}));
                      });
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
@@ -250,6 +371,23 @@ void registerPlanningModuleUi(const ModuleUiAssemblyContext& context)
                          coordinator->sendModuleAction(UiAction::AcceptPlan);
                      });
 
+    QObject::connect(page, &PlanningPage::datagenModelCreateRequested,
+                     coordinator, [coordinator]() {
+                         coordinator->sendModuleAction(
+                             UiAction::CustomAction,
+                             createTargetedCustomCommandPayload(
+                                 QStringLiteral("datagen"),
+                                 QStringLiteral("create_node"),
+                                 {{QStringLiteral("nodeType"), QStringLiteral("model")},
+                                  {QStringLiteral("name"), QStringLiteral("Planning Relay Model")},
+                                  {QStringLiteral("shape"), QStringLiteral("cube")},
+                                  {QStringLiteral("sizeA"), 26.0},
+                                  {QStringLiteral("sizeB"), 18.0},
+                                  {QStringLiteral("sizeC"), 14.0},
+                                  {QStringLiteral("resolution"), 18},
+                                  {QStringLiteral("relaySourceModule"), QStringLiteral("planning")}}));
+                     });
+
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
                      page, [page, summaryStatus](const LogicNotification& notification) {
                          if (!notification.payload.contains(QStringLiteral("status"))) {
@@ -327,6 +465,20 @@ void registerNavigationModuleUi(const ModuleUiAssemblyContext& context)
     QObject::connect(page, &NavigationPage::stopNavigationRequested,
                      coordinator, [coordinator]() {
                          coordinator->sendModuleAction(UiAction::StopNavigation);
+                     });
+
+    QObject::connect(page, &NavigationPage::datagenTransformCreateRequested,
+                     coordinator, [coordinator]() {
+                         coordinator->sendModuleAction(
+                             UiAction::CustomAction,
+                             createTargetedCustomCommandPayload(
+                                 QStringLiteral("datagen"),
+                                 QStringLiteral("create_node"),
+                                 {{QStringLiteral("nodeType"), QStringLiteral("transform")},
+                                  {QStringLiteral("name"), QStringLiteral("Navigation Relay Transform")},
+                                  {QStringLiteral("showAxes"), true},
+                                  {QStringLiteral("axesLength"), 48.0},
+                                  {QStringLiteral("relaySourceModule"), QStringLiteral("navigation")}}));
                      });
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,

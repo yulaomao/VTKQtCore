@@ -17,6 +17,7 @@ public:
 
 signals:
     void confirmPointsRequested();
+    void datagenLineCreateRequested();
 
 public slots:
     void updatePointList(const QStringList& points);

@@ -4,16 +4,18 @@
 #include <QMap>
 
 #include "communication/datasource/StateSample.h"
+#include "contracts/ModuleInvoke.h"
 #include "contracts/UiAction.h"
 #include "contracts/LogicNotification.h"
+#include "IModuleInvoker.h"
 
 class SceneGraph;
-class WorkflowStateMachine;
+class ActiveModuleState;
 class ModuleLogicRegistry;
 class ModuleLogicHandler;
 class IRedisCommandAccess;
 
-class LogicRuntime : public QObject
+class LogicRuntime : public QObject, public IModuleInvoker
 {
     Q_OBJECT
 
@@ -21,7 +23,7 @@ public:
     explicit LogicRuntime(QObject* parent = nullptr);
 
     SceneGraph* getSceneGraph() const;
-    WorkflowStateMachine* getWorkflowStateMachine() const;
+    ActiveModuleState* getActiveModuleState() const;
     ModuleLogicRegistry* getModuleLogicRegistry() const;
     void setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess);
     bool hasRedisCommandAccess() const;
@@ -32,6 +34,7 @@ public:
     bool writeRedisJsonValue(const QString& key, const QVariantMap& value);
     bool publishRedisMessage(const QString& channel, const QByteArray& message);
     bool publishRedisJsonMessage(const QString& channel, const QVariantMap& payload);
+    ModuleInvokeResult invokeModule(const ModuleInvokeRequest& request) override;
 
     void registerModuleHandler(ModuleLogicHandler* handler);
 
@@ -58,7 +61,7 @@ private:
     void routeToModuleHandler(const UiAction& action);
 
     SceneGraph* m_sceneGraph;
-    WorkflowStateMachine* m_workflowStateMachine;
+    ActiveModuleState* m_activeModuleState;
     ModuleLogicRegistry* m_moduleLogicRegistry;
     IRedisCommandAccess* m_redisCommandAccess = nullptr;
     QMap<QString, qint64> m_lastInboundSeqByStream;

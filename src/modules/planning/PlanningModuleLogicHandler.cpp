@@ -207,6 +207,11 @@ void PlanningModuleLogicHandler::handleAction(const UiAction& action)
         ensurePlanPathNode(getSceneGraph());
         m_planStatus = QStringLiteral("accepted");
         emitPlanningState(LogicNotification::StageChanged, action.actionId);
+        return;
+    }
+
+    if (action.actionType == UiAction::CustomAction) {
+        Q_UNUSED(action);
     }
 }
 

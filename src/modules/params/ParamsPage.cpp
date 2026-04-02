@@ -30,6 +30,9 @@ ParamsPage::ParamsPage(QWidget* parent)
     m_applyButton = new QPushButton(QStringLiteral("Apply Parameters"), this);
     mainLayout->addWidget(m_applyButton);
 
+    m_datagenTestButton = new QPushButton(QStringLiteral("Test Datagen: Create Points"), this);
+    mainLayout->addWidget(m_datagenTestButton);
+
     m_statusLabel = new QLabel(QStringLiteral("Status: Parameters not applied"), this);
     mainLayout->addWidget(m_statusLabel);
 
@@ -41,6 +44,10 @@ ParamsPage::ParamsPage(QWidget* parent)
         params.insert(QStringLiteral("studyId"), m_studyIdEdit->text());
         params.insert(QStringLiteral("procedureType"), m_procedureTypeEdit->text());
         emit parameterApplied(params);
+    });
+
+    connect(m_datagenTestButton, &QPushButton::clicked, this, [this]() {
+        emit datagenPointCreateRequested();
     });
 }
 

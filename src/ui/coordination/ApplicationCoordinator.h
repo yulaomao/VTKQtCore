@@ -30,12 +30,9 @@ public:
     ModuleCoordinator* getModuleCoordinator(const QString& moduleId) const;
     void setCurrentModule(const QString& moduleId);
     QString getCurrentModule() const;
-    QStringList getEnterableModules() const;
 
 public slots:
     void requestSwitchModule(const QString& moduleId);
-    void requestNextStep();
-    void requestPrevStep();
     void requestResync(const QString& reason = QStringLiteral("manual"));
 
     void onShellNotification(const LogicNotification& notification);
@@ -43,10 +40,8 @@ public slots:
 signals:
     void shellAction(const UiAction& action);
     void currentModuleChanged(const QString& moduleId);
-    void enterableModulesChanged(const QStringList& moduleIds);
     void connectionStateChanged(const QString& state);
     void healthSnapshotChanged(const QVariantMap& snapshot);
-    void workflowDecisionChanged(const QString& reasonCode, const QString& message);
 
 private:
     void dispatchShellAction(UiAction::ActionType type,
@@ -58,5 +53,4 @@ private:
     WorkspaceShell* m_workspaceShell;
     QMap<QString, ModuleCoordinator*> m_moduleCoordinators;
     QString m_currentModuleId;
-    QStringList m_enterableModules;
 };

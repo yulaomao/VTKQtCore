@@ -2,6 +2,8 @@
 
 #include "ui_PointPickPage.h"
 
+#include <QPushButton>
+
 PointPickPage::PointPickPage(QWidget* parent)
     : QWidget(parent)
     , m_ui(new Ui::PointPickPage)
@@ -12,6 +14,11 @@ PointPickPage::PointPickPage(QWidget* parent)
 
     connect(m_ui->confirmButton, &QPushButton::clicked,
             this, &PointPickPage::confirmPointsRequested);
+
+        auto* datagenTestButton = new QPushButton(QStringLiteral("Test Datagen: Create Line"), this);
+        m_ui->verticalLayout->insertWidget(m_ui->verticalLayout->count() - 1, datagenTestButton);
+        connect(datagenTestButton, &QPushButton::clicked,
+            this, &PointPickPage::datagenLineCreateRequested);
 }
 
 PointPickPage::~PointPickPage()
