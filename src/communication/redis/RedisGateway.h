@@ -12,7 +12,6 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <vector>
 
 struct redisContext;
 class QTimer;
@@ -36,13 +35,16 @@ public:
     void disconnect();
     ConnectionState getConnectionState() const;
     bool waitForConnected(int timeoutMs = 2000);
+    QString getHost() const;
+    int getPort() const;
 
     void subscribe(const QString& channel);
     void unsubscribe(const QString& channel);
-    void publish(const QString& channel, const QByteArray& message);
+    bool publish(const QString& channel, const QByteArray& message);
 
     QVariant readKey(const QString& key);
-    void asyncReadKey(const QString& key);
+    bool writeKey(const QString& key, const QVariant& value);
+    bool writeJson(const QString& key, const QVariantMap& value);
 
     QString readString(const QString& key);
     QVariantMap readJson(const QString& key);
@@ -50,7 +52,6 @@ public:
 signals:
     void connectionStateChanged(RedisGateway::ConnectionState state);
     void messageReceived(const QString& channel, const QByteArray& message);
-    void keyValueReceived(const QString& key, const QVariant& value);
     void errorOccurred(const QString& errorMessage);
 
 private slots:
@@ -80,25 +81,20 @@ private:
     bool processPendingSubscriptionCommands(redisContext* context);
     bool appendSubscriptionCommand(redisContext* context, const SubscriptionCommand& command);
     void dispatchSubscriberReply(void* replyObject);
+    bool executeSet(redisContext* context, const QString& key, const QByteArray& value,
+                    QString* errorMessage) const;
     QVariant executeGet(redisContext* context, const QString& key, QString* errorMessage) const;
-    void cleanupAsyncWorkers(bool waitForAll);
 
     ConnectionState m_connectionState = Disconnected;
     QString m_host;
     int m_port = 0;
     mutable std::mutex m_commandMutex;
     std::mutex m_subscriptionMutex;
-    std::mutex m_asyncMutex;
     redisContext* m_commandContext = nullptr;
     redisContext* m_subscriberContext = nullptr;
     QTimer* m_reconnectTimer = nullptr;
     QSet<QString> m_subscribedChannels;
     std::deque<SubscriptionCommand> m_pendingSubscriptionCommands;
-    struct AsyncWorker {
-        std::shared_ptr<std::atomic_bool> done;
-        std::thread thread;
-    };
-    std::vector<AsyncWorker> m_asyncWorkers;
     std::thread m_subscriberThread;
     std::atomic_bool m_manualDisconnect{false};
     std::atomic_bool m_shutdownRequested{false};

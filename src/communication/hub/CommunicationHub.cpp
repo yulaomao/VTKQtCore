@@ -4,6 +4,7 @@
 #include "communication/datasource/PollingTask.h"
 #include "communication/datasource/SubscriptionSource.h"
 #include "communication/redis/RedisGateway.h"
+#include "communication/redis/RedisPollingWorker.h"
 #include "communication/routing/MessageRouter.h"
 
 #include <QDateTime>
@@ -48,6 +49,15 @@ CommunicationHub::CommunicationHub(RedisGateway* gateway, QObject* parent)
     m_pollingSource->moveToThread(m_pollingThread);
     connect(m_pollingThread, &QThread::finished,
             m_pollingSource, &QObject::deleteLater);
+
+    // Create a persistent polling connection that lives on the polling thread.
+    // This replaces the old asyncReadKey approach (which spawned a new thread
+    // + TCP connection for every single GET call).
+    m_pollingWorker = new RedisPollingWorker(QString(), 0);
+    m_pollingWorker->moveToThread(m_pollingThread);
+    connect(m_pollingThread, &QThread::finished,
+            m_pollingWorker, &QObject::deleteLater);
+
     m_pollingThread->start();
 
     m_outboundRetryTimer->setInterval(m_outboundRetryTickMs);
@@ -172,9 +182,12 @@ void CommunicationHub::initialize()
             });
 
     if (m_redisGateway) {
+        // Route poll requests directly to the persistent polling worker that
+        // lives on the polling thread.  Both objects share the same thread, so
+        // this is a Qt::DirectConnection and no extra thread is ever spawned.
         connect(m_pollingSource, &PollingSource::pollRequested,
-                m_redisGateway, &RedisGateway::asyncReadKey);
-        connect(m_redisGateway, &RedisGateway::keyValueReceived,
+                m_pollingWorker, &RedisPollingWorker::readKey);
+        connect(m_pollingWorker, &RedisPollingWorker::keyValueReceived,
                 m_pollingSource, &PollingSource::onPollResult);
     }
 
@@ -472,6 +485,12 @@ void CommunicationHub::activateTransport()
         return;
     }
 
+    // Keep the polling worker's connection parameters in sync with the gateway.
+    QMetaObject::invokeMethod(m_pollingWorker, "setConnection",
+                              Qt::QueuedConnection,
+                              Q_ARG(QString, m_redisGateway->getHost()),
+                              Q_ARG(int, m_redisGateway->getPort()));
+
     for (SubscriptionSource* source : m_subscriptionSources) {
         if (!source->isRunning()) {
             source->start();
@@ -564,10 +583,10 @@ void CommunicationHub::publishAck(const QString& category, const QVariantMap& pa
     refreshHealthSnapshot();
 }
 
-void CommunicationHub::publishJson(const QString& channel, const QVariantMap& payload)
+bool CommunicationHub::publishJson(const QString& channel, const QVariantMap& payload)
 {
     if (!m_redisGateway || channel.isEmpty()) {
-        return;
+        return false;
     }
 
     QVariantMap normalizedPayload = payload;
@@ -596,12 +615,12 @@ void CommunicationHub::publishJson(const QString& channel, const QVariantMap& pa
 
         if (m_confirmedOutboundWindow.contains(message.msgId) ||
             m_inflightReliableMessages.contains(message.msgId)) {
-            return;
+            return true;
         }
 
         for (const OutboundControlMessage& queuedMessage : m_outboundQueue) {
             if (queuedMessage.msgId == message.msgId) {
-                return;
+                return true;
             }
         }
     }
@@ -609,10 +628,11 @@ void CommunicationHub::publishJson(const QString& channel, const QVariantMap& pa
     if (m_redisGateway->getConnectionState() != RedisGateway::Connected) {
         m_outboundQueue.append(message);
         refreshHealthSnapshot();
-        return;
+        return false;
     }
 
     dispatchOutboundMessage(message);
+    return true;
 }
 
 void CommunicationHub::dispatchOutboundMessage(OutboundControlMessage message)

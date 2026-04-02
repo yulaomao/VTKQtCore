@@ -17,6 +17,7 @@ class PollingSource;
 class PollingTask;
 class QThread;
 class QTimer;
+class RedisPollingWorker;
 class SubscriptionSource;
 
 class CommunicationHub : public QObject
@@ -76,7 +77,7 @@ private:
     void stopPollingTransport(bool blocking = false);
     void publishAck(const QString& category, const QVariantMap& payload,
                     const QString& status = QStringLiteral("received"));
-    void publishJson(const QString& channel, const QVariantMap& payload);
+    bool publishJson(const QString& channel, const QVariantMap& payload);
     void dispatchOutboundMessage(OutboundControlMessage message);
     void flushOutboundQueue();
     void resendInflightMessages();
@@ -96,6 +97,7 @@ private:
     MessageRouter* m_messageRouter = nullptr;
     QVector<SubscriptionSource*> m_subscriptionSources;
     PollingSource* m_pollingSource = nullptr;
+    RedisPollingWorker* m_pollingWorker = nullptr;
     QThread* m_pollingThread = nullptr;
     QTimer* m_outboundRetryTimer = nullptr;
     QSet<QString> m_routingChannels;

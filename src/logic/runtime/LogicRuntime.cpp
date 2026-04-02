@@ -1,5 +1,6 @@
 #include "LogicRuntime.h"
 
+#include "communication/hub/IRedisCommandAccess.h"
 #include "scene/SceneGraph.h"
 #include "workflow/WorkflowStateMachine.h"
 #include "registry/ModuleLogicRegistry.h"
@@ -119,6 +120,51 @@ ModuleLogicRegistry* LogicRuntime::getModuleLogicRegistry() const
     return m_moduleLogicRegistry;
 }
 
+void LogicRuntime::setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess)
+{
+    m_redisCommandAccess = redisCommandAccess;
+}
+
+bool LogicRuntime::hasRedisCommandAccess() const
+{
+    return m_redisCommandAccess && m_redisCommandAccess->isAvailable();
+}
+
+QVariant LogicRuntime::readRedisValue(const QString& key)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readValue(key) : QVariant();
+}
+
+QString LogicRuntime::readRedisStringValue(const QString& key)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readStringValue(key) : QString();
+}
+
+QVariantMap LogicRuntime::readRedisJsonValue(const QString& key)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readJsonValue(key) : QVariantMap();
+}
+
+bool LogicRuntime::writeRedisValue(const QString& key, const QVariant& value)
+{
+    return m_redisCommandAccess && m_redisCommandAccess->writeValue(key, value);
+}
+
+bool LogicRuntime::writeRedisJsonValue(const QString& key, const QVariantMap& value)
+{
+    return m_redisCommandAccess && m_redisCommandAccess->writeJsonValue(key, value);
+}
+
+bool LogicRuntime::publishRedisMessage(const QString& channel, const QByteArray& message)
+{
+    return m_redisCommandAccess && m_redisCommandAccess->publishMessage(channel, message);
+}
+
+bool LogicRuntime::publishRedisJsonMessage(const QString& channel, const QVariantMap& payload)
+{
+    return m_redisCommandAccess && m_redisCommandAccess->publishJsonMessage(channel, payload);
+}
+
 void LogicRuntime::registerModuleHandler(ModuleLogicHandler* handler)
 {
     if (!handler) {
@@ -126,6 +172,7 @@ void LogicRuntime::registerModuleHandler(ModuleLogicHandler* handler)
     }
 
     handler->setSceneGraph(m_sceneGraph);
+    handler->setRedisCommandAccess(m_redisCommandAccess);
     m_moduleLogicRegistry->registerHandler(handler);
 
     connect(handler, &ModuleLogicHandler::logicNotification,
