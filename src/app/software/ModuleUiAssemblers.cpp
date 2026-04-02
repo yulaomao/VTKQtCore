@@ -1,6 +1,7 @@
 #include "ModuleUiAssemblers.h"
 
 #include "MainWindow.h"
+#include "shell/WorkspaceShell.h"
 #include "LogicRuntime.h"
 #include "ILogicGateway.h"
 #include "PageManager.h"
@@ -249,16 +250,12 @@ void registerPlanningModuleUi(const ModuleUiAssemblyContext& context)
 
     QObject::connect(page, &PlanningPage::generatePlanRequested,
                      coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(
-                             UiAction::CustomAction,
-                             {{QStringLiteral("subType"), QStringLiteral("generate_plan")}});
+                         coordinator->sendModuleAction(UiAction::GeneratePlan);
                      });
 
     QObject::connect(page, &PlanningPage::acceptPlanRequested,
                      coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(
-                             UiAction::CustomAction,
-                             {{QStringLiteral("subType"), QStringLiteral("accept_plan")}});
+                         coordinator->sendModuleAction(UiAction::AcceptPlan);
                      });
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,

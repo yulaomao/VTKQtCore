@@ -467,7 +467,19 @@ void LogicRuntime::routeToModuleHandler(const UiAction& action)
     ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(targetModule);
     if (handler) {
         handler->handleAction(action);
+        return;
     }
+
+    LogicNotification notification = createShellError(
+        QStringLiteral("LOGIC_UNROUTED_ACTION"),
+        QStringLiteral("No module handler registered for action target '%1'").arg(targetModule),
+        true,
+        QStringLiteral("Check module registration and action routing."),
+        {{QStringLiteral("targetModule"), targetModule},
+         {QStringLiteral("actionType"), UiAction::toString(action.actionType)}});
+    notification.setSourceActionId(action.actionId);
+    notification.setLevel(LogicNotification::Error);
+    emit logicNotification(notification);
 }
 
 bool LogicRuntime::acceptIncomingSequence(const QString& streamKey,

@@ -22,7 +22,7 @@ public:
 private:
     PointNode* ensureSelectionNode(SceneGraph* scene);
     PointNode* findSelectionNode(SceneGraph* scene) const;
-    void emitSelectionState(const QString& sourceActionId = QString()) const;
+    void emitSelectionState(const QString& sourceActionId = QString());
 
     QString m_pointNodeId;
     bool m_confirmed = false;

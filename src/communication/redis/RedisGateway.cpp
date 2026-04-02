@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QEventLoop>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QTcpSocket>
 #include <QTimer>
 
@@ -242,7 +243,7 @@ bool RedisGateway::waitForConnected(int timeoutMs)
 
     timeoutTimer.start(timeoutMs);
     loop.exec();
-    disconnect(stateConnection);
+    QObject::disconnect(stateConnection);
 
     return m_connectionState == Connected;
 }

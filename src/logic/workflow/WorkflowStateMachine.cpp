@@ -297,6 +297,13 @@ WorkflowDecision WorkflowStateMachine::evaluateAction(const UiAction& action) co
             m_currentModule,
             m_workflowSequence,
             QStringLiteral("pointpick"));
+    case UiAction::GeneratePlan:
+    case UiAction::AcceptPlan:
+        return evaluateModuleScopedAction(
+            action,
+            m_currentModule,
+            m_workflowSequence,
+            QStringLiteral("planning"));
     case UiAction::StartNavigation:
     case UiAction::StopNavigation:
         return evaluateModuleScopedAction(

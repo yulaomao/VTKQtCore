@@ -118,6 +118,7 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
         if (!newModuleId.isEmpty()) {
             setCurrentModule(newModuleId);
         }
+        emit workflowDecisionChanged(QString(), QString());
         break;
     }
 
@@ -152,6 +153,8 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
                 setCurrentModule(moduleId);
             }
         }
+
+        emit workflowDecisionChanged(QString(), QString());
         break;
 
     case LogicNotification::ErrorOccurred:

@@ -12,6 +12,8 @@ struct UiAction
         PrevStep,
         RequestSwitchModule,
         ConfirmPoints,
+        GeneratePlan,
+        AcceptPlan,
         StartNavigation,
         StopNavigation,
         UpdateParameter,
@@ -35,6 +37,10 @@ struct UiAction
             return QStringLiteral("request_switch_module");
         case ConfirmPoints:
             return QStringLiteral("confirm_points");
+        case GeneratePlan:
+            return QStringLiteral("generate_plan");
+        case AcceptPlan:
+            return QStringLiteral("accept_plan");
         case StartNavigation:
             return QStringLiteral("start_navigation");
         case StopNavigation:
@@ -68,6 +74,14 @@ struct UiAction
         }
         if (normalized == QStringLiteral("confirm_points")) {
             type = ConfirmPoints;
+            return true;
+        }
+        if (normalized == QStringLiteral("generate_plan")) {
+            type = GeneratePlan;
+            return true;
+        }
+        if (normalized == QStringLiteral("accept_plan")) {
+            type = AcceptPlan;
             return true;
         }
         if (normalized == QStringLiteral("start_navigation")) {

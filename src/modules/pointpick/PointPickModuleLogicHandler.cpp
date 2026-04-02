@@ -266,7 +266,7 @@ PointNode* PointPickModuleLogicHandler::findSelectionNode(SceneGraph* scene) con
     return nullptr;
 }
 
-void PointPickModuleLogicHandler::emitSelectionState(const QString& sourceActionId) const
+void PointPickModuleLogicHandler::emitSelectionState(const QString& sourceActionId)
 {
     QVariantMap payload;
     payload.insert(QStringLiteral("pointNodeId"), m_pointNodeId);

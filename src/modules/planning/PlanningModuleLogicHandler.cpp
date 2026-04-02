@@ -192,13 +192,7 @@ void PlanningModuleLogicHandler::onModuleActivated()
 
 void PlanningModuleLogicHandler::handleAction(const UiAction& action)
 {
-    if (action.actionType != UiAction::CustomAction) {
-        return;
-    }
-
-    const QString subType = action.payload.value(QStringLiteral("subType")).toString();
-
-    if (subType == QStringLiteral("generate_plan")) {
+    if (action.actionType == UiAction::GeneratePlan) {
         auto* modelNode = ensurePlanModelNode(getSceneGraph());
         auto* lineNode = ensurePlanPathNode(getSceneGraph());
         if (!modelNode || !lineNode) {
@@ -208,7 +202,7 @@ void PlanningModuleLogicHandler::handleAction(const UiAction& action)
         ensureDefaultPlanGeometry(modelNode, lineNode);
         m_planStatus = QStringLiteral("generated");
         emitPlanningState(LogicNotification::SceneNodesUpdated, action.actionId);
-    } else if (subType == QStringLiteral("accept_plan")) {
+    } else if (action.actionType == UiAction::AcceptPlan) {
         ensurePlanModelNode(getSceneGraph());
         ensurePlanPathNode(getSceneGraph());
         m_planStatus = QStringLiteral("accepted");
@@ -382,7 +376,7 @@ void PlanningModuleLogicHandler::ensureDefaultPlanGeometry(ModelNode* modelNode,
 
 void PlanningModuleLogicHandler::emitPlanningState(LogicNotification::EventType eventType,
                                                    const QString& sourceActionId,
-                                                   const QString& sourceSampleId) const
+                                                   const QString& sourceSampleId)
 {
     QVariantMap payload;
     payload.insert(QStringLiteral("planModelNodeId"), m_planModelNodeId);

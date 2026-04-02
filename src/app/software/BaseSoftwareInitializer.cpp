@@ -11,6 +11,7 @@
 #include "shell/ShellWorkflowMenu.h"
 #include "shell/ShellStatusBar.h"
 
+#include <QLayout>
 #include <QSet>
 
 namespace {
@@ -112,11 +113,11 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
 
     auto* workflowMenu = new ShellWorkflowMenu(mainWindow->getWorkspaceShell());
     workflowMenu->setWorkflowSequence(sequence);
-    workflowMenu->setEnterableModules(m_workflowStateMachine->getEnterableModules());
+    workflowMenu->setEnterableModules(m_workflowStateMachine->getEnterableModules().values());
 
     auto* statusBar = new ShellStatusBar(mainWindow->getWorkspaceShell());
     statusBar->setWorkflowSequence(sequence);
-    statusBar->setEnterableModules(m_workflowStateMachine->getEnterableModules());
+    statusBar->setEnterableModules(m_workflowStateMachine->getEnterableModules().values());
     statusBar->setConnectionState(gatewayStateName(gateway));
 
     if (QWidget* rightShellHost = mainWindow->getWorkspaceShell()->getRightShellHost()) {

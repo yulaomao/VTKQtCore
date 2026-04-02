@@ -23,7 +23,7 @@ private:
     TransformNode* ensureToolTransformNode(SceneGraph* scene);
     TransformNode* findToolTransformNode(SceneGraph* scene) const;
     void emitNavigationState(const QString& sourceActionId = QString(),
-                             const QString& sourceSampleId = QString()) const;
+                             const QString& sourceSampleId = QString());
 
     QString m_toolTransformNodeId;
     bool m_navigating = false;

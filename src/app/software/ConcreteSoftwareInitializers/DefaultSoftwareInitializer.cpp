@@ -14,6 +14,12 @@
 
 namespace {
 
+QString stringFromVariantOrDefault(const QVariant& value, const QString& fallback)
+{
+    const QString text = value.toString().trimmed();
+    return text.isEmpty() ? fallback : text;
+}
+
 QString defaultSubscriptionChannel(const QString& moduleId)
 {
     return QStringLiteral("state.%1").arg(moduleId);
@@ -70,28 +76,34 @@ QStringList routingChannelsFromProfile(const QVariantMap& profile)
 
 QString outboundControlChannelFromProfile(const QVariantMap& profile)
 {
-    return communicationProfile(profile).value(
-        QStringLiteral("controlPublishChannel")).toString(defaultControlPublishChannel());
+    return stringFromVariantOrDefault(
+        communicationProfile(profile).value(QStringLiteral("controlPublishChannel")),
+        defaultControlPublishChannel());
 }
 
 QString ackChannelFromProfile(const QVariantMap& profile)
 {
-    return communicationProfile(profile).value(
-        QStringLiteral("ackChannel")).toString(defaultAckChannel());
+    return stringFromVariantOrDefault(
+        communicationProfile(profile).value(QStringLiteral("ackChannel")),
+        defaultAckChannel());
 }
 
 QString subscriptionChannelForModule(const QVariantMap& profile, const QString& moduleId)
 {
     const QVariantMap channels = communicationProfile(profile).value(
         QStringLiteral("subscriptionChannels")).toMap();
-    return channels.value(moduleId).toString(defaultSubscriptionChannel(moduleId));
+    return stringFromVariantOrDefault(
+        channels.value(moduleId),
+        defaultSubscriptionChannel(moduleId));
 }
 
 QString pollingKeyForModule(const QVariantMap& profile, const QString& moduleId)
 {
     const QVariantMap keys = communicationProfile(profile).value(
         QStringLiteral("pollingKeys")).toMap();
-    return keys.value(moduleId).toString(defaultPollingKey(moduleId));
+    return stringFromVariantOrDefault(
+        keys.value(moduleId),
+        defaultPollingKey(moduleId));
 }
 
 int pollingIntervalForModule(const QVariantMap& profile, const QString& moduleId)

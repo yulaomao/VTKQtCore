@@ -163,6 +163,12 @@ TransformNode* NavigationModuleLogicHandler::ensureToolTransformNode(SceneGraph*
 
     if (!m_toolTransformNodeId.isEmpty()) {
         if (auto* existing = scene->getNodeById<TransformNode>(m_toolTransformNodeId)) {
+            if (existing->getSourceSpace().isEmpty()) {
+                existing->setSourceSpace(QStringLiteral("tool"));
+            }
+            if (existing->getTargetSpace().isEmpty()) {
+                existing->setTargetSpace(QStringLiteral("patient"));
+            }
             return existing;
         }
         m_toolTransformNodeId.clear();
@@ -170,11 +176,19 @@ TransformNode* NavigationModuleLogicHandler::ensureToolTransformNode(SceneGraph*
 
     if (auto* existing = findToolTransformNode(scene)) {
         m_toolTransformNodeId = existing->getNodeId();
+        if (existing->getSourceSpace().isEmpty()) {
+            existing->setSourceSpace(QStringLiteral("tool"));
+        }
+        if (existing->getTargetSpace().isEmpty()) {
+            existing->setTargetSpace(QStringLiteral("patient"));
+        }
         return existing;
     }
 
     auto* transformNode = new TransformNode(scene);
     transformNode->setTransformKind(QStringLiteral("tool_tracking"));
+    transformNode->setSourceSpace(QStringLiteral("tool"));
+    transformNode->setTargetSpace(QStringLiteral("patient"));
     transformNode->setShowAxes(true);
     DisplayTarget navigationTarget;
     navigationTarget.visible = true;
@@ -202,7 +216,7 @@ TransformNode* NavigationModuleLogicHandler::findToolTransformNode(SceneGraph* s
 }
 
 void NavigationModuleLogicHandler::emitNavigationState(const QString& sourceActionId,
-                                                       const QString& sourceSampleId) const
+                                                       const QString& sourceSampleId)
 {
     QVariantMap payload;
     payload.insert(QStringLiteral("toolTransformNodeId"), m_toolTransformNodeId);

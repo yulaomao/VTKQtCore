@@ -28,7 +28,7 @@ private:
     void ensureDefaultPlanGeometry(ModelNode* modelNode, LineNode* pathNode) const;
     void emitPlanningState(LogicNotification::EventType eventType,
                            const QString& sourceActionId = QString(),
-                           const QString& sourceSampleId = QString()) const;
+                           const QString& sourceSampleId = QString());
 
     QString m_planModelNodeId;
     QString m_planPathNodeId;
