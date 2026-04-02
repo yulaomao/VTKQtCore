@@ -6,13 +6,18 @@
 #include "ILogicGateway.h"
 #include "LogicRuntime.h"
 #include "MainWindow.h"
-#include "WorkflowStateMachine.h"
 #include "communication/hub/CommunicationHub.h"
 #include "communication/datasource/PollingTask.h"
 #include "communication/datasource/SubscriptionSource.h"
-#include "modules/workflowshell/WorkflowMenuModule.h"
-#include "modules/workflowshell/WorkflowStatusBarModule.h"
+#include "modules/intermoduletest/InterModuleReceiverLogicHandler.h"
+#include "modules/intermoduletest/InterModuleReceiverWidget.h"
+#include "modules/intermoduletest/InterModuleSenderLogicHandler.h"
+#include "modules/intermoduletest/InterModuleSenderWidget.h"
+#include "modules/intermoduletest/InterModuleTestConstants.h"
+#include "modules/workflowshell/ModuleNavigationModule.h"
+#include "modules/workflowshell/ModuleStatusBarModule.h"
 #include "shell/WorkspaceShell.h"
+#include "ui/coordination/UiActionDispatcher.h"
 
 #include "ParamsModuleLogicHandler.h"
 #include "DataGenModuleLogicHandler.h"
@@ -20,6 +25,7 @@
 #include "PlanningModuleLogicHandler.h"
 #include "NavigationModuleLogicHandler.h"
 
+#include <QHBoxLayout>
 #include <QLayout>
 #include <QVector>
 
@@ -230,7 +236,7 @@ QStringList DefaultSoftwareInitializer::getEnabledModules() const
     };
 }
 
-QStringList DefaultSoftwareInitializer::getWorkflowSequence() const
+QStringList DefaultSoftwareInitializer::getModuleDisplayOrder() const
 {
     return {
         QStringLiteral("datagen"),
@@ -248,6 +254,13 @@ QString DefaultSoftwareInitializer::getInitialModule() const
 
 void DefaultSoftwareInitializer::registerModuleLogicHandlers(LogicRuntime* runtime)
 {
+    if (!runtime) {
+        return;
+    }
+
+    runtime->registerModuleHandler(new InterModuleSenderLogicHandler(runtime));
+    runtime->registerModuleHandler(new InterModuleReceiverLogicHandler(runtime));
+
     if (isModuleEnabled(QStringLiteral("datagen"))) {
         runtime->registerModuleHandler(new DataGenModuleLogicHandler(runtime));
     }
@@ -303,7 +316,7 @@ void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
 {
     Q_UNUSED(runtime);
 
-    if (!mainWindow || !appCoord || !gateway || !m_workflowStateMachine) {
+    if (!mainWindow || !appCoord || !gateway) {
         return;
     }
 
@@ -314,15 +327,33 @@ void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
 
     workspaceShell->getRightWidget()->setFixedWidth(320);
 
-    const QStringList workflowSequence = configuredWorkflowSequence();
+    const QStringList workflowSequence = configuredModuleDisplayOrder();
 
-    auto* workflowMenu = new WorkflowMenuModule(workspaceShell);
-    workflowMenu->setWorkflowSequence(workflowSequence);
+    auto* workflowMenu = new ModuleNavigationModule(workspaceShell);
+    workflowMenu->setModuleDisplayOrder(workflowSequence);
     workflowMenu->setConnectionState(gatewayStateName(gateway));
+    workflowMenu->setActionDispatcher(appCoord->getActionDispatcher());
 
-    auto* statusBar = new WorkflowStatusBarModule(workspaceShell);
-    statusBar->setWorkflowSequence(workflowSequence);
+    auto* statusBar = new ModuleStatusBarModule(workspaceShell);
+    statusBar->setModuleDisplayOrder(workflowSequence);
     statusBar->setConnectionState(gatewayStateName(gateway));
+    statusBar->setActionDispatcher(appCoord->getActionDispatcher());
+
+    auto* interModuleSenderDispatcher = new UiActionDispatcher(
+        InterModuleTest::senderModuleId(),
+        gateway,
+        workspaceShell);
+
+    auto* topSenderWidget = new InterModuleSenderWidget(
+        interModuleSenderDispatcher,
+        workspaceShell->getTopWidget());
+    auto* topReceiverWidget = new InterModuleReceiverWidget(gateway, workspaceShell->getTopWidget());
+
+    if (auto* topLayout = qobject_cast<QHBoxLayout*>(workspaceShell->getTopWidget()->layout())) {
+        topLayout->addWidget(topSenderWidget, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        topLayout->addStretch(1);
+        topLayout->addWidget(topReceiverWidget, 0, Qt::AlignRight | Qt::AlignVCenter);
+    }
 
     if (QWidget* rightShellHost = workspaceShell->getRightShellHost()) {
         rightShellHost->layout()->addWidget(workflowMenu);
@@ -332,25 +363,18 @@ void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
     }
     workspaceShell->refreshHostVisibility();
 
-    QObject::connect(workflowMenu, &WorkflowMenuModule::moduleSelected,
-                     appCoord, &ApplicationCoordinator::requestSwitchModule);
-    QObject::connect(workflowMenu, &WorkflowMenuModule::resyncRequested,
-                     appCoord, &ApplicationCoordinator::requestResync);
-    QObject::connect(statusBar, &WorkflowStatusBarModule::resyncRequested,
-                     appCoord, &ApplicationCoordinator::requestResync);
-
     QObject::connect(appCoord, &ApplicationCoordinator::currentModuleChanged,
-                     workflowMenu, &WorkflowMenuModule::setCurrentModule);
+                     workflowMenu, &ModuleNavigationModule::setCurrentModule);
     QObject::connect(appCoord, &ApplicationCoordinator::currentModuleChanged,
-                     statusBar, &WorkflowStatusBarModule::setCurrentModule);
+                     statusBar, &ModuleStatusBarModule::setCurrentModule);
     QObject::connect(appCoord, &ApplicationCoordinator::connectionStateChanged,
-                     workflowMenu, &WorkflowMenuModule::setConnectionState);
+                     workflowMenu, &ModuleNavigationModule::setConnectionState);
     QObject::connect(appCoord, &ApplicationCoordinator::connectionStateChanged,
-                     statusBar, &WorkflowStatusBarModule::setConnectionState);
+                     statusBar, &ModuleStatusBarModule::setConnectionState);
     QObject::connect(appCoord, &ApplicationCoordinator::healthSnapshotChanged,
-                     statusBar, &WorkflowStatusBarModule::setHealthSnapshot);
+                     statusBar, &ModuleStatusBarModule::setHealthSnapshot);
     QObject::connect(gateway, &ILogicGateway::notificationReceived,
-                     workflowMenu, &WorkflowMenuModule::onGatewayNotification);
+                     workflowMenu, &ModuleNavigationModule::onGatewayNotification);
 }
 
 void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)

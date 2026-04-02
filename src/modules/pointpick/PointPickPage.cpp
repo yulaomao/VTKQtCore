@@ -1,5 +1,7 @@
 #include "PointPickPage.h"
 
+#include "PointPickUiCommands.h"
+#include "ui/coordination/UiActionDispatcher.h"
 #include "ui_PointPickPage.h"
 
 #include <QPushButton>
@@ -13,12 +15,35 @@ PointPickPage::PointPickPage(QWidget* parent)
     setConfirmed(false);
 
     connect(m_ui->confirmButton, &QPushButton::clicked,
-            this, &PointPickPage::confirmPointsRequested);
+            this, [this]() {
+                if (m_actionDispatcher) {
+                    m_actionDispatcher->sendCommand(PointPickUiCommands::confirmPoints());
+                }
+            });
 
-        auto* datagenTestButton = new QPushButton(QStringLiteral("Test Datagen: Create Line"), this);
-        m_ui->verticalLayout->insertWidget(m_ui->verticalLayout->count() - 1, datagenTestButton);
-        connect(datagenTestButton, &QPushButton::clicked,
-            this, &PointPickPage::datagenLineCreateRequested);
+    auto* datagenTestButton = new QPushButton(QStringLiteral("Test Datagen: Create Line"), this);
+    m_ui->verticalLayout->insertWidget(m_ui->verticalLayout->count() - 1, datagenTestButton);
+    connect(datagenTestButton, &QPushButton::clicked,
+            this, [this]() {
+                if (!m_actionDispatcher) {
+                    return;
+                }
+
+                m_actionDispatcher->sendTargetedCommand(
+                    QStringLiteral("datagen"),
+                    QStringLiteral("create_node"),
+                    {{QStringLiteral("nodeType"), QStringLiteral("line")},
+                     {QStringLiteral("name"), QStringLiteral("PointPick Relay Path")},
+                     {QStringLiteral("count"), 5},
+                     {QStringLiteral("spacing"), 20.0},
+                     {QStringLiteral("closed"), false},
+                     {QStringLiteral("relaySourceModule"), QStringLiteral("pointpick")}});
+            });
+}
+
+void PointPickPage::setActionDispatcher(UiActionDispatcher* dispatcher)
+{
+    m_actionDispatcher = dispatcher;
 }
 
 PointPickPage::~PointPickPage()

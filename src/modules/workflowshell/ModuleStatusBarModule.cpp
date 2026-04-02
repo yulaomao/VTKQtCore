@@ -1,5 +1,7 @@
 #include "ModuleStatusBarModule.h"
 
+#include "ui/coordination/UiActionDispatcher.h"
+
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -70,8 +72,15 @@ ModuleStatusBarModule::ModuleStatusBarModule(QWidget* parent)
     layout->addWidget(resyncButton);
 
     connect(resyncButton, &QPushButton::clicked, this, [this]() {
-        emit resyncRequested(QStringLiteral("module_status_bar_module"));
+        if (m_actionDispatcher) {
+            m_actionDispatcher->requestResync(QStringLiteral("module_status_bar_module"));
+        }
     });
+}
+
+void ModuleStatusBarModule::setActionDispatcher(UiActionDispatcher* dispatcher)
+{
+    m_actionDispatcher = dispatcher;
 }
 
 void ModuleStatusBarModule::setModuleDisplayOrder(const QStringList& modules)

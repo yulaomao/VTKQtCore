@@ -1,5 +1,8 @@
 #include "NavigationPage.h"
 
+#include "NavigationUiCommands.h"
+#include "ui/coordination/UiActionDispatcher.h"
+
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -53,12 +56,38 @@ NavigationPage::NavigationPage(QWidget* parent)
     mainLayout->addWidget(scenePanel, 1);
 
     connect(m_startBtn, &QPushButton::clicked,
-            this, &NavigationPage::startNavigationRequested);
+            this, [this]() {
+                if (m_actionDispatcher) {
+                    m_actionDispatcher->sendCommand(NavigationUiCommands::startNavigation());
+                }
+            });
 
     connect(m_stopBtn, &QPushButton::clicked,
-            this, &NavigationPage::stopNavigationRequested);
-        connect(m_datagenTestBtn, &QPushButton::clicked,
-            this, &NavigationPage::datagenTransformCreateRequested);
+            this, [this]() {
+                if (m_actionDispatcher) {
+                    m_actionDispatcher->sendCommand(NavigationUiCommands::stopNavigation());
+                }
+            });
+    connect(m_datagenTestBtn, &QPushButton::clicked,
+            this, [this]() {
+                if (!m_actionDispatcher) {
+                    return;
+                }
+
+                m_actionDispatcher->sendTargetedCommand(
+                    QStringLiteral("datagen"),
+                    QStringLiteral("create_node"),
+                    {{QStringLiteral("nodeType"), QStringLiteral("transform")},
+                     {QStringLiteral("name"), QStringLiteral("Navigation Relay Transform")},
+                     {QStringLiteral("showAxes"), true},
+                     {QStringLiteral("axesLength"), 48.0},
+                     {QStringLiteral("relaySourceModule"), QStringLiteral("navigation")}});
+            });
+}
+
+void NavigationPage::setActionDispatcher(UiActionDispatcher* dispatcher)
+{
+    m_actionDispatcher = dispatcher;
 }
 
 void NavigationPage::setSceneWindow(QWidget* sceneWindow)

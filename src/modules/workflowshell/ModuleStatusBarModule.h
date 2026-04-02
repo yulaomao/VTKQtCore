@@ -7,6 +7,7 @@
 
 class QLabel;
 class QPushButton;
+class UiActionDispatcher;
 
 class ModuleStatusBarModule : public QWidget
 {
@@ -15,15 +16,13 @@ class ModuleStatusBarModule : public QWidget
 public:
     explicit ModuleStatusBarModule(QWidget* parent = nullptr);
 
+    void setActionDispatcher(UiActionDispatcher* dispatcher);
     void setModuleDisplayOrder(const QStringList& modules);
 
 public slots:
     void setCurrentModule(const QString& moduleId);
     void setConnectionState(const QString& state);
     void setHealthSnapshot(const QVariantMap& snapshot);
-
-signals:
-    void resyncRequested(const QString& reason);
 
 private:
     void refreshState();
@@ -33,6 +32,7 @@ private:
     QString m_currentModule;
     QString m_connectionState = QStringLiteral("Disconnected");
     QString m_healthState = QStringLiteral("offline");
+    UiActionDispatcher* m_actionDispatcher = nullptr;
     QLabel* m_stepLabel = nullptr;
     QLabel* m_connectionLabel = nullptr;
     QLabel* m_healthLabel = nullptr;

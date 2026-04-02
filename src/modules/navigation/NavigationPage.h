@@ -6,6 +6,7 @@ class QLabel;
 class QPushButton;
 class QVBoxLayout;
 class QWidget;
+class UiActionDispatcher;
 
 class NavigationPage : public QWidget
 {
@@ -14,12 +15,8 @@ class NavigationPage : public QWidget
 public:
     explicit NavigationPage(QWidget* parent = nullptr);
 
+    void setActionDispatcher(UiActionDispatcher* dispatcher);
     void setSceneWindow(QWidget* sceneWindow);
-
-signals:
-    void startNavigationRequested();
-    void stopNavigationRequested();
-    void datagenTransformCreateRequested();
 
 public slots:
     void setNavigationStatus(const QString& status);
@@ -27,6 +24,7 @@ public slots:
     void setNavigating(bool navigating);
 
 private:
+    UiActionDispatcher* m_actionDispatcher = nullptr;
     QLabel* m_statusLabel = nullptr;
     QPushButton* m_startBtn = nullptr;
     QPushButton* m_stopBtn = nullptr;

@@ -31,7 +31,7 @@
 框架保留的核心对象包括：
 
 1. 启动与软件装配层：RedisSoftwareResolver、SoftwareInitializerFactory、BaseSoftwareInitializer、各具体软件初始化类。
-2. UI 层：MainWindow、WorkspaceShell、PageManager、ApplicationCoordinator、GlobalUiManager、各业务主模块 UI、由具体软件自行装配的 shell extension UI。
+2. UI 层：MainWindow、WorkspaceShell、PageManager、ApplicationCoordinator、ModuleCoordinator 持有并注入的 UiActionDispatcher、GlobalUiManager、各业务主模块 UI、由具体软件自行装配的 shell extension UI。
 3. 契约层：ILogicGateway、UiAction、LogicNotification、ModuleInvokeRequest、ModuleInvokeResult。
 4. 逻辑层：LogicRuntime、IModuleInvoker、ActiveModuleState、ModuleLogicRegistry、SceneGraph、NodeBase、PointNode、LineNode、ModelNode、TransformNode。
 5. 显示管理层：NodeDisplayManager 及其按节点类型的子类（PointNodeDisplayManager、ModelNodeDisplayManager、LineNodeDisplayManager、TransformNodeDisplayManager）。
@@ -61,6 +61,7 @@ Desktop Client
 │  ├─ WorkspaceShell
 │  ├─ PageManager
 │  ├─ ApplicationCoordinator
+│  ├─ UiActionDispatcher
 │  ├─ GlobalUiManager
 │  └─ 各业务模块 UI
 │
@@ -280,13 +281,13 @@ MainWindow
 
 ```text
 Shell UI
-   └─ emit shellAction(UiAction)
-      └─ ApplicationCoordinator
+   └─ 页面内部构造 UiAction 或 requestResync 参数
+      └─ 由 ApplicationCoordinator 持有并注入的 shell-bound UiActionDispatcher
          └─ ILogicGateway::sendAction(...)
 
 Module UI / Shell Extension UI
-   └─ emit moduleAction(UiAction)
-      └─ 所属模块 ModuleCoordinator
+   └─ QWidget 包装类内部构造 payload.command / payload.targetModule
+      └─ 调用由 ModuleCoordinator 持有并注入的 module-bound UiActionDispatcher
          └─ ILogicGateway::sendAction(...)
             └─ Qt::QueuedConnection
                └─ LogicRuntime::onActionReceived(...)
@@ -333,7 +334,7 @@ UI 发给逻辑层的动作。
 统一字段：
 
 1. actionId：全局唯一动作 id。
-2. actionType：动作类型，例如 request_switch_module、confirm_points、custom_action。
+2. actionType：动作类型，例如 request_switch_module、custom_action。
 3. module：动作来源模块；对显式路由动作，来源模块与目标模块可以不同。
 4. timestampMs：毫秒时间戳。
 5. payload：动作参数。
@@ -342,11 +343,23 @@ UI 发给逻辑层的动作。
 
 1. actionId 全局唯一，用于去重和重试。
 2. payload 只放最小必要参数，不放大体量几何数据。
-3. actionType 使用固定枚举，避免字符串随意扩散。
+3. actionType 只保留少量稳定的顶层枚举；模块级页面动作默认使用 custom_action，并在 payload.command 中表达模块命令，避免全局枚举持续膨胀。
 4. 框架不再依据全局流程顺序判定 UiAction 是否“允许执行”；动作是否有效由目标模块或软件自定义策略决定。
 5. 当外部动作需要显式发往某个非当前模块时，推荐在 payload 中提供 targetModule；LogicRuntime 优先按该字段路由。
 
-在 Qt 里，壳层动作由 ApplicationCoordinator 转给 ILogicGateway，模块细节动作由对应 ModuleCoordinator 转给 ILogicGateway。
+在 Qt 里，壳层动作由 ApplicationCoordinator 持有的 shell-bound UiActionDispatcher 转给 ILogicGateway，模块细节动作由对应 ModuleCoordinator 持有的 module-bound UiActionDispatcher 转给 ILogicGateway。
+
+### 6.1.1 UI 出站消息构建规则
+
+为避免页面按钮数量增长后把 ModuleUiAssemblers 膨胀成“信号翻译表”，UI 出站消息统一采用“页面内构建、dispatcher 统一发送”的规则。
+
+规则：
+
+1. QWidget 包装类在 clicked 或等价交互槽内直接构造 UiAction 所需 payload，不再为每个按钮额外声明一个专用 Qt signal 再交给装配层翻译。
+2. 页面不直接持有 LogicRuntime，不直接操作 SceneGraph，也不直接访问 Redis；页面只持有由 ModuleCoordinator 或 ApplicationCoordinator 注入的 UiActionDispatcher。
+3. 软件装配层负责创建页面、创建协调器、注入 dispatcher、注册页面和通知分发，不再承担“逐按钮 connect 后拼 UiAction”的职责。
+4. 模块内稳定页面动作应优先收敛为 payload.command，例如 apply_parameters、generate_plan、start_navigation，而不是继续扩张全局 UiAction 枚举。
+5. shell 级模块切换仍使用 request_switch_module 这类顶层动作；重同步仍经 ILogicGateway::requestResync 触发，不伪装成普通模块命令。
 
 ### 6.2 LogicNotification
 
@@ -499,13 +512,18 @@ UI 模块协同遵循以下规则：
 
 1. UI 模块之间不直接互调，统一通过 UiAction 和 LogicNotification 协同。
 2. ApplicationCoordinator 仅处理壳层事件与挂载，例如 module_changed、page_changed、workflow_changed、connection_state_changed，以及全局工具窗和壳层附属模块挂载。
-3. ModuleCoordinator 是模块 UI 协调入口，负责接收模块动作、调用 ILogicGateway、接收模块通知，并刷新主页面和附属 widget。
+3. ModuleCoordinator 是模块 UI 协调入口，负责持有并注入 module-bound UiActionDispatcher、接收模块通知，并刷新主页面和附属 widget；它不再为每个按钮单独承担信号到 UiAction 的翻译工作。
 4. ModuleLogicHandler 是逻辑侧模块处理入口，负责接收模块动作和 Redis 数据、更新 SceneGraph 与模块状态，并发出 LogicNotification。3D 场景刷新由显示管理层观察 SceneGraph 事件后自动完成，ModuleCoordinator 负责分发非 3D 的模块级通知。
 5. UI 主线程内允许 ApplicationCoordinator 到 PageManager、GlobalUiManager，以及 ModuleCoordinator 到所属 UI 的直接函数调用；跨线程和跨边界交互统一走 Gateway + signal/slot。
 6. 主模块可带零个或多个附属 widget；附属 widget 不决定主模块切换，只承载展示和动作入口。
 7. 3D 窗口可作为模块内部组成部分存在，不直接跨模块共享；其全局登记与工具窗能力由 GlobalUiManager 管理，具体场景渲染刷新由对应窗口持有的 NodeDisplayManager 体系完成，ModuleCoordinator 只负责非 3D 模块界面的刷新。
-8. 若模块由多个 .ui 包装类组成，ModuleCoordinator 负责统一分发 LogicNotification；各 QWidget 包装类只消费自己需要的字段，不共享生成代码对象。
+8. 若模块由多个 .ui 包装类组成，ModuleCoordinator 负责统一分发 LogicNotification 并向这些页面注入同一个 module-bound UiActionDispatcher；各 QWidget 包装类只消费自己需要的字段，不共享生成代码对象。
 9. 主程序全局样式切换只允许经应用级样式管理器或等价入口完成；模块 UI 不得私自改写 QApplication 级样式表。
+
+补充约束：
+
+1. ModuleUiAssemblers 或等价装配代码只负责 new 页面、setActionDispatcher、registerPage 和 notification connect；不应继续按按钮数量增长而线性追加业务 lambda。
+2. 单个页面可以根据自身控件状态一次性拼出完整 payload，例如整张参数表单一次提交，而不是把一次用户动作拆成多条细粒度 UiAction。
 
 逻辑侧模块协同遵循以下规则：
 
@@ -1387,7 +1405,8 @@ src/
 ├─ ui/
 │  ├─ coordination/
 │  │  ├─ ApplicationCoordinator.h/.cpp
-│  │  └─ ModuleCoordinator.h/.cpp
+│  │  ├─ ModuleCoordinator.h/.cpp
+│  │  └─ UiActionDispatcher.h/.cpp
 │  ├─ globalui/
 │  │  ├─ AppStyleManager.h/.cpp
 │  │  └─ GlobalUiManager.h/.cpp
@@ -1484,7 +1503,7 @@ src/
 1. 框架以边界稳定和装配可变为优先，不以 UI 与逻辑完全独立运行为前提。
 2. 对象集合保持最小，仅保留 PointNode、LineNode、ModelNode、TransformNode 四类场景节点，不引入 SurfaceNode、ParameterNode、VolumeNode、SceneSnapshot、ModuleStateStore、ModuleViewScene、UiStateSnapshot、UiStateStore。
 3. 启动阶段先解析软件类型，再由 BaseSoftwareInitializer、SoftwareInitializerFactory 和具体初始化类完成模块组合、模块展示顺序与初始模块装配。
-4. UI 与逻辑边界统一通过 ILogicGateway、UiAction、LogicNotification 建立；逻辑侧模块内部协同统一通过 ModuleInvokeRequest、ModuleInvokeResult 和 IModuleInvoker 建立；UI 侧协调入口为 ModuleCoordinator，逻辑侧模块处理入口为 ModuleLogicHandler。
+4. UI 与逻辑边界统一通过 ILogicGateway、UiAction、LogicNotification 建立；逻辑侧模块内部协同统一通过 ModuleInvokeRequest、ModuleInvokeResult 和 IModuleInvoker 建立；UI 侧协调入口为 ModuleCoordinator 和其持有的 UiActionDispatcher，逻辑侧模块处理入口为 ModuleLogicHandler。
 5. ActiveModuleState 仅维护当前激活模块真相；ApplicationCoordinator 处理壳层事件，模块细节由 ModuleCoordinator 与 ModuleLogicHandler 收口。
 6. 3D 采用共享 SceneGraph、节点级显示策略、类型化 NodeDisplayManager 和固定三层 renderer 的方案；VtkSceneWindow 只做窗口与渲染宿主，不承载全部节点显示逻辑。
 7. 通信层采用控制面与数据面分离的双模式结构；控制面承载动作请求、服务端流程指令和结果通知，数据面承载高频状态输入。
@@ -1498,7 +1517,8 @@ src/
 15. CommunicationHub 不能只负责样本合流，还必须承担 datasource 错误上送职责；同时 LogicRuntime 和 ModuleLogicHandler 的主动 Redis 命令应通过独立的 RedisLogicCommandAccess 永久连接提供，避免与控制面 command 连接互相挤占。
 16. shell 级错误呈现必须经由 ApplicationCoordinator + GlobalUiManager 统一收口，不能依赖某个业务模块页面偶然感知并展示。
 17. 多窗口 3D 中的“恢复标准视角”必须恢复到初始化记录参数，而不是退化为通用 ResetCamera 语义。
-18. 模块 UI 可以拆为多个 .ui 包装类，但这些页面都必须通过同一个 ModuleCoordinator 汇聚动作与通知，不能绕过 Gateway 直接访问逻辑层。
-19. 模块级图片、图标和局部样式资源统一走 .qrc；运行时不得依赖外部相对路径资源才能完成主流程 UI 装配。
-20. 主程序壳层也必须拥有独立的 MainWindow.ui 和主程序 qrc，使顶级布局与品牌资源配置化，而不是散落在 C++ 构造函数里。
-21. QApplication 级样式表必须通过统一的全局 qss 和应用级样式管理器加载；后续主题切换只替换样式资源，不推翻 UI 装配结构。
+18. 模块 UI 可以拆为多个 .ui 包装类，但这些页面都必须通过同一个 ModuleCoordinator 注入的 module-bound UiActionDispatcher 汇聚出站动作、通过同一个 ModuleCoordinator 接收通知，不能绕过 Gateway 直接访问逻辑层。
+19. 页面按钮动作应在 QWidget 包装类内部直接构造 command 和 payload；ModuleUiAssemblers 只负责装配与注入，不再维护随按钮数量膨胀的逐项信号翻译表。
+20. 模块级图片、图标和局部样式资源统一走 .qrc；运行时不得依赖外部相对路径资源才能完成主流程 UI 装配。
+21. 主程序壳层也必须拥有独立的 MainWindow.ui 和主程序 qrc，使顶级布局与品牌资源配置化，而不是散落在 C++ 构造函数里。
+22. QApplication 级样式表必须通过统一的全局 qss 和应用级样式管理器加载；后续主题切换只替换样式资源，不推翻 UI 装配结构。

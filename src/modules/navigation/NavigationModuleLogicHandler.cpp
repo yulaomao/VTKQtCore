@@ -1,5 +1,7 @@
 #include "NavigationModuleLogicHandler.h"
 
+#include "NavigationUiCommands.h"
+
 #include "logic/scene/SceneGraph.h"
 #include "logic/scene/nodes/TransformNode.h"
 
@@ -175,7 +177,10 @@ void NavigationModuleLogicHandler::onModuleActivated()
 
 void NavigationModuleLogicHandler::handleAction(const UiAction& action)
 {
-    if (action.actionType == UiAction::StartNavigation) {
+    const QString command = action.payload.value(QStringLiteral("command")).toString().trimmed();
+
+    if (action.actionType == UiAction::StartNavigation ||
+        command == NavigationUiCommands::startNavigation()) {
         SceneGraph* scene = getSceneGraph();
         for (const NavigationTransformDescriptor& descriptor : kNavigationTransformDescriptors) {
             ensureTrackedTransformNode(scene, toQString(descriptor.remoteId));
@@ -187,7 +192,8 @@ void NavigationModuleLogicHandler::handleAction(const UiAction& action)
         return;
     }
 
-    if (action.actionType == UiAction::StopNavigation) {
+    if (action.actionType == UiAction::StopNavigation ||
+        command == NavigationUiCommands::stopNavigation()) {
         m_navigating = false;
         m_navigationStatus = QStringLiteral("Idle");
         emitNavigationState(action.actionId);
@@ -196,7 +202,7 @@ void NavigationModuleLogicHandler::handleAction(const UiAction& action)
     }
 
     if (action.actionType == UiAction::CustomAction) {
-        Q_UNUSED(action);
+        return;
     }
 }
 

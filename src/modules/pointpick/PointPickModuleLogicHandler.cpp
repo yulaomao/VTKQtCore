@@ -1,5 +1,6 @@
 #include "PointPickModuleLogicHandler.h"
 
+#include "PointPickUiCommands.h"
 #include "logic/scene/SceneGraph.h"
 #include "logic/scene/nodes/PointNode.h"
 
@@ -124,7 +125,10 @@ void PointPickModuleLogicHandler::onModuleActivated()
 
 void PointPickModuleLogicHandler::handleAction(const UiAction& action)
 {
-    if (action.actionType == UiAction::ConfirmPoints) {
+    const QString command = action.payload.value(QStringLiteral("command")).toString().trimmed();
+
+    if (action.actionType == UiAction::ConfirmPoints ||
+        command == PointPickUiCommands::confirmPoints()) {
         if (!ensureSelectionNode(getSceneGraph())) {
             return;
         }

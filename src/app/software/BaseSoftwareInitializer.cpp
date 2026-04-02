@@ -8,6 +8,7 @@
 #include "GlobalUiManager.h"
 #include "ActiveModuleState.h"
 #include "WorkspaceShell.h"
+#include "ui/coordination/UiActionDispatcher.h"
 
 namespace {
 
@@ -114,11 +115,9 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
     }
 
     // 10. Enter the initial module through the standard action path
-    UiAction initialAction = UiAction::create(
-        UiAction::RequestSwitchModule,
-        QStringLiteral("shell"),
-        {{QStringLiteral("targetModule"), initialModule}});
-    gateway->sendAction(initialAction);
+    if (m_appCoordinator && m_appCoordinator->getActionDispatcher()) {
+        m_appCoordinator->getActionDispatcher()->requestModuleSwitch(initialModule);
+    }
 }
 
 void BaseSoftwareInitializer::registerShellModules(MainWindow* mainWindow,

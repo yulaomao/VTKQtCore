@@ -10,6 +10,7 @@
 #include "contracts/LogicNotification.h"
 
 class ILogicGateway;
+class UiActionDispatcher;
 
 class ModuleCoordinator : public QObject
 {
@@ -28,6 +29,7 @@ public:
     QString getModuleId() const;
     void setMainPage(QWidget* page);
     QWidget* getMainPage() const;
+    UiActionDispatcher* getActionDispatcher() const;
     void addAuxiliaryWidget(QWidget* widget,
                             AuxiliaryRegion region = AuxiliaryRegion::Right);
     QVector<QWidget*> getAuxiliaryWidgets(AuxiliaryRegion region) const;
@@ -49,6 +51,7 @@ signals:
 private:
     QString m_moduleId;
     ILogicGateway* m_gateway;
+    UiActionDispatcher* m_actionDispatcher;
     QWidget* m_mainPage;
     QVector<QWidget*> m_rightAuxiliaryWidgets;
     QVector<QWidget*> m_bottomAuxiliaryWidgets;

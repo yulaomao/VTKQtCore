@@ -1,5 +1,8 @@
 #include "ParamsPage.h"
 
+#include "ParamsUiCommands.h"
+#include "ui/coordination/UiActionDispatcher.h"
+
 #include <QVBoxLayout>
 #include <QFormLayout>
 #include <QLabel>
@@ -39,16 +42,43 @@ ParamsPage::ParamsPage(QWidget* parent)
     mainLayout->addStretch();
 
     connect(m_applyButton, &QPushButton::clicked, this, [this]() {
-        QVariantMap params;
-        params.insert(QStringLiteral("patientName"), m_patientNameEdit->text());
-        params.insert(QStringLiteral("studyId"), m_studyIdEdit->text());
-        params.insert(QStringLiteral("procedureType"), m_procedureTypeEdit->text());
-        emit parameterApplied(params);
+        if (!m_actionDispatcher) {
+            return;
+        }
+
+        m_actionDispatcher->sendCommand(
+            ParamsUiCommands::applyParameters(),
+            {{QStringLiteral("parameters"), collectParameters()}});
     });
 
     connect(m_datagenTestButton, &QPushButton::clicked, this, [this]() {
-        emit datagenPointCreateRequested();
+        if (!m_actionDispatcher) {
+            return;
+        }
+
+        m_actionDispatcher->sendTargetedCommand(
+            QStringLiteral("datagen"),
+            QStringLiteral("create_node"),
+            {{QStringLiteral("nodeType"), QStringLiteral("point")},
+             {QStringLiteral("name"), QStringLiteral("Params Relay Points")},
+             {QStringLiteral("count"), 4},
+             {QStringLiteral("spacing"), 12.0},
+             {QStringLiteral("relaySourceModule"), QStringLiteral("params")}});
     });
+}
+
+void ParamsPage::setActionDispatcher(UiActionDispatcher* dispatcher)
+{
+    m_actionDispatcher = dispatcher;
+}
+
+QVariantMap ParamsPage::collectParameters() const
+{
+    return {
+        {QStringLiteral("patientName"), m_patientNameEdit ? m_patientNameEdit->text() : QString()},
+        {QStringLiteral("studyId"), m_studyIdEdit ? m_studyIdEdit->text() : QString()},
+        {QStringLiteral("procedureType"), m_procedureTypeEdit ? m_procedureTypeEdit->text() : QString()}
+    };
 }
 
 void ParamsPage::setParameterStatus(bool valid, int parameterCount)

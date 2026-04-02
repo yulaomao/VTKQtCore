@@ -1,5 +1,6 @@
 #include "DataGenPage.h"
 
+#include "ui/coordination/UiActionDispatcher.h"
 #include "ui/vtk3d/VtkSceneWindow.h"
 
 #include <QCheckBox>
@@ -363,6 +364,11 @@ void DataGenPage::setSceneWindow(VtkSceneWindow* sceneWindow)
 
     m_sceneWindow = sceneWindow;
     replaceLayoutWidget(m_sceneLayout, m_sceneWindow);
+}
+
+void DataGenPage::setActionDispatcher(UiActionDispatcher* dispatcher)
+{
+    m_actionDispatcher = dispatcher;
 }
 
 void DataGenPage::updateModuleState(const QVariantMap& state)
@@ -808,5 +814,9 @@ void DataGenPage::setStatusText(const QString& text)
 
 void DataGenPage::emitCommand(const QVariantMap& payload)
 {
-    emit customActionRequested(payload);
+    if (m_actionDispatcher) {
+        m_actionDispatcher->sendCommand(
+            payload.value(QStringLiteral("command")).toString(),
+            payload);
+    }
 }

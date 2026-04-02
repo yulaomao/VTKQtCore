@@ -1,5 +1,7 @@
 #include "PlanningModuleLogicHandler.h"
 
+#include "PlanningUiCommands.h"
+
 #include "logic/scene/SceneGraph.h"
 #include "logic/scene/nodes/LineNode.h"
 #include "logic/scene/nodes/ModelNode.h"
@@ -192,7 +194,10 @@ void PlanningModuleLogicHandler::onModuleActivated()
 
 void PlanningModuleLogicHandler::handleAction(const UiAction& action)
 {
-    if (action.actionType == UiAction::GeneratePlan) {
+    const QString command = action.payload.value(QStringLiteral("command")).toString().trimmed();
+
+    if (action.actionType == UiAction::GeneratePlan ||
+        command == PlanningUiCommands::generatePlan()) {
         auto* modelNode = ensurePlanModelNode(getSceneGraph());
         auto* lineNode = ensurePlanPathNode(getSceneGraph());
         if (!modelNode || !lineNode) {
@@ -202,7 +207,11 @@ void PlanningModuleLogicHandler::handleAction(const UiAction& action)
         ensureDefaultPlanGeometry(modelNode, lineNode);
         m_planStatus = QStringLiteral("generated");
         emitPlanningState(LogicNotification::SceneNodesUpdated, action.actionId);
-    } else if (action.actionType == UiAction::AcceptPlan) {
+        return;
+    }
+
+    if (action.actionType == UiAction::AcceptPlan ||
+        command == PlanningUiCommands::acceptPlan()) {
         ensurePlanModelNode(getSceneGraph());
         ensurePlanPathNode(getSceneGraph());
         m_planStatus = QStringLiteral("accepted");
@@ -211,7 +220,7 @@ void PlanningModuleLogicHandler::handleAction(const UiAction& action)
     }
 
     if (action.actionType == UiAction::CustomAction) {
-        Q_UNUSED(action);
+        return;
     }
 }
 

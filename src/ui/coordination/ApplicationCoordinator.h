@@ -13,6 +13,7 @@ class ILogicGateway;
 class PageManager;
 class GlobalUiManager;
 class ModuleCoordinator;
+class UiActionDispatcher;
 class WorkspaceShell;
 
 class ApplicationCoordinator : public QObject
@@ -28,6 +29,7 @@ public:
 
     void registerModuleCoordinator(ModuleCoordinator* coordinator);
     ModuleCoordinator* getModuleCoordinator(const QString& moduleId) const;
+    UiActionDispatcher* getActionDispatcher() const;
     void setCurrentModule(const QString& moduleId);
     QString getCurrentModule() const;
 
@@ -51,6 +53,7 @@ private:
     PageManager* m_pageManager;
     GlobalUiManager* m_globalUiManager;
     WorkspaceShell* m_workspaceShell;
+    UiActionDispatcher* m_actionDispatcher;
     QMap<QString, ModuleCoordinator*> m_moduleCoordinators;
     QString m_currentModuleId;
 };

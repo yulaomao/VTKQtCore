@@ -4,6 +4,7 @@
 #include "ui/globalui/GlobalUiManager.h"
 #include "shell/WorkspaceShell.h"
 #include "logic/gateway/ILogicGateway.h"
+#include "UiActionDispatcher.h"
 
 ApplicationCoordinator::ApplicationCoordinator(ILogicGateway* gateway,
                                                PageManager* pageMgr,
@@ -15,7 +16,12 @@ ApplicationCoordinator::ApplicationCoordinator(ILogicGateway* gateway,
     , m_pageManager(pageMgr)
     , m_globalUiManager(globalUiMgr)
     , m_workspaceShell(workspaceShell)
+    , m_actionDispatcher(new UiActionDispatcher(QStringLiteral("shell"), gateway, this))
 {
+    connect(m_actionDispatcher, &UiActionDispatcher::actionDispatched,
+            this, [this](const UiAction& action, bool) {
+                emit shellAction(action);
+            });
 }
 
 void ApplicationCoordinator::registerModuleCoordinator(ModuleCoordinator* coordinator)
@@ -29,6 +35,11 @@ ModuleCoordinator* ApplicationCoordinator::getModuleCoordinator(
     const QString& moduleId) const
 {
     return m_moduleCoordinators.value(moduleId, nullptr);
+}
+
+UiActionDispatcher* ApplicationCoordinator::getActionDispatcher() const
+{
+    return m_actionDispatcher;
 }
 
 void ApplicationCoordinator::setCurrentModule(const QString& moduleId)
@@ -83,15 +94,15 @@ void ApplicationCoordinator::requestSwitchModule(const QString& moduleId)
         return;
     }
 
-    dispatchShellAction(
-        UiAction::RequestSwitchModule,
-        {{QStringLiteral("targetModule"), moduleId}});
+    if (m_actionDispatcher) {
+        m_actionDispatcher->requestModuleSwitch(moduleId);
+    }
 }
 
 void ApplicationCoordinator::requestResync(const QString& reason)
 {
-    if (m_gateway) {
-        m_gateway->requestResync(reason);
+    if (m_actionDispatcher) {
+        m_actionDispatcher->requestResync(reason);
     }
 }
 
@@ -181,9 +192,7 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
 void ApplicationCoordinator::dispatchShellAction(UiAction::ActionType type,
                                                  const QVariantMap& payload)
 {
-    UiAction action = UiAction::create(type, QStringLiteral("shell"), payload);
-    emit shellAction(action);
-    if (m_gateway) {
-        m_gateway->sendAction(action);
+    if (m_actionDispatcher) {
+        m_actionDispatcher->sendAction(type, payload);
     }
 }

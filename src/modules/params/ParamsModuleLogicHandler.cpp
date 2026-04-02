@@ -1,5 +1,7 @@
 #include "ParamsModuleLogicHandler.h"
 
+#include "ParamsUiCommands.h"
+
 namespace {
 
 QString paramsStateRedisKey()
@@ -17,6 +19,31 @@ ParamsModuleLogicHandler::ParamsModuleLogicHandler(QObject* parent)
 void ParamsModuleLogicHandler::handleAction(const UiAction& action)
 {
     if (action.actionType == UiAction::CustomAction) {
+        const QString command = action.payload.value(QStringLiteral("command")).toString().trimmed();
+        if (command != ParamsUiCommands::applyParameters()) {
+            return;
+        }
+
+        const QVariantMap parameters = action.payload.value(QStringLiteral("parameters")).toMap();
+        if (parameters.isEmpty()) {
+            return;
+        }
+
+        for (auto it = parameters.cbegin(); it != parameters.cend(); ++it) {
+            m_parameters.insert(it.key(), it.value());
+        }
+
+        writeRedisJsonValue(paramsStateRedisKey(), m_parameters);
+
+        const bool ready = !m_parameters.isEmpty();
+        LogicNotification notification = LogicNotification::create(
+            LogicNotification::ButtonStateChanged,
+            LogicNotification::CurrentModule,
+            {{QStringLiteral("parametersValid"), ready},
+             {QStringLiteral("updatedKeys"), parameters.keys()},
+             {QStringLiteral("parameterCount"), m_parameters.size()}});
+        notification.setSourceActionId(action.actionId);
+        emit logicNotification(notification);
         return;
     }
 

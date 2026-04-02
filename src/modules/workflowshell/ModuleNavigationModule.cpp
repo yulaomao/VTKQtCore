@@ -1,5 +1,7 @@
 #include "ModuleNavigationModule.h"
 
+#include "ui/coordination/UiActionDispatcher.h"
+
 #include <QDateTime>
 #include <QFrame>
 #include <QGridLayout>
@@ -285,11 +287,18 @@ ModuleNavigationModule::ModuleNavigationModule(QWidget* parent)
     rootLayout->addStretch(1);
 
     connect(m_resyncButton, &QPushButton::clicked, this, [this]() {
-        emit resyncRequested(QStringLiteral("module_navigation_module"));
+        if (m_actionDispatcher) {
+            m_actionDispatcher->requestResync(QStringLiteral("module_navigation_module"));
+        }
     });
 
     refreshConnectionBadge();
     refreshTransformState();
+}
+
+void ModuleNavigationModule::setActionDispatcher(UiActionDispatcher* dispatcher)
+{
+    m_actionDispatcher = dispatcher;
 }
 
 void ModuleNavigationModule::setModuleDisplayOrder(const QStringList& modules)
@@ -367,7 +376,9 @@ void ModuleNavigationModule::rebuildButtons()
         button->setCheckable(true);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(button, &QPushButton::clicked, this, [this, moduleId]() {
-            emit moduleSelected(moduleId);
+            if (m_actionDispatcher) {
+                m_actionDispatcher->requestModuleSwitch(moduleId);
+            }
         });
         m_buttonLayout->addWidget(button);
         m_buttons.insert(moduleId, button);

@@ -61,21 +61,6 @@ SceneGraph* sceneGraphFromContext(const ModuleUiAssemblyContext& context)
     return context.runtime ? context.runtime->getSceneGraph() : nullptr;
 }
 
-QVariantMap createCustomCommandPayload(const QString& command)
-{
-    return {{QStringLiteral("command"), command}};
-}
-
-QVariantMap createTargetedCustomCommandPayload(const QString& targetModule,
-                                              const QString& command,
-                                              const QVariantMap& payload = {})
-{
-    QVariantMap result = payload;
-    result.insert(QStringLiteral("targetModule"), targetModule);
-    result.insert(QStringLiteral("command"), command);
-    return result;
-}
-
 }
 
 void registerParamsModuleUi(const ModuleUiAssemblyContext& context)
@@ -90,6 +75,7 @@ void registerParamsModuleUi(const ModuleUiAssemblyContext& context)
         context.gateway,
         context.applicationCoordinator);
     auto* page = new ParamsPage();
+    page->setActionDispatcher(coordinator->getActionDispatcher());
     coordinator->addAuxiliaryWidget(
         createModuleSummaryPanel(
             QStringLiteral("Parameters"),
@@ -100,30 +86,6 @@ void registerParamsModuleUi(const ModuleUiAssemblyContext& context)
     coordinator->setMainPage(page);
     context.pageManager->registerPage(QStringLiteral("params"), page);
     context.applicationCoordinator->registerModuleCoordinator(coordinator);
-
-    QObject::connect(page, &ParamsPage::parameterApplied,
-                     coordinator, [coordinator](const QVariantMap& params) {
-                         for (auto it = params.constBegin(); it != params.constEnd(); ++it) {
-                             coordinator->sendModuleAction(
-                                 UiAction::UpdateParameter,
-                                 {{QStringLiteral("key"), it.key()},
-                                  {QStringLiteral("value"), it.value()}});
-                         }
-                     });
-
-    QObject::connect(page, &ParamsPage::datagenPointCreateRequested,
-                     coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(
-                             UiAction::CustomAction,
-                             createTargetedCustomCommandPayload(
-                                 QStringLiteral("datagen"),
-                                 QStringLiteral("create_node"),
-                                 {{QStringLiteral("nodeType"), QStringLiteral("point")},
-                                  {QStringLiteral("name"), QStringLiteral("Params Relay Points")},
-                                  {QStringLiteral("count"), 4},
-                                  {QStringLiteral("spacing"), 12.0},
-                                  {QStringLiteral("relaySourceModule"), QStringLiteral("params")}}));
-                     });
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
                      page, [page, summaryStatus](const LogicNotification& notification) {
@@ -157,6 +119,7 @@ void registerDataGenModuleUi(const ModuleUiAssemblyContext& context)
         context.gateway,
         context.applicationCoordinator);
     auto* page = new DataGenPage();
+    page->setActionDispatcher(coordinator->getActionDispatcher());
     coordinator->addAuxiliaryWidget(
         createModuleSummaryPanel(
             QStringLiteral("Data Generator"),
@@ -195,11 +158,6 @@ void registerDataGenModuleUi(const ModuleUiAssemblyContext& context)
     QObject::connect(coordinator, &ModuleCoordinator::activated,
                      dataGenWindow, &VtkSceneWindow::requestReconcile);
 
-    QObject::connect(page, &DataGenPage::customActionRequested,
-                     coordinator, [coordinator](const QVariantMap& payload) {
-                         coordinator->sendModuleAction(UiAction::CustomAction, payload);
-                     });
-
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
                      page, [page, summaryStatus](const LogicNotification& notification) {
                          if (notification.eventType != LogicNotification::SceneNodesUpdated &&
@@ -232,6 +190,7 @@ void registerPointPickModuleUi(const ModuleUiAssemblyContext& context)
         context.gateway,
         context.applicationCoordinator);
     auto* page = new PointPickPage();
+    page->setActionDispatcher(coordinator->getActionDispatcher());
     auto* statusPanel = new PointPickStatusPanel(context.mainWindow->getWorkspaceShell());
     coordinator->addAuxiliaryWidget(
         statusPanel,
@@ -239,26 +198,6 @@ void registerPointPickModuleUi(const ModuleUiAssemblyContext& context)
     coordinator->setMainPage(page);
     context.pageManager->registerPage(QStringLiteral("pointpick"), page);
     context.applicationCoordinator->registerModuleCoordinator(coordinator);
-
-    QObject::connect(page, &PointPickPage::confirmPointsRequested,
-                     coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(UiAction::ConfirmPoints);
-                     });
-
-    QObject::connect(page, &PointPickPage::datagenLineCreateRequested,
-                     coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(
-                             UiAction::CustomAction,
-                             createTargetedCustomCommandPayload(
-                                 QStringLiteral("datagen"),
-                                 QStringLiteral("create_node"),
-                                 {{QStringLiteral("nodeType"), QStringLiteral("line")},
-                                  {QStringLiteral("name"), QStringLiteral("PointPick Relay Path")},
-                                  {QStringLiteral("count"), 5},
-                                  {QStringLiteral("spacing"), 20.0},
-                                  {QStringLiteral("closed"), false},
-                                  {QStringLiteral("relaySourceModule"), QStringLiteral("pointpick")}}));
-                     });
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
                      page, [page, statusPanel](const LogicNotification& notification) {
@@ -299,6 +238,7 @@ void registerPlanningModuleUi(const ModuleUiAssemblyContext& context)
         context.gateway,
         context.applicationCoordinator);
     auto* page = new PlanningPage();
+    page->setActionDispatcher(coordinator->getActionDispatcher());
     coordinator->addAuxiliaryWidget(
         createModuleSummaryPanel(
             QStringLiteral("Planning"),
@@ -361,33 +301,6 @@ void registerPlanningModuleUi(const ModuleUiAssemblyContext& context)
     QObject::connect(coordinator, &ModuleCoordinator::activated,
                      overviewWindow, &VtkSceneWindow::requestReconcile);
 
-    QObject::connect(page, &PlanningPage::generatePlanRequested,
-                     coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(UiAction::GeneratePlan);
-                     });
-
-    QObject::connect(page, &PlanningPage::acceptPlanRequested,
-                     coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(UiAction::AcceptPlan);
-                     });
-
-    QObject::connect(page, &PlanningPage::datagenModelCreateRequested,
-                     coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(
-                             UiAction::CustomAction,
-                             createTargetedCustomCommandPayload(
-                                 QStringLiteral("datagen"),
-                                 QStringLiteral("create_node"),
-                                 {{QStringLiteral("nodeType"), QStringLiteral("model")},
-                                  {QStringLiteral("name"), QStringLiteral("Planning Relay Model")},
-                                  {QStringLiteral("shape"), QStringLiteral("cube")},
-                                  {QStringLiteral("sizeA"), 26.0},
-                                  {QStringLiteral("sizeB"), 18.0},
-                                  {QStringLiteral("sizeC"), 14.0},
-                                  {QStringLiteral("resolution"), 18},
-                                  {QStringLiteral("relaySourceModule"), QStringLiteral("planning")}}));
-                     });
-
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
                      page, [page, summaryStatus](const LogicNotification& notification) {
                          if (!notification.payload.contains(QStringLiteral("status"))) {
@@ -419,6 +332,7 @@ void registerNavigationModuleUi(const ModuleUiAssemblyContext& context)
         context.gateway,
         context.applicationCoordinator);
     auto* page = new NavigationPage();
+    page->setActionDispatcher(coordinator->getActionDispatcher());
     coordinator->addAuxiliaryWidget(
         createModuleSummaryPanel(
             QStringLiteral("Navigation"),
@@ -456,30 +370,6 @@ void registerNavigationModuleUi(const ModuleUiAssemblyContext& context)
 
     QObject::connect(coordinator, &ModuleCoordinator::activated,
                      navigationWindow, &VtkSceneWindow::requestReconcile);
-
-    QObject::connect(page, &NavigationPage::startNavigationRequested,
-                     coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(UiAction::StartNavigation);
-                     });
-
-    QObject::connect(page, &NavigationPage::stopNavigationRequested,
-                     coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(UiAction::StopNavigation);
-                     });
-
-    QObject::connect(page, &NavigationPage::datagenTransformCreateRequested,
-                     coordinator, [coordinator]() {
-                         coordinator->sendModuleAction(
-                             UiAction::CustomAction,
-                             createTargetedCustomCommandPayload(
-                                 QStringLiteral("datagen"),
-                                 QStringLiteral("create_node"),
-                                 {{QStringLiteral("nodeType"), QStringLiteral("transform")},
-                                  {QStringLiteral("name"), QStringLiteral("Navigation Relay Transform")},
-                                  {QStringLiteral("showAxes"), true},
-                                  {QStringLiteral("axesLength"), 48.0},
-                                  {QStringLiteral("relaySourceModule"), QStringLiteral("navigation")}}));
-                     });
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
                      page, [page, summaryStatus](const LogicNotification& notification) {

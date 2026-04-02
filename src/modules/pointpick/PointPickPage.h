@@ -3,6 +3,8 @@
 #include <QWidget>
 #include <QStringList>
 
+class UiActionDispatcher;
+
 namespace Ui {
 class PointPickPage;
 }
@@ -15,9 +17,7 @@ public:
     explicit PointPickPage(QWidget* parent = nullptr);
     ~PointPickPage() override;
 
-signals:
-    void confirmPointsRequested();
-    void datagenLineCreateRequested();
+    void setActionDispatcher(UiActionDispatcher* dispatcher);
 
 public slots:
     void updatePointList(const QStringList& points);
@@ -25,5 +25,6 @@ public slots:
     void setConfirmed(bool confirmed);
 
 private:
+    UiActionDispatcher* m_actionDispatcher = nullptr;
     Ui::PointPickPage* m_ui = nullptr;
 };

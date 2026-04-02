@@ -1,5 +1,7 @@
 #include "PlanningPage.h"
 
+#include "PlanningUiCommands.h"
+#include "ui/coordination/UiActionDispatcher.h"
 #include "ui/vtk3d/VtkSceneWindow.h"
 
 #include <QHBoxLayout>
@@ -97,11 +99,40 @@ PlanningPage::PlanningPage(QWidget* parent)
     mainLayout->addWidget(scenePanel, 1);
 
     connect(m_generateButton, &QPushButton::clicked,
-            this, &PlanningPage::generatePlanRequested);
+            this, [this]() {
+                if (m_actionDispatcher) {
+                    m_actionDispatcher->sendCommand(PlanningUiCommands::generatePlan());
+                }
+            });
     connect(m_acceptButton, &QPushButton::clicked,
-            this, &PlanningPage::acceptPlanRequested);
-        connect(m_datagenTestButton, &QPushButton::clicked,
-            this, &PlanningPage::datagenModelCreateRequested);
+            this, [this]() {
+                if (m_actionDispatcher) {
+                    m_actionDispatcher->sendCommand(PlanningUiCommands::acceptPlan());
+                }
+            });
+    connect(m_datagenTestButton, &QPushButton::clicked,
+            this, [this]() {
+                if (!m_actionDispatcher) {
+                    return;
+                }
+
+                m_actionDispatcher->sendTargetedCommand(
+                    QStringLiteral("datagen"),
+                    QStringLiteral("create_node"),
+                    {{QStringLiteral("nodeType"), QStringLiteral("model")},
+                     {QStringLiteral("name"), QStringLiteral("Planning Relay Model")},
+                     {QStringLiteral("shape"), QStringLiteral("cube")},
+                     {QStringLiteral("sizeA"), 26.0},
+                     {QStringLiteral("sizeB"), 18.0},
+                     {QStringLiteral("sizeC"), 14.0},
+                     {QStringLiteral("resolution"), 18},
+                     {QStringLiteral("relaySourceModule"), QStringLiteral("planning")}});
+            });
+}
+
+void PlanningPage::setActionDispatcher(UiActionDispatcher* dispatcher)
+{
+    m_actionDispatcher = dispatcher;
 }
 
 void PlanningPage::setSceneWindow(VtkSceneWindow* sceneWindow)

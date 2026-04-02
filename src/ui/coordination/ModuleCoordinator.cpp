@@ -1,13 +1,19 @@
 #include "ModuleCoordinator.h"
 #include "logic/gateway/ILogicGateway.h"
+#include "UiActionDispatcher.h"
 
 ModuleCoordinator::ModuleCoordinator(const QString& moduleId, ILogicGateway* gateway,
                                      QObject* parent)
     : QObject(parent)
     , m_moduleId(moduleId)
     , m_gateway(gateway)
+    , m_actionDispatcher(new UiActionDispatcher(moduleId, gateway, this))
     , m_mainPage(nullptr)
 {
+    connect(m_actionDispatcher, &UiActionDispatcher::actionDispatched,
+            this, [this](const UiAction& action, bool) {
+                emit moduleAction(action);
+            });
 }
 
 QString ModuleCoordinator::getModuleId() const
@@ -23,6 +29,11 @@ void ModuleCoordinator::setMainPage(QWidget* page)
 QWidget* ModuleCoordinator::getMainPage() const
 {
     return m_mainPage;
+}
+
+UiActionDispatcher* ModuleCoordinator::getActionDispatcher() const
+{
+    return m_actionDispatcher;
 }
 
 void ModuleCoordinator::addAuxiliaryWidget(QWidget* widget,
@@ -77,10 +88,8 @@ void ModuleCoordinator::deactivate()
 void ModuleCoordinator::sendModuleAction(UiAction::ActionType type,
                                          const QVariantMap& payload)
 {
-    UiAction action = UiAction::create(type, m_moduleId, payload);
-    emit moduleAction(action);
-    if (m_gateway) {
-        m_gateway->sendAction(action);
+    if (m_actionDispatcher) {
+        m_actionDispatcher->sendAction(type, payload);
     }
 }
 

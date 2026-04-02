@@ -6,12 +6,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Enable Qt MOC auto-generation
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
 
 # ---------------------------------------------------------------------------
 # Qt – try Qt6 first, fall back to Qt5
 # ---------------------------------------------------------------------------
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Widgets Gui Network OpenGL OpenGLWidgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Gui Network OpenGL OpenGLWidgets)
+
+# ---------------------------------------------------------------------------
+# hiredis
+# ---------------------------------------------------------------------------
+find_package(hiredis CONFIG REQUIRED
+    PATHS "${CMAKE_CURRENT_SOURCE_DIR}/thirtyPart/hiredis"
+    NO_DEFAULT_PATH)
 
 # ---------------------------------------------------------------------------
 # VTK
@@ -34,7 +43,7 @@ find_package(VTK REQUIRED COMPONENTS
 # ---------------------------------------------------------------------------
 # Sources – collect every .h and .cpp under src/
 # ---------------------------------------------------------------------------
-file(GLOB_RECURSE SOURCES
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 )
@@ -47,7 +56,7 @@ add_executable(VTKQtCore ${SOURCES})
 # ---------------------------------------------------------------------------
 # Include directories – src/ and every subdirectory beneath it
 # ---------------------------------------------------------------------------
-file(GLOB_RECURSE ALL_SRC_FILES LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/src/*)
+file(GLOB_RECURSE ALL_SRC_FILES CONFIGURE_DEPENDS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/src/*)
 set(INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
 foreach(ENTRY ${ALL_SRC_FILES})
     if(IS_DIRECTORY ${ENTRY})
@@ -55,6 +64,8 @@ foreach(ENTRY ${ALL_SRC_FILES})
     endif()
 endforeach()
 list(REMOVE_DUPLICATES INCLUDE_DIRS)
+
+list(APPEND INCLUDE_DIRS ${hiredis_INCLUDE_DIRS})
 
 target_include_directories(VTKQtCore PRIVATE ${INCLUDE_DIRS})
 
@@ -68,6 +79,7 @@ target_link_libraries(VTKQtCore PRIVATE
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::OpenGL
     Qt${QT_VERSION_MAJOR}::OpenGLWidgets
+    hiredis::hiredis
     ${VTK_LIBRARIES}
 )
 

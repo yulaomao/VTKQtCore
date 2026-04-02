@@ -18,6 +18,7 @@ class QStackedWidget;
 class QTextEdit;
 class QVBoxLayout;
 class VtkSceneWindow;
+class UiActionDispatcher;
 
 class DataGenPage : public QWidget
 {
@@ -26,11 +27,9 @@ class DataGenPage : public QWidget
 public:
     explicit DataGenPage(QWidget* parent = nullptr);
 
+    void setActionDispatcher(UiActionDispatcher* dispatcher);
     void setSceneWindow(VtkSceneWindow* sceneWindow);
     void updateModuleState(const QVariantMap& state);
-
-signals:
-    void customActionRequested(const QVariantMap& payload);
 
 private slots:
     void onCreateNodeClicked();
@@ -57,6 +56,8 @@ private:
     void setCreatePanelForNodeType(const QString& nodeType);
     void setStatusText(const QString& text);
     void emitCommand(const QVariantMap& payload);
+
+    UiActionDispatcher* m_actionDispatcher = nullptr;
 
     QListWidget* m_nodeList = nullptr;
     QLabel* m_statusLabel = nullptr;

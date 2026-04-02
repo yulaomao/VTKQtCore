@@ -11,6 +11,7 @@ class QLabel;
 class QTimer;
 class QVBoxLayout;
 class QPushButton;
+class UiActionDispatcher;
 
 class ModuleNavigationModule : public QWidget
 {
@@ -19,16 +20,13 @@ class ModuleNavigationModule : public QWidget
 public:
     explicit ModuleNavigationModule(QWidget* parent = nullptr);
 
+    void setActionDispatcher(UiActionDispatcher* dispatcher);
     void setModuleDisplayOrder(const QStringList& modules);
 
 public slots:
     void setCurrentModule(const QString& moduleId);
     void setConnectionState(const QString& state);
     void onGatewayNotification(const LogicNotification& notification);
-
-signals:
-    void moduleSelected(const QString& moduleId);
-    void resyncRequested(const QString& reason);
 
 private:
     void rebuildButtons();
@@ -43,6 +41,7 @@ private:
     QStringList m_modules;
     QString m_currentModule;
     QString m_connectionState = QStringLiteral("Disconnected");
+    UiActionDispatcher* m_actionDispatcher = nullptr;
     QLabel* m_summaryLabel = nullptr;
     QLabel* m_connectionBadge = nullptr;
     QLabel* m_shellStateLabel = nullptr;

@@ -6,6 +6,7 @@ class QLabel;
 class QPushButton;
 class QVBoxLayout;
 class VtkSceneWindow;
+class UiActionDispatcher;
 
 class PlanningPage : public QWidget
 {
@@ -14,18 +15,15 @@ class PlanningPage : public QWidget
 public:
     explicit PlanningPage(QWidget* parent = nullptr);
 
+    void setActionDispatcher(UiActionDispatcher* dispatcher);
     void setSceneWindow(VtkSceneWindow* sceneWindow);
     void setSecondarySceneWindow(VtkSceneWindow* sceneWindow);
-
-signals:
-    void generatePlanRequested();
-    void acceptPlanRequested();
-    void datagenModelCreateRequested();
 
 public slots:
     void setPlanStatus(const QString& status);
 
 private:
+    UiActionDispatcher* m_actionDispatcher = nullptr;
     QLabel* m_statusLabel = nullptr;
     QPushButton* m_generateButton = nullptr;
     QPushButton* m_acceptButton = nullptr;
