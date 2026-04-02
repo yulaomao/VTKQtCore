@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PointPickStatusPanel</class>
+ <widget class="QWidget" name="PointPickStatusPanel">
+  <property name="windowTitle">
+   <string>PointPickStatusPanel</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>12</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QFrame" name="cardFrame">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">QFrame#cardFrame { background: white; border: 1px solid #d7e0e8; border-radius: 12px; }
+QLabel#sectionTitle { font-size: 16px; font-weight: 700; color: #16324f; }
+QLabel#metaTitle { color: #667789; font-size: 11px; letter-spacing: 0.5px; }
+QLabel#pointCountValue { font-size: 28px; font-weight: 700; color: #16324f; }</string>
+     </property>
+     <layout class="QVBoxLayout" name="cardLayout">
+      <property name="leftMargin">
+       <number>14</number>
+      </property>
+      <property name="topMargin">
+       <number>14</number>
+      </property>
+      <property name="rightMargin">
+       <number>14</number>
+      </property>
+      <property name="bottomMargin">
+       <number>14</number>
+      </property>
+      <item>
+       <layout class="QHBoxLayout" name="titleLayout">
+        <property name="spacing">
+         <number>10</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="statusIconLabel">
+          <property name="minimumSize">
+           <size>
+            <width>24</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>24</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="pixmap">
+           <pixmap resource="pointpick.qrc">:/pointpick/pointpick-status.svg</pixmap>
+          </property>
+          <property name="scaledContents">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="sectionTitle">
+          <property name="text">
+           <string>Point Pick Summary</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="metaTitle">
+        <property name="text">
+         <string>COLLECTED POINTS</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="pointCountValue">
+        <property name="text">
+         <string>0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="statusValue">
+        <property name="text">
+         <string>Pending</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="hintLabel">
+        <property name="styleSheet">
+         <string notr="true">color: #506172;</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="text">
+         <string>Review the sampled points and confirm them from the main page.</string>
+        </property>
+      </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="pointpick.qrc"/>
+ </resources>
+ <connections/>
+</ui>

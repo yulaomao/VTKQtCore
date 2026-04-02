@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Enable Qt MOC auto-generation
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
 
 # ---------------------------------------------------------------------------
 # Qt – try Qt6 first, fall back to Qt5
@@ -44,9 +46,11 @@ endif()
 # ---------------------------------------------------------------------------
 # Sources – collect every .h and .cpp under src/
 # ---------------------------------------------------------------------------
-file(GLOB_RECURSE SOURCES
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.qrc
 )
 
 # ---------------------------------------------------------------------------
@@ -57,7 +61,7 @@ add_executable(VTKQtCore ${SOURCES})
 # ---------------------------------------------------------------------------
 # Include directories – src/ and every subdirectory beneath it
 # ---------------------------------------------------------------------------
-file(GLOB_RECURSE ALL_SRC_FILES LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/src/*)
+file(GLOB_RECURSE ALL_SRC_FILES CONFIGURE_DEPENDS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/src/*)
 set(INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
 foreach(ENTRY ${ALL_SRC_FILES})
     if(IS_DIRECTORY ${ENTRY})

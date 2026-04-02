@@ -118,6 +118,7 @@ Desktop Client
 2. 模块显示。
 3. 用户操作采集。
 4. 通知、遮罩、3D 工具窗管理。
+5. 主程序壳层 .ui、主程序静态资源和全局样式表装配。
 
 ### 逻辑层负责
 
@@ -199,6 +200,46 @@ MainWindow
 3. scene_nodes_updated 保持模块级辅助通知；节点通过 displayTargets 声明在不同 windowId 下的可见性和层级，稳态刷新主路径仍是 SceneGraph 事件。
 4. 每个 3D 窗口在初始化时必须声明相机参数，至少包括 position、focalPoint、viewUp，以及 parallelProjection 下的 parallelScale 或 perspective 下的 viewAngle；必要时可补充 clippingRange。
 5. UI 装配层负责窗口创建、注册、销毁和相机初始参数装配，逻辑层负责节点显示策略，显示管理层按 windowId 完成过滤、分层和渲染对象更新。
+
+### 5.3 模块级 .ui、.qrc 与资源目录装配规则
+
+为支持较复杂模块页面，框架允许单个模块携带一个到多个 .ui 文件，并允许模块自带一个 .qrc 和独立资源目录。该能力属于 UI 装配层职责，不改变 UI 与逻辑边界。
+
+约束：
+
+1. 每个 .ui 文件都必须由一个明确的 QWidget 包装类承接，例如 PointPickPage、PointPickStatusPanel；UI 代码不直接把生成的 Ui::* 暴露给 ModuleCoordinator。
+2. 模块的主页面 .ui 仍由 PageManager 管理；附属 .ui 可作为 rightWidget 或 bottomWidget 的挂载对象，由 ModuleCoordinator 统一注册。
+3. 同一模块的多个 .ui 共享同一个 ModuleCoordinator 和同一个 ILogicGateway 边界，不因为拆分页面而拆分逻辑入口。
+4. 模块级资源必须优先通过 .qrc 暴露，UI 和代码一律使用 :/ 前缀访问，不依赖进程工作目录下的相对文件路径。
+5. 模块资源目录只存放图标、图片、局部样式等静态前端资源；业务数据、场景快照和协议文件不放入 .qrc。
+6. 模块若存在多个 .ui，应由软件装配层或模块装配器一次性完成创建、信号连接和宿主区域分配，不允许在逻辑层临时 new 出页面对象。
+7. .ui 只负责控件树、布局和静态属性，业务状态刷新仍通过 ModuleCoordinator 消费 LogicNotification 后写回 QWidget 包装类。
+
+推荐落位：
+
+1. 模块包装类、.ui 文件、.qrc 与资源目录尽量就近放在同一模块目录下。
+2. 命名建议采用 ModuleNamePage.ui、ModuleNamePanel.ui、modulename.qrc、resources/ 的固定组合，便于 CMake 自动收集。
+3. 当一个模块包含多个附属面板时，可继续拆为多个 QWidget 包装类，但主页面仍保持唯一入口。
+
+### 5.4 主程序壳层 .ui、主程序 qrc 与全局 qss 规则
+
+除模块级 .ui 外，主程序本身也应具备独立的壳层 .ui、主程序 qrc 与全局样式表入口，用于稳定承载顶级布局、品牌资源与后续主题切换。
+
+约束：
+
+1. MainWindow 应有独立的 MainWindow.ui，用来声明 centralWidget、rootStack 宿主、globalOverlayLayer 和 globalToolHost 等顶级结构；这些对象不应继续完全由构造函数硬编码生成。
+2. 主程序壳层应自带一个主程序级 qrc 与 resources/ 目录，用于窗口图标、品牌标识、壳层背景装饰等静态资源。
+3. 全局样式表应通过单独的 qss 文件提供，并通过独立的样式资源目录与样式 qrc 暴露给 QApplication，而不是散落在各处 setStyleSheet 字符串中。
+4. 全局 qss 的加载和切换属于启动与软件装配层职责，默认应在 MainWindow show 之前完成，避免页面先以未样式化状态闪现。
+5. 后续若需要多套主题，主题切换入口应统一由一个应用级样式管理器维护，例如 AppStyleManager；模块不得各自直接替换 QApplication 样式表。
+6. 全局 qss 只负责顶级窗口、壳层区域、全局通知、遮罩、工具窗宿主以及通用控件基线风格；模块的局部视觉差异可在模块级 qss 或模块控件样式中补充。
+7. qss 中引用的图片、图标和纹理必须来自 qrc 资源路径，不能依赖磁盘相对路径，以保证样式切换在不同部署目录下一致。
+
+推荐落位：
+
+1. MainWindow.ui、mainwindow.qrc 和壳层 resources/ 放在 shell/ 目录。
+2. 全局 qss、主题切换资源与样式 qrc 放在 resources/ 或 ui/globalui/styles/ 这类全局目录，而不是塞进某个业务模块目录。
+3. 若需要按软件类型切换主题，可在 software profile 中增加 styleTheme 或等价字段，由启动装配层解析。
 
 ---
 
@@ -402,6 +443,8 @@ UI 模块协同遵循以下规则：
 5. UI 主线程内允许 ApplicationCoordinator 到 PageManager、GlobalUiManager，以及 ModuleCoordinator 到所属 UI 的直接函数调用；跨线程和跨边界交互统一走 Gateway + signal/slot。
 6. 主模块可带零个或多个附属 widget；附属 widget 不决定主模块切换，只承载展示和动作入口。
 7. 3D 窗口可作为模块内部组成部分存在，不直接跨模块共享；其全局登记与工具窗能力由 GlobalUiManager 管理，具体场景渲染刷新由对应窗口持有的 NodeDisplayManager 体系完成，ModuleCoordinator 只负责非 3D 模块界面的刷新。
+8. 若模块由多个 .ui 包装类组成，ModuleCoordinator 负责统一分发 LogicNotification；各 QWidget 包装类只消费自己需要的字段，不共享生成代码对象。
+9. 主程序全局样式切换只允许经应用级样式管理器或等价入口完成；模块 UI 不得私自改写 QApplication 级样式表。
 
 ---
 
@@ -1236,12 +1279,16 @@ src/
 │     └─ ConcreteSoftwareInitializers/
 ├─ shell/
 │  ├─ MainWindow.h/.cpp
+│  ├─ MainWindow.ui
+│  ├─ mainwindow.qrc
+│  ├─ resources/
 │  └─ WorkspaceShell.h/.cpp
 ├─ ui/
 │  ├─ coordination/
 │  │  ├─ ApplicationCoordinator.h/.cpp
 │  │  └─ ModuleCoordinator.h/.cpp
 │  ├─ globalui/
+│  │  ├─ AppStyleManager.h/.cpp
 │  │  └─ GlobalUiManager.h/.cpp
 │  ├─ pages/
 │  │  └─ PageManager.h/.cpp
@@ -1269,6 +1316,13 @@ src/
 ├─ modules/
 │  ├─ params/
 │  ├─ pointpick/
+│  │  ├─ PointPickPage.h/.cpp
+│  │  ├─ PointPickPage.ui
+│  │  ├─ PointPickStatusPanel.h/.cpp
+│  │  ├─ PointPickStatusPanel.ui
+│  │  ├─ pointpick.qrc
+│  │  ├─ resources/
+│  │  └─ PointPickModuleLogicHandler.h/.cpp
 │  ├─ planning/
 │  └─ navigation/
 ├─ communication/
@@ -1288,8 +1342,19 @@ src/
 │  ├─ UiAction.h
 │  └─ LogicNotification.h
 ├─ resources/
+│  ├─ styles/
+│  │  ├─ app-theme.qss
+│  │  └─ assets/
+│  └─ styles.qrc
 └─ tests/
 ```
+
+构建约束补充：
+
+1. CMake 必须启用 Qt 的 AUTOMOC、AUTOUIC、AUTORCC，且目标源列表中要包含 .ui 与 .qrc。
+2. .ui 生成代码只由对应 QWidget 包装类包含，例如 include ui_PointPickPage.h；外部装配代码只 include 包装类头文件。
+3. 资源文件路径必须在 .qrc 中显式声明，模块代码不直接扫描磁盘目录。
+4. 全局 qss 文件本身也应进入 qrc，由 QApplication 通过资源路径读取；主题切换时只切换资源路径，不直接读取外部磁盘文件。
 
 ---
 
@@ -1303,7 +1368,7 @@ src/
 6. 再引入 NodeDisplayManager 体系，把节点变化到 VTK 表示对象的映射从 VtkSceneWindow 中剥离出来。
 7. 再为各模块实现可复用的 ModuleLogicHandler 和 ModuleCoordinator 装配件，避免每个软件重复写注册逻辑。
 8. 再落具体软件初始化类，例如不同业务软件的具体装配实现。
-9. 再完善 MainWindow、WorkspaceShell、PageManager、GlobalUiManager、VtkSceneWindow 与模块 UI 的装配细节。
+9. 再完善 MainWindow.ui、主程序 qrc、AppStyleManager、全局 qss，以及 MainWindow、WorkspaceShell、PageManager、GlobalUiManager、VtkSceneWindow 与模块 UI 的装配细节。
 10. 最后再让服务端按同一软件类型、流程控制协议和数据通道约定对齐，保持客户端与服务端一致。
 
 ---
@@ -1326,3 +1391,7 @@ src/
 14. CommunicationHub 不能只负责样本合流，还必须承担 datasource 错误上送职责；否则通信层会形成“数据成功路径可见、错误路径不可见”的架构缺口。
 15. shell 级错误呈现必须经由 ApplicationCoordinator + GlobalUiManager 统一收口，不能依赖某个业务模块页面偶然感知并展示。
 16. 多窗口 3D 中的“恢复标准视角”必须恢复到初始化记录参数，而不是退化为通用 ResetCamera 语义。
+17. 模块 UI 可以拆为多个 .ui 包装类，但这些页面都必须通过同一个 ModuleCoordinator 汇聚动作与通知，不能绕过 Gateway 直接访问逻辑层。
+18. 模块级图片、图标和局部样式资源统一走 .qrc；运行时不得依赖外部相对路径资源才能完成主流程 UI 装配。
+19. 主程序壳层也必须拥有独立的 MainWindow.ui 和主程序 qrc，使顶级布局与品牌资源配置化，而不是散落在 C++ 构造函数里。
+20. QApplication 级样式表必须通过统一的全局 qss 和应用级样式管理器加载；后续主题切换只替换样式资源，不推翻 UI 装配结构。

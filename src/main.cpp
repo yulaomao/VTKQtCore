@@ -11,6 +11,7 @@
 #include "logic/gateway/LocalLogicGateway.h"
 #include "logic/runtime/LogicRuntime.h"
 #include "shell/MainWindow.h"
+#include "ui/globalui/AppStyleManager.h"
 
 namespace {
 
@@ -22,6 +23,16 @@ QString softwareTypeFromProfile(const QVariantMap& profile)
     }
 
     return profile.value(QStringLiteral("initializer")).toString();
+}
+
+QString styleThemeFromProfile(const QVariantMap& profile)
+{
+    const QString themeId = profile.value(QStringLiteral("styleTheme")).toString().trimmed();
+    if (!themeId.isEmpty()) {
+        return themeId;
+    }
+
+    return profile.value(QStringLiteral("globalStyleTheme")).toString().trimmed();
 }
 
 }
@@ -51,7 +62,6 @@ int main(int argc, char* argv[])
         &logicRuntime,
         useRedisMode ? &communicationHub : nullptr,
         useRedisMode ? &redisGateway : nullptr);
-    MainWindow mainWindow;
 
     RedisSoftwareResolver resolver(useRedisMode && redisReady ? &redisGateway : nullptr);
     const QVariantMap softwareProfile = resolver.resolveSoftwareProfile();
@@ -59,6 +69,20 @@ int main(int argc, char* argv[])
     if (softwareType.isEmpty()) {
         softwareType = resolver.resolveSoftwareType();
     }
+
+    AppStyleManager styleManager(&app, &app);
+    styleManager.registerStyle(
+        QStringLiteral("clinical-light"),
+        QStringLiteral(":/styles/styles/app-theme.qss"));
+    const QString requestedStyleTheme = styleThemeFromProfile(softwareProfile);
+    if (!requestedStyleTheme.isEmpty()) {
+        styleManager.applyStyle(requestedStyleTheme);
+    }
+    if (styleManager.currentStyleId().isEmpty()) {
+        styleManager.applyStyle(QStringLiteral("clinical-light"));
+    }
+
+    MainWindow mainWindow;
 
     BaseSoftwareInitializer* initializer =
         SoftwareInitializerFactory::create(softwareType, runMode, &app);

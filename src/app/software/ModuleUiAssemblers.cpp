@@ -11,6 +11,7 @@
 
 #include "ParamsPage.h"
 #include "PointPickPage.h"
+#include "PointPickStatusPanel.h"
 #include "PlanningPage.h"
 #include "NavigationPage.h"
 #include "ui/vtk3d/VtkSceneWindow.h"
@@ -120,18 +121,14 @@ void registerPointPickModuleUi(const ModuleUiAssemblyContext& context)
         return;
     }
 
-    QLabel* summaryStatus = nullptr;
     auto* coordinator = new ModuleCoordinator(
         QStringLiteral("pointpick"),
         context.gateway,
         context.applicationCoordinator);
     auto* page = new PointPickPage();
+    auto* statusPanel = new PointPickStatusPanel(context.mainWindow->getWorkspaceShell());
     coordinator->addAuxiliaryWidget(
-        createModuleSummaryPanel(
-            QStringLiteral("Point Pick"),
-            QStringLiteral("跟踪当前采点数量和确认状态。"),
-            &summaryStatus,
-            context.mainWindow->getWorkspaceShell()),
+        statusPanel,
         ModuleCoordinator::AuxiliaryRegion::Right);
     coordinator->setMainPage(page);
     context.pageManager->registerPage(QStringLiteral("pointpick"), page);
@@ -143,7 +140,7 @@ void registerPointPickModuleUi(const ModuleUiAssemblyContext& context)
                      });
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
-                     page, [page, summaryStatus](const LogicNotification& notification) {
+                     page, [page, statusPanel](const LogicNotification& notification) {
                          if (notification.eventType != LogicNotification::SceneNodesUpdated) {
                              return;
                          }
@@ -154,22 +151,17 @@ void registerPointPickModuleUi(const ModuleUiAssemblyContext& context)
                          }
 
                          if (notification.payload.contains(QStringLiteral("pointCount"))) {
-                             page->setPointCount(
-                                 notification.payload.value(QStringLiteral("pointCount")).toInt());
+                             const int pointCount = notification.payload.value(
+                                 QStringLiteral("pointCount")).toInt();
+                             page->setPointCount(pointCount);
+                             statusPanel->setPointCount(pointCount);
                          }
 
                          if (notification.payload.contains(QStringLiteral("confirmed"))) {
-                             page->setConfirmed(
-                                 notification.payload.value(QStringLiteral("confirmed")).toBool());
-                         }
-
-                         if (summaryStatus) {
-                             summaryStatus->setText(
-                                 QStringLiteral("已选点数: %1, 已确认: %2")
-                                     .arg(notification.payload.value(QStringLiteral("pointCount"), 0).toInt())
-                                     .arg(notification.payload.value(QStringLiteral("confirmed"), false).toBool()
-                                              ? QStringLiteral("是")
-                                              : QStringLiteral("否")));
+                             const bool confirmed = notification.payload.value(
+                                 QStringLiteral("confirmed")).toBool();
+                             page->setConfirmed(confirmed);
+                             statusPanel->setConfirmed(confirmed);
                          }
                      });
 }

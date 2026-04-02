@@ -1,52 +1,43 @@
 #include "PointPickPage.h"
 
-#include <QVBoxLayout>
-#include <QLabel>
-#include <QListWidget>
-#include <QPushButton>
+#include "ui_PointPickPage.h"
 
 PointPickPage::PointPickPage(QWidget* parent)
     : QWidget(parent)
+    , m_ui(new Ui::PointPickPage)
 {
-    auto* mainLayout = new QVBoxLayout(this);
+    m_ui->setupUi(this);
+    setPointCount(0);
+    setConfirmed(false);
 
-    auto* titleLabel = new QLabel(QStringLiteral("Point Selection"), this);
-    mainLayout->addWidget(titleLabel);
-
-    m_pointCountLabel = new QLabel(QStringLiteral("Points: 0"), this);
-    mainLayout->addWidget(m_pointCountLabel);
-
-    m_pointList = new QListWidget(this);
-    mainLayout->addWidget(m_pointList);
-
-    m_statusLabel = new QLabel(QStringLiteral("Status: Waiting for confirmation"), this);
-    mainLayout->addWidget(m_statusLabel);
-
-    m_confirmButton = new QPushButton(QStringLiteral("Confirm Points"), this);
-    mainLayout->addWidget(m_confirmButton);
-
-    mainLayout->addStretch();
-
-    connect(m_confirmButton, &QPushButton::clicked,
+    connect(m_ui->confirmButton, &QPushButton::clicked,
             this, &PointPickPage::confirmPointsRequested);
+}
+
+PointPickPage::~PointPickPage()
+{
+    delete m_ui;
 }
 
 void PointPickPage::updatePointList(const QStringList& points)
 {
-    m_pointList->clear();
-    m_pointList->addItems(points);
-    m_pointCountLabel->setText(QStringLiteral("Points: %1").arg(points.size()));
+    m_ui->pointList->clear();
+    m_ui->pointList->addItems(points);
+    setPointCount(points.size());
 }
 
 void PointPickPage::setPointCount(int count)
 {
-    m_pointCountLabel->setText(QStringLiteral("Points: %1").arg(count));
+    m_ui->pointCountLabel->setText(QStringLiteral("Points: %1").arg(count));
 }
 
 void PointPickPage::setConfirmed(bool confirmed)
 {
-    m_statusLabel->setText(confirmed
+    m_ui->statusLabel->setText(confirmed
         ? QStringLiteral("Status: Points confirmed")
         : QStringLiteral("Status: Waiting for confirmation"));
-    m_confirmButton->setEnabled(!confirmed);
+    m_ui->confirmButton->setEnabled(!confirmed);
+    m_ui->confirmButton->setText(confirmed
+        ? QStringLiteral("Points Confirmed")
+        : QStringLiteral("Confirm Points"));
 }

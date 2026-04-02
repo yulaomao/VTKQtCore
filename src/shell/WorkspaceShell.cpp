@@ -16,14 +16,19 @@ bool hasHostedWidgets(const QWidget* host)
 WorkspaceShell::WorkspaceShell(QWidget* parent)
     : QWidget(parent)
 {
+    setObjectName(QStringLiteral("workspaceShell"));
+
     m_topWidget = new QWidget(this);
+    m_topWidget->setObjectName(QStringLiteral("workspaceTopWidget"));
     m_topWidget->setFixedHeight(48);
     m_topWidget->setLayout(new QHBoxLayout);
     m_topWidget->layout()->setContentsMargins(8, 8, 8, 4);
 
     m_centerStack = new QStackedWidget(this);
+    m_centerStack->setObjectName(QStringLiteral("workspaceCenterStack"));
 
     m_rightWidget = new QWidget(this);
+    m_rightWidget->setObjectName(QStringLiteral("workspaceRightWidget"));
     m_rightWidget->setFixedWidth(280);
     auto* rightLayout = new QVBoxLayout(m_rightWidget);
     rightLayout->setContentsMargins(8, 8, 8, 8);
@@ -41,6 +46,7 @@ WorkspaceShell::WorkspaceShell(QWidget* parent)
     rightLayout->addStretch(1);
 
     m_bottomWidget = new QWidget(this);
+    m_bottomWidget->setObjectName(QStringLiteral("workspaceBottomWidget"));
     m_bottomWidget->setFixedHeight(52);
     auto* bottomLayout = new QHBoxLayout(m_bottomWidget);
     bottomLayout->setContentsMargins(8, 4, 8, 8);

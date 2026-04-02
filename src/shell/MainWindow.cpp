@@ -1,30 +1,32 @@
 #include "MainWindow.h"
 #include "WorkspaceShell.h"
 
-#include <QVBoxLayout>
+#include "ui_MainWindow.h"
+
+#include <QIcon>
 #include <QResizeEvent>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
+    , m_ui(new Ui::MainWindow)
 {
-    setWindowTitle("VTKQtCore Medical Software");
+    m_ui->setupUi(this);
     setMinimumSize(1024, 768);
+    setWindowIcon(QIcon(QStringLiteral(":/mainwindow/resources/app-window-icon.svg")));
 
-    m_container = new QWidget(this);
-    setCentralWidget(m_container);
+    m_workspaceShell = new WorkspaceShell(m_ui->rootStack);
+    m_ui->rootStack->addWidget(m_workspaceShell);
+    m_ui->rootStack->setCurrentWidget(m_workspaceShell);
 
-    m_rootStack = new QStackedWidget(m_container);
+    m_ui->globalOverlayLayer->raise();
+    m_ui->globalOverlayLayer->hide();
+    m_ui->globalToolHost->raise();
+    m_ui->globalToolHost->hide();
+}
 
-    m_workspaceShell = new WorkspaceShell(m_rootStack);
-    m_rootStack->addWidget(m_workspaceShell);
-
-    m_globalOverlayLayer = new QWidget(m_container);
-    m_globalOverlayLayer->raise();
-    m_globalOverlayLayer->hide();
-
-    m_globalToolHost = new QWidget(m_container);
-    m_globalToolHost->raise();
-    m_globalToolHost->hide();
+MainWindow::~MainWindow()
+{
+    delete m_ui;
 }
 
 WorkspaceShell* MainWindow::getWorkspaceShell() const
@@ -34,17 +36,17 @@ WorkspaceShell* MainWindow::getWorkspaceShell() const
 
 QStackedWidget* MainWindow::getRootStack() const
 {
-    return m_rootStack;
+    return m_ui->rootStack;
 }
 
 QWidget* MainWindow::getGlobalOverlayLayer() const
 {
-    return m_globalOverlayLayer;
+    return m_ui->globalOverlayLayer;
 }
 
 QWidget* MainWindow::getGlobalToolHost() const
 {
-    return m_globalToolHost;
+    return m_ui->globalToolHost;
 }
 
 void MainWindow::addFullPage(const QString& pageId, QWidget* page)
@@ -53,7 +55,7 @@ void MainWindow::addFullPage(const QString& pageId, QWidget* page)
         return;
     }
     m_fullPages.insert(pageId, page);
-    m_rootStack->addWidget(page);
+    m_ui->rootStack->addWidget(page);
 }
 
 void MainWindow::switchToPage(const QString& pageId)
@@ -62,20 +64,22 @@ void MainWindow::switchToPage(const QString& pageId)
     if (it == m_fullPages.end()) {
         return;
     }
-    m_rootStack->setCurrentWidget(it.value());
+    m_ui->rootStack->setCurrentWidget(it.value());
 }
 
 void MainWindow::switchToWorkspace()
 {
-    m_rootStack->setCurrentWidget(m_workspaceShell);
+    m_ui->rootStack->setCurrentWidget(m_workspaceShell);
 }
 
 void MainWindow::resizeEvent(QResizeEvent* event)
 {
     QMainWindow::resizeEvent(event);
 
-    const QSize newSize = m_container->size();
-    m_rootStack->setGeometry(0, 0, newSize.width(), newSize.height());
-    m_globalOverlayLayer->setGeometry(0, 0, newSize.width(), newSize.height());
-    m_globalToolHost->setGeometry(0, 0, newSize.width(), newSize.height());
+    const QSize newSize = m_ui->mainWindowContainer->size();
+    m_ui->rootStack->setGeometry(0, 0, newSize.width(), newSize.height());
+    m_ui->globalOverlayLayer->setGeometry(0, 0, newSize.width(), newSize.height());
+    m_ui->globalToolHost->setGeometry(0, 0, newSize.width(), newSize.height());
+    m_ui->globalToolHost->raise();
+    m_ui->globalOverlayLayer->raise();
 }

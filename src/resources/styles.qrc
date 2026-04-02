@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/styles">
+        <file>styles/app-theme.qss</file>
+        <file>styles/assets/theme-accent.svg</file>
+    </qresource>
+</RCC>

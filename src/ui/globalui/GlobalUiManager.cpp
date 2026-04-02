@@ -3,6 +3,7 @@
 
 #include <QLabel>
 #include <QMessageBox>
+#include <QStyle>
 #include <QVBoxLayout>
 
 GlobalUiManager::GlobalUiManager(QObject* parent)
@@ -41,20 +42,9 @@ void GlobalUiManager::showNotification(const QString& message, const QString& le
     label->setObjectName("globalNotification");
     label->setAlignment(Qt::AlignCenter);
     label->setWordWrap(true);
-
-    if (level == "warning") {
-        label->setStyleSheet(
-            "background-color: rgba(255, 165, 0, 200); color: white; "
-            "padding: 10px; border-radius: 4px;");
-    } else if (level == "error") {
-        label->setStyleSheet(
-            "background-color: rgba(220, 50, 50, 200); color: white; "
-            "padding: 10px; border-radius: 4px;");
-    } else {
-        label->setStyleSheet(
-            "background-color: rgba(50, 130, 200, 200); color: white; "
-            "padding: 10px; border-radius: 4px;");
-    }
+    label->setProperty("level", level);
+    label->style()->unpolish(label);
+    label->style()->polish(label);
 
     label->adjustSize();
     label->move((m_overlayLayer->width() - label->width()) / 2, 10);
@@ -96,14 +86,14 @@ void GlobalUiManager::showOverlay(const QString& message)
     }
 
     m_overlayWidget = new QWidget(m_overlayLayer);
-    m_overlayWidget->setStyleSheet("background-color: rgba(0, 0, 0, 128);");
+    m_overlayWidget->setObjectName(QStringLiteral("globalOverlayMask"));
     m_overlayWidget->setGeometry(m_overlayLayer->rect());
 
     if (!message.isEmpty()) {
         auto* layout = new QVBoxLayout(m_overlayWidget);
         auto* label = new QLabel(message, m_overlayWidget);
+        label->setObjectName(QStringLiteral("overlayMessageLabel"));
         label->setAlignment(Qt::AlignCenter);
-        label->setStyleSheet("color: white; font-size: 18px;");
         layout->addWidget(label);
     }
 

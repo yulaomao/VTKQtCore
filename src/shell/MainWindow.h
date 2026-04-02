@@ -7,13 +7,17 @@
 
 class WorkspaceShell;
 
+namespace Ui {
+class MainWindow;
+}
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
-    ~MainWindow() override = default;
+    ~MainWindow() override;
 
     WorkspaceShell* getWorkspaceShell() const;
     QStackedWidget* getRootStack() const;
@@ -28,10 +32,7 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
 
 private:
-    QWidget* m_container;
-    QStackedWidget* m_rootStack;
-    WorkspaceShell* m_workspaceShell;
-    QWidget* m_globalOverlayLayer;
-    QWidget* m_globalToolHost;
+    Ui::MainWindow* m_ui = nullptr;
+    WorkspaceShell* m_workspaceShell = nullptr;
     QMap<QString, QWidget*> m_fullPages;
 };

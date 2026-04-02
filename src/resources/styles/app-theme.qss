@@ -1,0 +1,94 @@
+QMainWindow#mainWindow {
+    background-color: #e8eef4;
+}
+
+QWidget#mainWindowContainer {
+    background-color: #f4f7fa;
+}
+
+QStackedWidget#rootStack {
+    background: transparent;
+}
+
+QWidget#workspaceShell {
+    background: transparent;
+}
+
+QWidget#workspaceTopWidget {
+    background-color: #fbfdff;
+    border-bottom: 1px solid #d7e0e8;
+}
+
+QWidget#workspaceRightWidget {
+    background-color: #f8fbfd;
+    border-left: 1px solid #d7e0e8;
+}
+
+QWidget#workspaceBottomWidget {
+    background-color: #fbfdff;
+    border-top: 1px solid #d7e0e8;
+}
+
+QWidget#globalToolHost {
+    background: transparent;
+}
+
+QWidget#globalOverlayLayer {
+    background: transparent;
+}
+
+QWidget#globalOverlayMask {
+    background-color: rgba(13, 24, 35, 128);
+}
+
+QLabel#overlayMessageLabel {
+    color: white;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+QLabel#globalNotification {
+    background-color: rgba(34, 106, 170, 220);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 60);
+}
+
+QLabel#globalNotification[level="warning"] {
+    background-color: rgba(215, 144, 20, 225);
+}
+
+QLabel#globalNotification[level="error"] {
+    background-color: rgba(191, 61, 61, 230);
+}
+
+QPushButton {
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid #b7c6d4;
+    background-color: white;
+    color: #18344f;
+}
+
+QPushButton:hover {
+    background-color: #eef5fb;
+}
+
+QPushButton:pressed {
+    background-color: #deebf6;
+}
+
+QPushButton:disabled {
+    color: #8ca0b2;
+    background-color: #edf2f6;
+}
+
+QListWidget {
+    background-color: white;
+    border: 1px solid #d7e0e8;
+    border-radius: 10px;
+    padding: 6px;
+}
+
