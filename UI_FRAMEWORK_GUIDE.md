@@ -284,13 +284,19 @@ Shell UI
    └─ 页面内部构造 UiAction 或 requestResync 参数
       └─ 由 ApplicationCoordinator 持有并注入的 shell-bound UiActionDispatcher
          └─ ILogicGateway::sendAction(...)
+            └─ LocalLogicGateway::sendAction(...)
+               ├─ 本地模式: LogicRuntime::onActionReceived(...)
+               └─ Redis 模式: CommunicationHub::sendActionRequest(...)
+                  └─ 本地 loopback/control-plane 回到 LogicRuntime::onActionReceived(...)
 
 Module UI / Shell Extension UI
    └─ QWidget 包装类内部构造 payload.command / payload.targetModule
       └─ 调用由 ModuleCoordinator 持有并注入的 module-bound UiActionDispatcher
          └─ ILogicGateway::sendAction(...)
-            └─ Qt::QueuedConnection
-               └─ LogicRuntime::onActionReceived(...)
+            └─ LocalLogicGateway::sendAction(...)
+               ├─ 本地模式: LogicRuntime::onActionReceived(...)
+               └─ Redis 模式: CommunicationHub::sendActionRequest(...)
+                  └─ 本地 loopback/control-plane 回到 LogicRuntime::onActionReceived(...)
 
 LogicRuntime
    ├─ 若是 request_switch_module，则更新 ActiveModuleState.currentModule
@@ -318,6 +324,7 @@ ModuleLogicHandler
 1. UI 和逻辑之间不是直接函数互调，而是消息交互。
 2. Qt 负责线程切换。
 3. ApplicationCoordinator 只处理壳层通知，不吞掉模块细节通知。
+4. CommunicationHub::sendActionRequest 和 sendResyncRequest 只负责传输层投递与排队，不向上返回同步业务结果。
 4. VTK 渲染更新最终仍然回到 UI 线程执行。
 
 ### 6.1 UiAction
@@ -476,6 +483,7 @@ UI 不直接访问 Redis。
 1. sendAction 只负责投递动作，不提供同步业务返回值。
 2. 业务成功失败统一由 LogicNotification 返回；若网关拒绝动作，也通过 ErrorOccurred 通知返回。
 3. requestResync 只用于通信异常后的主动重同步。
+4. 若启用了 CommunicationHub，sendAction/requestResync 会继续下沉为传输层 fire-and-forget 发送；排队、重试、连接异常通过异步状态与通知反映，而不是同步返回值。
 
 补充：启动阶段的软件选择不应通过 ILogicGateway 完成，而应在完整 UI 装配前由软件解析层直接读取 Redis 中的软件配置，再据此决定实例化哪个软件初始化类。
 
