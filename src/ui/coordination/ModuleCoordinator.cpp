@@ -85,14 +85,6 @@ void ModuleCoordinator::deactivate()
     emit deactivated();
 }
 
-void ModuleCoordinator::sendModuleAction(UiAction::ActionType type,
-                                         const QVariantMap& payload)
-{
-    if (m_actionDispatcher) {
-        m_actionDispatcher->sendAction(type, payload);
-    }
-}
-
 void ModuleCoordinator::onModuleNotification(const LogicNotification& notification)
 {
     if (notification.targetScope == LogicNotification::CurrentModule ||

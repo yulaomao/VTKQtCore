@@ -46,9 +46,6 @@ signals:
     void healthSnapshotChanged(const QVariantMap& snapshot);
 
 private:
-    void dispatchShellAction(UiAction::ActionType type,
-                             const QVariantMap& payload = {});
-
     ILogicGateway* m_gateway;
     PageManager* m_pageManager;
     GlobalUiManager* m_globalUiManager;

@@ -1,11 +1,10 @@
 #pragma once
 
+#include "BaseSoftwareInitializer.h"
+
 #include <QString>
 #include <QMap>
 #include <functional>
-
-class BaseSoftwareInitializer;
-enum class RunMode;
 
 class SoftwareInitializerFactory
 {

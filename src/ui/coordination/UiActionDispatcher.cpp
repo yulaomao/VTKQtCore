@@ -4,6 +4,11 @@
 
 namespace {
 
+QString switchModuleCommand()
+{
+    return QStringLiteral("switch_module");
+}
+
 QVariantMap withCommandPayload(const QString& command,
                                const QVariantMap& payload)
 {
@@ -28,12 +33,6 @@ QString UiActionDispatcher::getSourceModule() const
     return m_sourceModule;
 }
 
-bool UiActionDispatcher::sendAction(UiAction::ActionType type,
-                                    const QVariantMap& payload)
-{
-    return sendAction(createAction(type, payload));
-}
-
 bool UiActionDispatcher::sendAction(const UiAction& action)
 {
     const bool accepted = m_gateway && m_gateway->sendAction(action);
@@ -48,7 +47,10 @@ bool UiActionDispatcher::sendCommand(const QString& command,
         return false;
     }
 
-    return sendAction(UiAction::CustomAction, withCommandPayload(command, payload));
+    return sendAction(UiAction::create(
+        UiAction::CustomAction,
+        m_sourceModule,
+        withCommandPayload(command, payload)));
 }
 
 bool UiActionDispatcher::sendTargetedCommand(const QString& targetModule,
@@ -70,8 +72,8 @@ bool UiActionDispatcher::requestModuleSwitch(const QString& targetModule)
         return false;
     }
 
-    return sendAction(
-        UiAction::RequestSwitchModule,
+    return sendCommand(
+        switchModuleCommand(),
         {{QStringLiteral("targetModule"), targetModule}});
 }
 
@@ -80,10 +82,4 @@ void UiActionDispatcher::requestResync(const QString& reason) const
     if (m_gateway) {
         m_gateway->requestResync(reason);
     }
-}
-
-UiAction UiActionDispatcher::createAction(UiAction::ActionType type,
-                                          const QVariantMap& payload) const
-{
-    return UiAction::create(type, m_sourceModule, payload);
 }
