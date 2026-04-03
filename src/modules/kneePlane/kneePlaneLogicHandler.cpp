@@ -55,9 +55,6 @@ void KneePlaneLogicHandler::initAllTransNode(SceneGraph* scene)
         return;
     }
 
-    // Initialize all necessary transform nodes in the scene graph here
-    QString name = "FemurJTTransNode";
-    TransformNode* node = scene->getNodeById();
 
 
 }

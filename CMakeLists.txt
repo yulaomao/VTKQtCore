@@ -9,11 +9,27 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # ---------------------------------------------------------------------------
 # Qt – try Qt6 first, fall back to Qt5
 # ---------------------------------------------------------------------------
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Widgets Gui Network OpenGL OpenGLWidgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Gui Network OpenGL OpenGLWidgets)
+set(QT_COMMON_COMPONENTS Core Widgets Gui Network OpenGL)
+
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS ${QT_COMMON_COMPONENTS})
+
+if(QT_VERSION_MAJOR EQUAL 6)
+    set(QT_VERSION_SPECIFIC_COMPONENTS OpenGLWidgets)
+else()
+    set(QT_VERSION_SPECIFIC_COMPONENTS)
+endif()
+
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS
+    ${QT_COMMON_COMPONENTS}
+    ${QT_VERSION_SPECIFIC_COMPONENTS}
+)
 
 # ---------------------------------------------------------------------------
 # hiredis
@@ -41,13 +57,11 @@ find_package(VTK REQUIRED COMPONENTS
 )
 
 # ---------------------------------------------------------------------------
-# Sources – collect every .h, .cpp, .ui, and .qrc under src/
+# Sources – collect every .h and .cpp under src/
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.ui
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.qrc
 )
 
 # ---------------------------------------------------------------------------
@@ -80,10 +94,13 @@ target_link_libraries(VTKQtCore PRIVATE
     Qt${QT_VERSION_MAJOR}::Gui
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::OpenGL
-    Qt${QT_VERSION_MAJOR}::OpenGLWidgets
     hiredis::hiredis
     ${VTK_LIBRARIES}
 )
+
+if(QT_VERSION_MAJOR EQUAL 6)
+    target_link_libraries(VTKQtCore PRIVATE Qt${QT_VERSION_MAJOR}::OpenGLWidgets)
+endif()
 
 if(WIN32)
     get_target_property(QT_CORE_LOCATION_DEBUG Qt${QT_VERSION_MAJOR}::Core IMPORTED_LOCATION_DEBUG)
@@ -122,7 +139,10 @@ if(WIN32)
     get_target_property(QT_GUI_LOCATION_RELEASE Qt${QT_VERSION_MAJOR}::Gui IMPORTED_LOCATION_RELEASE)
     get_target_property(QT_WIDGETS_LOCATION_RELEASE Qt${QT_VERSION_MAJOR}::Widgets IMPORTED_LOCATION_RELEASE)
     get_target_property(QT_OPENGL_LOCATION_RELEASE Qt${QT_VERSION_MAJOR}::OpenGL IMPORTED_LOCATION_RELEASE)
-    get_target_property(QT_OPENGLWIDGETS_LOCATION_RELEASE Qt${QT_VERSION_MAJOR}::OpenGLWidgets IMPORTED_LOCATION_RELEASE)
+
+    if(QT_VERSION_MAJOR EQUAL 6)
+        get_target_property(QT_OPENGLWIDGETS_LOCATION_RELEASE Qt${QT_VERSION_MAJOR}::OpenGLWidgets IMPORTED_LOCATION_RELEASE)
+    endif()
 
     if(MSVC AND NOT VTK_QT_SUPPORT_LOCATION_DEBUG)
         add_custom_command(TARGET VTKQtCore POST_BUILD
@@ -131,6 +151,13 @@ if(WIN32)
                 "${QT_GUI_LOCATION_RELEASE}"
                 "${QT_WIDGETS_LOCATION_RELEASE}"
                 "${QT_OPENGL_LOCATION_RELEASE}"
+                "$<TARGET_FILE_DIR:VTKQtCore>"
+            COMMAND_EXPAND_LISTS)
+    endif()
+
+    if(MSVC AND NOT VTK_QT_SUPPORT_LOCATION_DEBUG AND QT_VERSION_MAJOR EQUAL 6)
+        add_custom_command(TARGET VTKQtCore POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "${QT_OPENGLWIDGETS_LOCATION_RELEASE}"
                 "$<TARGET_FILE_DIR:VTKQtCore>"
             COMMAND_EXPAND_LISTS)
