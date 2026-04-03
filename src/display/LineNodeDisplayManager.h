@@ -2,9 +2,16 @@
 
 #include "NodeDisplayManager.h"
 
+#include <vtkCellArray.h>
+#include <vtkMatrix4x4.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
+#include <vtkPolyDataMapper.h>
 #include <vtkSmartPointer.h>
 #include <vtkActor.h>
+#include <vtkTransform.h>
 
+#include <array>
 #include <QMap>
 #include <QString>
 
@@ -27,7 +34,25 @@ public:
 
 private:
     struct LineDisplayEntry {
+        vtkSmartPointer<vtkPoints> points;
+        vtkSmartPointer<vtkCellArray> cells;
+        vtkSmartPointer<vtkPolyData> polyData;
+        vtkSmartPointer<vtkPolyDataMapper> mapper;
         vtkSmartPointer<vtkActor> actor;
+        vtkSmartPointer<vtkTransform> transform;
+        vtkSmartPointer<vtkMatrix4x4> transformMatrix;
+        std::array<double, 4> color = {0.0, 0.0, 0.0, 1.0};
+        std::array<double, 16> transformValues = {
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0
+        };
+        double opacity = 1.0;
+        double lineWidth = 1.0;
+        bool dashed = false;
+        bool visible = true;
+        bool hasTransform = false;
         int currentLayer = 3;
     };
 
@@ -37,7 +62,10 @@ private:
     void updateDisplay(const QString& nodeId);
     void updateTransform(const QString& nodeId);
 
-    vtkSmartPointer<vtkPolyData> buildPolyLine(class LineNode* node) const;
+    void populatePolyLineData(class LineNode* node,
+                              vtkPoints* points,
+                              vtkCellArray* cells,
+                              vtkPolyData* polyData) const;
 
     QMap<QString, LineDisplayEntry> m_entries;
 };

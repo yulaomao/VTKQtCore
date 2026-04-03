@@ -465,7 +465,7 @@ UI 不直接访问 Redis。
 
 最小接口：
 
-1. sendAction(action: UiAction) -> bool
+1. sendAction(action: UiAction)
 2. subscribeNotification(handler) -> subscriptionId
 3. unsubscribeNotification(subscriptionId)
 4. getConnectionState() -> Connected | Degraded | Disconnected
@@ -473,8 +473,8 @@ UI 不直接访问 Redis。
 
 行为约束：
 
-1. sendAction 返回只代表“是否收到了动作”，不代表业务成功。
-2. 业务成功失败统一由 LogicNotification 返回。
+1. sendAction 只负责投递动作，不提供同步业务返回值。
+2. 业务成功失败统一由 LogicNotification 返回；若网关拒绝动作，也通过 ErrorOccurred 通知返回。
 3. requestResync 只用于通信异常后的主动重同步。
 
 补充：启动阶段的软件选择不应通过 ILogicGateway 完成，而应在完整 UI 装配前由软件解析层直接读取 Redis 中的软件配置，再据此决定实例化哪个软件初始化类。

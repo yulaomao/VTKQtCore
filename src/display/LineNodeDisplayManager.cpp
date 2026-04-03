@@ -10,7 +10,39 @@
 #include <vtkTransform.h>
 #include <vtkMatrix4x4.h>
 
+#include <array>
+#include <cmath>
+
 namespace {
+
+constexpr double kDisplayStateEpsilon = 1e-9;
+
+bool nearlyEqual(double left, double right)
+{
+    return std::fabs(left - right) <= kDisplayStateEpsilon;
+}
+
+template <std::size_t Size>
+bool arrayEquals(const std::array<double, Size>& left,
+                 const double (&right)[Size])
+{
+    for (std::size_t index = 0; index < Size; ++index) {
+        if (!nearlyEqual(left[index], right[index])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+template <std::size_t Size>
+void copyArray(std::array<double, Size>& target,
+               const double (&source)[Size])
+{
+    for (std::size_t index = 0; index < Size; ++index) {
+        target[index] = source[index];
+    }
+}
 
 void deepCopyColumnMajorToVtkMatrix(vtkMatrix4x4* vtkMatrix, const double columnMajor[16])
 {
@@ -121,34 +153,38 @@ void LineNodeDisplayManager::clearAll()
     }
 }
 
-vtkSmartPointer<vtkPolyData> LineNodeDisplayManager::buildPolyLine(LineNode* node) const
+void LineNodeDisplayManager::populatePolyLineData(LineNode* node,
+                                                  vtkPoints* points,
+                                                  vtkCellArray* cells,
+                                                  vtkPolyData* polyData) const
 {
-    auto points = vtkSmartPointer<vtkPoints>::New();
-    auto cells = vtkSmartPointer<vtkCellArray>::New();
+    if (!node || !points || !cells || !polyData) {
+        return;
+    }
+
+    points->Reset();
+    cells->Reset();
 
     int vertexCount = node->getVertexCount();
-    if (vertexCount < 2) {
-        auto polyData = vtkSmartPointer<vtkPolyData>::New();
-        polyData->SetPoints(points);
-        polyData->SetLines(cells);
-        return polyData;
-    }
 
     for (int i = 0; i < vertexCount; ++i) {
         std::array<double, 3> v = node->getVertex(i);
         points->InsertNextPoint(v[0], v[1], v[2]);
     }
 
-    int segmentCount = node->isClosed() ? vertexCount : vertexCount - 1;
-    for (int i = 0; i < segmentCount; ++i) {
-        vtkIdType ids[2] = {i, (i + 1) % vertexCount};
-        cells->InsertNextCell(2, ids);
+    if (vertexCount >= 2) {
+        int segmentCount = node->isClosed() ? vertexCount : vertexCount - 1;
+        for (int i = 0; i < segmentCount; ++i) {
+            vtkIdType ids[2] = {i, (i + 1) % vertexCount};
+            cells->InsertNextCell(2, ids);
+        }
     }
 
-    auto polyData = vtkSmartPointer<vtkPolyData>::New();
     polyData->SetPoints(points);
     polyData->SetLines(cells);
-    return polyData;
+    points->Modified();
+    cells->Modified();
+    polyData->Modified();
 }
 
 void LineNodeDisplayManager::buildEntry(const QString& nodeId)
@@ -161,13 +197,17 @@ void LineNodeDisplayManager::buildEntry(const QString& nodeId)
     bool visible = isNodeVisibleInWindow(node);
     int layer = getNodeLayerInWindow(node);
 
-    vtkSmartPointer<vtkPolyData> polyData = buildPolyLine(node);
+    LineDisplayEntry entry;
+    entry.points = vtkSmartPointer<vtkPoints>::New();
+    entry.cells = vtkSmartPointer<vtkCellArray>::New();
+    entry.polyData = vtkSmartPointer<vtkPolyData>::New();
+    populatePolyLineData(node, entry.points, entry.cells, entry.polyData);
 
-    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputData(polyData);
+    entry.mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    entry.mapper->SetInputData(entry.polyData);
 
     auto actor = vtkSmartPointer<vtkActor>::New();
-    actor->SetMapper(mapper);
+    actor->SetMapper(entry.mapper);
 
     double color[4];
     node->getColor(color);
@@ -187,8 +227,14 @@ void LineNodeDisplayManager::buildEntry(const QString& nodeId)
         renderer->AddActor(actor);
     }
 
-    LineDisplayEntry entry;
     entry.actor = actor;
+    entry.transform = vtkSmartPointer<vtkTransform>::New();
+    entry.transformMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
+    copyArray(entry.color, color);
+    entry.opacity = node->getOpacity();
+    entry.lineWidth = node->getLineWidth();
+    entry.dashed = node->isDashed();
+    entry.visible = visible;
     entry.currentLayer = layer;
     m_entries.insert(nodeId, entry);
 }
@@ -219,11 +265,7 @@ void LineNodeDisplayManager::updateContent(const QString& nodeId)
         return;
     }
 
-    vtkSmartPointer<vtkPolyData> polyData = buildPolyLine(node);
-
-    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputData(polyData);
-    it->actor->SetMapper(mapper);
+    populatePolyLineData(node, it->points, it->cells, it->polyData);
 }
 
 void LineNodeDisplayManager::updateDisplay(const QString& nodeId)
@@ -243,18 +285,37 @@ void LineNodeDisplayManager::updateDisplay(const QString& nodeId)
 
     double color[4];
     node->getColor(color);
-    it->actor->GetProperty()->SetColor(color[0], color[1], color[2]);
-    it->actor->GetProperty()->SetOpacity(node->getOpacity());
-    it->actor->GetProperty()->SetLineWidth(static_cast<float>(node->getLineWidth()));
+    const double opacity = node->getOpacity();
+    const double lineWidth = node->getLineWidth();
+    const bool dashed = node->isDashed();
 
-    if (node->isDashed()) {
-        it->actor->GetProperty()->SetLineStipplePattern(0xFF00);
-        it->actor->GetProperty()->SetLineStippleRepeatFactor(1);
-    } else {
-        it->actor->GetProperty()->SetLineStipplePattern(0xFFFF);
+    if (!arrayEquals(it->color, color)) {
+        it->actor->GetProperty()->SetColor(color[0], color[1], color[2]);
+        copyArray(it->color, color);
+    }
+    if (!nearlyEqual(it->opacity, opacity)) {
+        it->actor->GetProperty()->SetOpacity(opacity);
+        it->opacity = opacity;
+    }
+    if (!nearlyEqual(it->lineWidth, lineWidth)) {
+        it->actor->GetProperty()->SetLineWidth(static_cast<float>(lineWidth));
+        it->lineWidth = lineWidth;
     }
 
-    it->actor->SetVisibility(visible ? 1 : 0);
+    if (it->dashed != dashed) {
+        if (dashed) {
+            it->actor->GetProperty()->SetLineStipplePattern(0xFF00);
+            it->actor->GetProperty()->SetLineStippleRepeatFactor(1);
+        } else {
+            it->actor->GetProperty()->SetLineStipplePattern(0xFFFF);
+        }
+        it->dashed = dashed;
+    }
+
+    if (it->visible != visible) {
+        it->actor->SetVisibility(visible ? 1 : 0);
+        it->visible = visible;
+    }
 
     if (newLayer != it->currentLayer) {
         vtkRenderer* oldRenderer = getRenderer(it->currentLayer);
@@ -278,14 +339,29 @@ void LineNodeDisplayManager::updateTransform(const QString& nodeId)
 
     double matrix[16];
     if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
-        it->actor->SetUserTransform(nullptr);
+        if (it->hasTransform) {
+            it->actor->SetUserTransform(nullptr);
+            it->hasTransform = false;
+        }
         return;
     }
 
-    auto transform = vtkSmartPointer<vtkTransform>::New();
-    auto mat = vtkSmartPointer<vtkMatrix4x4>::New();
-    deepCopyColumnMajorToVtkMatrix(mat, matrix);
-    transform->SetMatrix(mat);
+    if (it->hasTransform && arrayEquals(it->transformValues, matrix)) {
+        return;
+    }
 
-    it->actor->SetUserTransform(transform);
+    if (!it->transform) {
+        it->transform = vtkSmartPointer<vtkTransform>::New();
+    }
+    if (!it->transformMatrix) {
+        it->transformMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
+    }
+
+    deepCopyColumnMajorToVtkMatrix(it->transformMatrix, matrix);
+    it->transform->SetMatrix(it->transformMatrix);
+    if (!it->hasTransform || it->actor->GetUserTransform() != it->transform) {
+        it->actor->SetUserTransform(it->transform);
+    }
+    copyArray(it->transformValues, matrix);
+    it->hasTransform = true;
 }

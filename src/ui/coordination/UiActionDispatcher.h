@@ -19,19 +19,19 @@ public:
 
     QString getSourceModule() const;
 
-    bool sendAction(UiAction::ActionType type,
+    void sendAction(UiAction::ActionType type,
                     const QVariantMap& payload = {});
-    bool sendAction(const UiAction& action);
-    bool sendCommand(const QString& command,
+    void sendAction(const UiAction& action);
+    void sendCommand(const QString& command,
                      const QVariantMap& payload = {});
-    bool sendTargetedCommand(const QString& targetModule,
+    void sendTargetedCommand(const QString& targetModule,
                              const QString& command,
                              const QVariantMap& payload = {});
-    bool requestModuleSwitch(const QString& targetModule);
+    void requestModuleSwitch(const QString& targetModule);
     void requestResync(const QString& reason) const;
 
 signals:
-    void actionDispatched(const UiAction& action, bool accepted);
+    void actionDispatched(const UiAction& action);
 
 private:
     UiAction createAction(UiAction::ActionType type,
