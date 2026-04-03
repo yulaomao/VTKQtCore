@@ -26,6 +26,7 @@ public:
 
     // Query
     NodeBase* getNodeById(const QString& nodeId) const;
+    NodeBase* getNodeByName(const QString& name) const;
 
     template<typename T>
     T* getNodeById(const QString& nodeId) const

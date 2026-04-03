@@ -1,6 +1,6 @@
 <RCC>
     <qresource prefix="/pointpick">
-        <file alias="pointpick-status.svg">resources/pointpick-status.svg</file>
-        <file alias="pointpick-target.svg">resources/pointpick-target.svg</file>
+        <file>resources/pointpick-status.svg</file>
+        <file>resources/pointpick-target.svg</file>
     </qresource>
 </RCC>

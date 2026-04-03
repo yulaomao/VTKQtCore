@@ -11,7 +11,7 @@ ModuleCoordinator::ModuleCoordinator(const QString& moduleId, ILogicGateway* gat
     , m_mainPage(nullptr)
 {
     connect(m_actionDispatcher, &UiActionDispatcher::actionDispatched,
-            this, [this](const UiAction& action) {
+            this, [this](const UiAction& action, bool) {
                 emit moduleAction(action);
             });
 }

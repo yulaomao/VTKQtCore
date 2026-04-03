@@ -22,14 +22,14 @@ public:
     bool sendAction(const UiAction& action);
     bool sendCommand(const QString& command,
                      const QVariantMap& payload = {});
-    void sendTargetedCommand(const QString& targetModule,
+    bool sendTargetedCommand(const QString& targetModule,
                              const QString& command,
                              const QVariantMap& payload = {});
-    void requestModuleSwitch(const QString& targetModule);
+    bool requestModuleSwitch(const QString& targetModule);
     void requestResync(const QString& reason) const;
 
 signals:
-    void actionDispatched(const UiAction& action);
+    void actionDispatched(const UiAction& action, bool accepted);
 
 private:
     QString m_sourceModule;

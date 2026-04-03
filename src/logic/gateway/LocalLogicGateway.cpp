@@ -27,32 +27,22 @@ LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime,
     }
 }
 
-void LocalLogicGateway::sendAction(const UiAction& action)
+bool LocalLogicGateway::sendAction(const UiAction& action)
 {
     if (m_connectionState == Disconnected) {
-        dispatchNotification(createRejectedActionNotification(
-            action,
-            QStringLiteral("LOGIC_GATEWAY_DISCONNECTED"),
-            QStringLiteral("当前连接不可用，动作未发送。"),
-            QStringLiteral("等待连接恢复后重试。")));
-        return;
+        return false;
     }
 
     if (m_communicationHub) {
-        m_communicationHub->sendActionRequest(action, true);
-        return;
+        return m_communicationHub->sendActionRequest(action, true);
     }
 
     if (!m_runtime) {
-        dispatchNotification(createRejectedActionNotification(
-            action,
-            QStringLiteral("LOGIC_GATEWAY_UNAVAILABLE"),
-            QStringLiteral("逻辑网关未完成初始化，动作未发送。"),
-            QStringLiteral("检查逻辑运行时装配状态。")));
-        return;
+        return false;
     }
 
     m_runtime->onActionReceived(action);
+    return true;
 }
 
 int LocalLogicGateway::subscribeNotification(std::function<void(const LogicNotification&)> handler)
@@ -92,36 +82,11 @@ void LocalLogicGateway::requestResync(const QString& reason)
 
 void LocalLogicGateway::onRuntimeNotification(const LogicNotification& notification)
 {
-    dispatchNotification(notification);
-}
-
-void LocalLogicGateway::dispatchNotification(const LogicNotification& notification)
-{
     emit notificationReceived(notification);
 
     for (auto it = m_subscribers.cbegin(); it != m_subscribers.cend(); ++it) {
         it.value()(notification);
     }
-}
-
-LogicNotification LocalLogicGateway::createRejectedActionNotification(
-    const UiAction& action,
-    const QString& errorCode,
-    const QString& message,
-    const QString& suggestedAction) const
-{
-    LogicNotification notification = LogicNotification::create(
-        LogicNotification::ErrorOccurred,
-        LogicNotification::Shell,
-        {{QStringLiteral("errorCode"), errorCode},
-         {QStringLiteral("message"), message},
-         {QStringLiteral("recoverable"), true},
-         {QStringLiteral("suggestedAction"), suggestedAction},
-         {QStringLiteral("module"), action.module},
-         {QStringLiteral("actionType"), UiAction::toString(action.actionType)}});
-    notification.setSourceActionId(action.actionId);
-    notification.setLevel(LogicNotification::Warning);
-    return notification;
 }
 
 void LocalLogicGateway::onRedisConnectionStateChanged(int state)

@@ -44,11 +44,8 @@ public:
     void addPollingTask(PollingTask* task);
     void setOutboundChannels(const QString& controlPublishChannel,
                              const QString& ackChannel);
-    // Fire-and-forget transport entrypoints. Delivery, retry, and failures are
-    // surfaced asynchronously through connection state, communicationIssue, or
-    // higher-level LogicNotification paths rather than a synchronous return.
-    void sendActionRequest(const UiAction& action, bool loopbackToLocal = true);
-    void sendResyncRequest(const QString& reason, bool loopbackToLocal = true);
+    bool sendActionRequest(const UiAction& action, bool loopbackToLocal = true);
+    bool sendResyncRequest(const QString& reason, bool loopbackToLocal = true);
     void start();
     void stop();
     QString getConnectionStateName() const;

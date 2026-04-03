@@ -276,7 +276,7 @@ void CommunicationHub::setOutboundChannels(const QString& controlPublishChannel,
     }
 }
 
-void CommunicationHub::sendActionRequest(const UiAction& action, bool loopbackToLocal)
+bool CommunicationHub::sendActionRequest(const UiAction& action, bool loopbackToLocal)
 {
     QVariantMap payload;
     payload.insert(QStringLiteral("category"), QStringLiteral("ActionRequest"));
@@ -296,9 +296,11 @@ void CommunicationHub::sendActionRequest(const UiAction& action, bool loopbackTo
     if (loopbackToLocal) {
         emit controlMessageReceived(action.module, payload);
     }
+
+    return true;
 }
 
-void CommunicationHub::sendResyncRequest(const QString& reason, bool loopbackToLocal)
+bool CommunicationHub::sendResyncRequest(const QString& reason, bool loopbackToLocal)
 {
     QVariantMap payload;
     payload.insert(QStringLiteral("category"), QStringLiteral("ResyncRequest"));
@@ -317,6 +319,8 @@ void CommunicationHub::sendResyncRequest(const QString& reason, bool loopbackToL
     if (loopbackToLocal) {
         emit serverCommandReceived(QStringLiteral("resync_request"), payload);
     }
+
+    return true;
 }
 
 void CommunicationHub::start()

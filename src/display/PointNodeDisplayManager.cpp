@@ -16,38 +16,7 @@
 #include <vtkTransform.h>
 #include <vtkMatrix4x4.h>
 
-#include <cmath>
-
 namespace {
-
-constexpr double kDisplayStateEpsilon = 1e-9;
-
-bool nearlyEqual(double left, double right)
-{
-    return std::fabs(left - right) <= kDisplayStateEpsilon;
-}
-
-template <std::size_t Size>
-bool arrayEquals(const std::array<double, Size>& left,
-                 const double (&right)[Size])
-{
-    for (std::size_t index = 0; index < Size; ++index) {
-        if (!nearlyEqual(left[index], right[index])) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-template <std::size_t Size>
-void copyArray(std::array<double, Size>& target,
-               const double (&source)[Size])
-{
-    for (std::size_t index = 0; index < Size; ++index) {
-        target[index] = source[index];
-    }
-}
 
 void deepCopyColumnMajorToVtkMatrix(vtkMatrix4x4* vtkMatrix, const double columnMajor[16])
 {
@@ -159,19 +128,21 @@ void PointNodeDisplayManager::clearAll()
     }
 }
 
-void PointNodeDisplayManager::populatePointData(PointNode* node,
-                                                vtkPoints* points,
-                                                vtkCellArray* verts,
-                                                vtkStringArray* labels,
-                                                vtkPolyData* polyData) const
+void PointNodeDisplayManager::buildEntry(const QString& nodeId)
 {
-    if (!node || !points || !verts || !labels || !polyData) {
+    PointNode* node = scene()->getNodeById<PointNode>(nodeId);
+    if (!node) {
         return;
     }
 
-    points->Reset();
-    verts->Reset();
-    labels->Reset();
+    bool visible = isNodeVisibleInWindow(node);
+    int layer = getNodeLayerInWindow(node);
+
+    // Build point polydata
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    auto verts = vtkSmartPointer<vtkCellArray>::New();
+    auto labels = vtkSmartPointer<vtkStringArray>::New();
+    labels->SetName("Labels");
 
     int count = node->getPointCount();
     for (int i = 0; i < count; ++i) {
@@ -184,48 +155,27 @@ void PointNodeDisplayManager::populatePointData(PointNode* node,
         labels->InsertNextValue(item.label.toStdString());
     }
 
+    auto polyData = vtkSmartPointer<vtkPolyData>::New();
     polyData->SetPoints(points);
     polyData->SetVerts(verts);
-    points->Modified();
-    verts->Modified();
-    labels->Modified();
-    polyData->Modified();
-}
+    polyData->GetPointData()->AddArray(labels);
 
-void PointNodeDisplayManager::buildEntry(const QString& nodeId)
-{
-    PointNode* node = scene()->getNodeById<PointNode>(nodeId);
-    if (!node) {
-        return;
-    }
-
-    bool visible = isNodeVisibleInWindow(node);
-    int layer = getNodeLayerInWindow(node);
-
-    PointDisplayEntry entry;
-    entry.points = vtkSmartPointer<vtkPoints>::New();
-    entry.verts = vtkSmartPointer<vtkCellArray>::New();
-    entry.labels = vtkSmartPointer<vtkStringArray>::New();
-    entry.labels->SetName("Labels");
-    entry.polyData = vtkSmartPointer<vtkPolyData>::New();
-    entry.polyData->GetPointData()->AddArray(entry.labels);
-    populatePointData(node, entry.points, entry.verts, entry.labels, entry.polyData);
-
-    entry.sphere = vtkSmartPointer<vtkSphereSource>::New();
+    // Glyph mapper with sphere source
+    auto sphere = vtkSmartPointer<vtkSphereSource>::New();
     double defaultSize = node->getDefaultPointSize();
-    entry.sphere->SetRadius(defaultSize * 0.5);
-    entry.sphere->SetThetaResolution(12);
-    entry.sphere->SetPhiResolution(12);
-    entry.sphere->Update();
+    sphere->SetRadius(defaultSize * 0.5);
+    sphere->SetThetaResolution(12);
+    sphere->SetPhiResolution(12);
+    sphere->Update();
 
-    entry.glyphMapper = vtkSmartPointer<vtkGlyph3DMapper>::New();
-    entry.glyphMapper->SetInputData(entry.polyData);
-    entry.glyphMapper->SetSourceData(entry.sphere->GetOutput());
-    entry.glyphMapper->ScalingOff();
-    entry.glyphMapper->Update();
+    auto glyphMapper = vtkSmartPointer<vtkGlyph3DMapper>::New();
+    glyphMapper->SetInputData(polyData);
+    glyphMapper->SetSourceData(sphere->GetOutput());
+    glyphMapper->ScalingOff();
+    glyphMapper->Update();
 
     auto actor = vtkSmartPointer<vtkActor>::New();
-    actor->SetMapper(entry.glyphMapper);
+    actor->SetMapper(glyphMapper);
 
     double color[4];
     node->getDefaultPointColor(color);
@@ -233,19 +183,20 @@ void PointNodeDisplayManager::buildEntry(const QString& nodeId)
     actor->GetProperty()->SetOpacity(color[3]);
     actor->SetVisibility(visible ? 1 : 0);
 
-    entry.labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
-    entry.labelMapper->SetInputData(entry.polyData);
-    entry.labelMapper->SetLabelModeToLabelFieldData();
-    entry.labelMapper->SetFieldDataName("Labels");
-    entry.labelMapper->GetLabelTextProperty()->SetFontSize(14);
-    entry.labelMapper->GetLabelTextProperty()->SetColor(1.0, 1.0, 1.0);
-    entry.labelMapper->GetLabelTextProperty()->SetJustificationToCentered();
-    entry.labelMapper->GetLabelTextProperty()->SetVerticalJustificationToBottom();
-    entry.labelMapper->GetLabelTextProperty()->SetBold(1);
-    entry.labelMapper->GetLabelTextProperty()->SetShadow(1);
+    // Label actor
+    auto labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
+    labelMapper->SetInputData(polyData);
+    labelMapper->SetLabelModeToLabelFieldData();
+    labelMapper->SetFieldDataName("Labels");
+    labelMapper->GetLabelTextProperty()->SetFontSize(14);
+    labelMapper->GetLabelTextProperty()->SetColor(1.0, 1.0, 1.0);
+    labelMapper->GetLabelTextProperty()->SetJustificationToCentered();
+    labelMapper->GetLabelTextProperty()->SetVerticalJustificationToBottom();
+    labelMapper->GetLabelTextProperty()->SetBold(1);
+    labelMapper->GetLabelTextProperty()->SetShadow(1);
 
     auto labelActor = vtkSmartPointer<vtkActor2D>::New();
-    labelActor->SetMapper(entry.labelMapper);
+    labelActor->SetMapper(labelMapper);
     bool showLabels = node->isShowPointLabel() && visible;
     labelActor->SetVisibility(showLabels ? 1 : 0);
 
@@ -256,14 +207,9 @@ void PointNodeDisplayManager::buildEntry(const QString& nodeId)
         renderer->AddActor2D(labelActor);
     }
 
+    PointDisplayEntry entry;
     entry.actor = actor;
     entry.labelActor = labelActor;
-    entry.transform = vtkSmartPointer<vtkTransform>::New();
-    entry.transformMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
-    copyArray(entry.color, color);
-    entry.sphereRadius = defaultSize * 0.5;
-    entry.visible = visible;
-    entry.labelsVisible = showLabels;
     entry.currentLayer = layer;
     m_entries.insert(nodeId, entry);
 }
@@ -299,20 +245,56 @@ void PointNodeDisplayManager::updateContent(const QString& nodeId)
         return;
     }
 
-    populatePointData(node, it->points, it->verts, it->labels, it->polyData);
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    auto verts = vtkSmartPointer<vtkCellArray>::New();
+    auto labels = vtkSmartPointer<vtkStringArray>::New();
+    labels->SetName("Labels");
 
-    const double sphereRadius = node->getDefaultPointSize() * 0.5;
-    if (it->sphere && !nearlyEqual(it->sphereRadius, sphereRadius)) {
-        it->sphere->SetRadius(sphereRadius);
-        it->sphere->Update();
-        it->sphereRadius = sphereRadius;
+    int count = node->getPointCount();
+    for (int i = 0; i < count; ++i) {
+        double pos[3];
+        node->getPointPosition(i, pos);
+        vtkIdType pid = points->InsertNextPoint(pos);
+        verts->InsertNextCell(1, &pid);
+
+        const PointItem& item = node->getPointByIndex(i);
+        labels->InsertNextValue(item.label.toStdString());
     }
-    if (it->glyphMapper) {
-        it->glyphMapper->Modified();
-    }
-    if (it->labelMapper) {
-        it->labelMapper->Modified();
-    }
+
+    auto polyData = vtkSmartPointer<vtkPolyData>::New();
+    polyData->SetPoints(points);
+    polyData->SetVerts(verts);
+    polyData->GetPointData()->AddArray(labels);
+
+    // Update sphere radius
+    auto sphere = vtkSmartPointer<vtkSphereSource>::New();
+    double defaultSize = node->getDefaultPointSize();
+    sphere->SetRadius(defaultSize * 0.5);
+    sphere->SetThetaResolution(12);
+    sphere->SetPhiResolution(12);
+    sphere->Update();
+
+    auto glyphMapper = vtkSmartPointer<vtkGlyph3DMapper>::New();
+    glyphMapper->SetInputData(polyData);
+    glyphMapper->SetSourceData(sphere->GetOutput());
+    glyphMapper->ScalingOff();
+    glyphMapper->Update();
+
+    it->actor->SetMapper(glyphMapper);
+
+    // Update label mapper
+    auto labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
+    labelMapper->SetInputData(polyData);
+    labelMapper->SetLabelModeToLabelFieldData();
+    labelMapper->SetFieldDataName("Labels");
+    labelMapper->GetLabelTextProperty()->SetFontSize(14);
+    labelMapper->GetLabelTextProperty()->SetColor(1.0, 1.0, 1.0);
+    labelMapper->GetLabelTextProperty()->SetJustificationToCentered();
+    labelMapper->GetLabelTextProperty()->SetVerticalJustificationToBottom();
+    labelMapper->GetLabelTextProperty()->SetBold(1);
+    labelMapper->GetLabelTextProperty()->SetShadow(1);
+
+    it->labelActor->SetMapper(labelMapper);
 }
 
 void PointNodeDisplayManager::updateDisplay(const QString& nodeId)
@@ -333,21 +315,12 @@ void PointNodeDisplayManager::updateDisplay(const QString& nodeId)
     // Update color and opacity
     double color[4];
     node->getDefaultPointColor(color);
-    if (!arrayEquals(it->color, color)) {
-        it->actor->GetProperty()->SetColor(color[0], color[1], color[2]);
-        it->actor->GetProperty()->SetOpacity(color[3]);
-        copyArray(it->color, color);
-    }
-    if (it->visible != visible) {
-        it->actor->SetVisibility(visible ? 1 : 0);
-        it->visible = visible;
-    }
+    it->actor->GetProperty()->SetColor(color[0], color[1], color[2]);
+    it->actor->GetProperty()->SetOpacity(color[3]);
+    it->actor->SetVisibility(visible ? 1 : 0);
 
     bool showLabels = node->isShowPointLabel() && visible;
-    if (it->labelsVisible != showLabels) {
-        it->labelActor->SetVisibility(showLabels ? 1 : 0);
-        it->labelsVisible = showLabels;
-    }
+    it->labelActor->SetVisibility(showLabels ? 1 : 0);
 
     // Handle layer change
     if (newLayer != it->currentLayer) {
@@ -374,29 +347,14 @@ void PointNodeDisplayManager::updateTransform(const QString& nodeId)
 
     double matrix[16];
     if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
-        if (it->hasTransform) {
-            it->actor->SetUserTransform(nullptr);
-            it->hasTransform = false;
-        }
+        it->actor->SetUserTransform(nullptr);
         return;
     }
 
-    if (it->hasTransform && arrayEquals(it->transformValues, matrix)) {
-        return;
-    }
+    auto transform = vtkSmartPointer<vtkTransform>::New();
+    auto mat = vtkSmartPointer<vtkMatrix4x4>::New();
+    deepCopyColumnMajorToVtkMatrix(mat, matrix);
+    transform->SetMatrix(mat);
 
-    if (!it->transform) {
-        it->transform = vtkSmartPointer<vtkTransform>::New();
-    }
-    if (!it->transformMatrix) {
-        it->transformMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
-    }
-
-    deepCopyColumnMajorToVtkMatrix(it->transformMatrix, matrix);
-    it->transform->SetMatrix(it->transformMatrix);
-    if (!it->hasTransform || it->actor->GetUserTransform() != it->transform) {
-        it->actor->SetUserTransform(it->transform);
-    }
-    copyArray(it->transformValues, matrix);
-    it->hasTransform = true;
+    it->actor->SetUserTransform(transform);
 }

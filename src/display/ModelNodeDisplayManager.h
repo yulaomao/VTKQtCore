@@ -2,14 +2,9 @@
 
 #include "NodeDisplayManager.h"
 
-#include <vtkMatrix4x4.h>
-#include <vtkPolyData.h>
-#include <vtkPolyDataMapper.h>
 #include <vtkSmartPointer.h>
 #include <vtkActor.h>
-#include <vtkTransform.h>
 
-#include <array>
 #include <QMap>
 #include <QString>
 
@@ -32,27 +27,7 @@ public:
 
 private:
     struct ModelDisplayEntry {
-        vtkSmartPointer<vtkPolyData> polyData;
-        vtkSmartPointer<vtkPolyDataMapper> mapper;
         vtkSmartPointer<vtkActor> actor;
-        vtkSmartPointer<vtkTransform> transform;
-        vtkSmartPointer<vtkMatrix4x4> transformMatrix;
-        std::array<double, 4> color = {0.0, 0.0, 0.0, 1.0};
-        std::array<double, 4> edgeColor = {0.0, 0.0, 0.0, 1.0};
-        std::array<double, 16> transformValues = {
-            0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0
-        };
-        QString renderMode;
-        double opacity = 1.0;
-        double edgeWidth = 1.0;
-        bool visible = true;
-        bool scalarVisibility = false;
-        bool backfaceCulling = false;
-        bool edgeVisibility = false;
-        bool hasTransform = false;
         int currentLayer = 1;
     };
 

@@ -15,16 +15,6 @@ void setIdentity(double m[16])
     m[0] = m[5] = m[10] = m[15] = 1.0;
 }
 
-bool matricesEqual(const double lhs[16], const double rhs[16], double eps = 1e-12)
-{
-    for (int i = 0; i < 16; ++i) {
-        if (std::fabs(lhs[i] - rhs[i]) > eps) {
-            return false;
-        }
-    }
-    return true;
-}
-
 } // anonymous namespace
 
 TransformNode::TransformNode(QObject* parent)
@@ -41,10 +31,6 @@ TransformNode::TransformNode(QObject* parent)
 
 void TransformNode::setMatrixTransformToParent(const double m[16])
 {
-    if (matricesEqual(m_matrixData, m)) {
-        return;
-    }
-
     std::memcpy(m_matrixData, m, 16 * sizeof(double));
     invalidateInverseCache();
     touchModified();

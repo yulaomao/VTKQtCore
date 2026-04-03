@@ -154,6 +154,17 @@ NodeBase* SceneGraph::getNodeById(const QString& nodeId) const
     return m_nodes.value(nodeId, nullptr);
 }
 
+NodeBase* SceneGraph::getNodeByName(const QString& name) const
+{
+    QReadLocker locker(&m_lock);
+    for (NodeBase* node : m_nodes) {
+        if (node && node->getName() == name) {
+            return node;
+        }
+    }
+    return nullptr;
+}
+
 QVector<NodeBase*> SceneGraph::getNodesByTagName(const QString& tagName) const
 {
     QReadLocker locker(&m_lock);

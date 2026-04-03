@@ -19,7 +19,7 @@ public:
                                QObject* parent = nullptr);
     ~LocalLogicGateway() override = default;
 
-    void sendAction(const UiAction& action) override;
+    bool sendAction(const UiAction& action) override;
     int subscribeNotification(std::function<void(const LogicNotification&)> handler) override;
     void unsubscribeNotification(int subscriptionId) override;
 
@@ -31,11 +31,6 @@ private slots:
     void onRedisConnectionStateChanged(int state);
 
 private:
-    void dispatchNotification(const LogicNotification& notification);
-    LogicNotification createRejectedActionNotification(const UiAction& action,
-                                                      const QString& errorCode,
-                                                      const QString& message,
-                                                      const QString& suggestedAction) const;
     void updateConnectionState(ConnectionState state);
 
     LogicRuntime* m_runtime = nullptr;

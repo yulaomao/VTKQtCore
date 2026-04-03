@@ -9,38 +9,7 @@
 #include <vtkTransform.h>
 #include <vtkMatrix4x4.h>
 
-#include <cmath>
-
 namespace {
-
-constexpr double kDisplayStateEpsilon = 1e-9;
-
-bool nearlyEqual(double left, double right)
-{
-    return std::fabs(left - right) <= kDisplayStateEpsilon;
-}
-
-template <std::size_t Size>
-bool arrayEquals(const std::array<double, Size>& left,
-                 const double (&right)[Size])
-{
-    for (std::size_t index = 0; index < Size; ++index) {
-        if (!nearlyEqual(left[index], right[index])) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-template <std::size_t Size>
-void copyArray(std::array<double, Size>& target,
-               const double (&source)[Size])
-{
-    for (std::size_t index = 0; index < Size; ++index) {
-        target[index] = source[index];
-    }
-}
 
 void deepCopyColumnMajorToVtkMatrix(vtkMatrix4x4* vtkMatrix, const double columnMajor[16])
 {
@@ -180,14 +149,8 @@ void ModelNodeDisplayManager::buildEntry(const QString& nodeId)
     actor->SetVisibility(visible ? 1 : 0);
 
     ModelDisplayEntry entry;
-    entry.polyData = polyData;
-    entry.mapper = mapper;
     entry.actor = actor;
-    entry.transform = vtkSmartPointer<vtkTransform>::New();
-    entry.transformMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
     entry.currentLayer = layer;
-    entry.visible = visible;
-    entry.scalarVisibility = node->isUseScalarColor();
 
     applyVisualProperties(entry, node);
 
@@ -230,13 +193,10 @@ void ModelNodeDisplayManager::updateContent(const QString& nodeId)
         polyData = vtkSmartPointer<vtkPolyData>::New();
     }
 
-    if (it->mapper) {
-        if (it->polyData != polyData) {
-            it->mapper->SetInputData(polyData);
-            it->polyData = polyData;
-        } else {
-            it->mapper->Modified();
-        }
+    auto mapper = vtkPolyDataMapper::SafeDownCast(it->actor->GetMapper());
+    if (mapper) {
+        mapper->SetInputData(polyData);
+        mapper->Update();
     }
 }
 
@@ -255,22 +215,16 @@ void ModelNodeDisplayManager::updateDisplay(const QString& nodeId)
     bool visible = isNodeVisibleInWindow(node);
     int newLayer = getNodeLayerInWindow(node);
 
-    if (it->visible != visible) {
-        it->actor->SetVisibility(visible ? 1 : 0);
-        it->visible = visible;
-    }
+    it->actor->SetVisibility(visible ? 1 : 0);
     applyVisualProperties(*it, node);
 
     // Update scalar visibility
-    if (it->mapper) {
-        const bool useScalarColor = node->isUseScalarColor();
-        if (it->scalarVisibility != useScalarColor) {
-            if (useScalarColor) {
-                it->mapper->ScalarVisibilityOn();
-            } else {
-                it->mapper->ScalarVisibilityOff();
-            }
-            it->scalarVisibility = useScalarColor;
+    auto mapper = vtkPolyDataMapper::SafeDownCast(it->actor->GetMapper());
+    if (mapper) {
+        if (node->isUseScalarColor()) {
+            mapper->ScalarVisibilityOn();
+        } else {
+            mapper->ScalarVisibilityOff();
         }
     }
 
@@ -296,31 +250,16 @@ void ModelNodeDisplayManager::updateTransform(const QString& nodeId)
 
     double matrix[16];
     if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
-        if (it->hasTransform) {
-            it->actor->SetUserTransform(nullptr);
-            it->hasTransform = false;
-        }
+        it->actor->SetUserTransform(nullptr);
         return;
     }
 
-    if (it->hasTransform && arrayEquals(it->transformValues, matrix)) {
-        return;
-    }
+    auto transform = vtkSmartPointer<vtkTransform>::New();
+    auto mat = vtkSmartPointer<vtkMatrix4x4>::New();
+    deepCopyColumnMajorToVtkMatrix(mat, matrix);
+    transform->SetMatrix(mat);
 
-    if (!it->transform) {
-        it->transform = vtkSmartPointer<vtkTransform>::New();
-    }
-    if (!it->transformMatrix) {
-        it->transformMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
-    }
-
-    deepCopyColumnMajorToVtkMatrix(it->transformMatrix, matrix);
-    it->transform->SetMatrix(it->transformMatrix);
-    if (!it->hasTransform || it->actor->GetUserTransform() != it->transform) {
-        it->actor->SetUserTransform(it->transform);
-    }
-    copyArray(it->transformValues, matrix);
-    it->hasTransform = true;
+    it->actor->SetUserTransform(transform);
 }
 
 void ModelNodeDisplayManager::applyVisualProperties(ModelDisplayEntry& entry, ModelNode* node)
@@ -329,54 +268,29 @@ void ModelNodeDisplayManager::applyVisualProperties(ModelDisplayEntry& entry, Mo
 
     // Render mode
     QString renderMode = node->getRenderMode();
-    if (entry.renderMode != renderMode) {
-        if (renderMode == QStringLiteral("wireframe")) {
-            prop->SetRepresentationToWireframe();
-        } else if (renderMode == QStringLiteral("points")) {
-            prop->SetRepresentationToPoints();
-        } else {
-            prop->SetRepresentationToSurface();
-        }
-        entry.renderMode = renderMode;
+    if (renderMode == QStringLiteral("wireframe")) {
+        prop->SetRepresentationToWireframe();
+    } else if (renderMode == QStringLiteral("points")) {
+        prop->SetRepresentationToPoints();
+    } else {
+        prop->SetRepresentationToSurface();
     }
 
     // Color and opacity
     double color[4];
     node->getColor(color);
-    if (!arrayEquals(entry.color, color)) {
-        prop->SetColor(color[0], color[1], color[2]);
-        copyArray(entry.color, color);
-    }
-    const double opacity = node->getOpacity();
-    if (!nearlyEqual(entry.opacity, opacity)) {
-        prop->SetOpacity(opacity);
-        entry.opacity = opacity;
-    }
+    prop->SetColor(color[0], color[1], color[2]);
+    prop->SetOpacity(node->getOpacity());
 
     // Backface culling
-    const bool backfaceCulling = node->isBackfaceCulling();
-    if (entry.backfaceCulling != backfaceCulling) {
-        prop->SetBackfaceCulling(backfaceCulling ? 1 : 0);
-        entry.backfaceCulling = backfaceCulling;
-    }
+    prop->SetBackfaceCulling(node->isBackfaceCulling() ? 1 : 0);
 
     // Edge visibility
-    const bool showEdges = node->isShowEdges();
-    if (entry.edgeVisibility != showEdges) {
-        prop->SetEdgeVisibility(showEdges ? 1 : 0);
-        entry.edgeVisibility = showEdges;
-    }
-    if (showEdges) {
+    prop->SetEdgeVisibility(node->isShowEdges() ? 1 : 0);
+    if (node->isShowEdges()) {
         double edgeColor[4];
         node->getEdgeColor(edgeColor);
-        if (!arrayEquals(entry.edgeColor, edgeColor)) {
-            prop->SetEdgeColor(edgeColor[0], edgeColor[1], edgeColor[2]);
-            copyArray(entry.edgeColor, edgeColor);
-        }
-        const double edgeWidth = node->getEdgeWidth();
-        if (!nearlyEqual(entry.edgeWidth, edgeWidth)) {
-            prop->SetLineWidth(static_cast<float>(edgeWidth));
-            entry.edgeWidth = edgeWidth;
-        }
+        prop->SetEdgeColor(edgeColor[0], edgeColor[1], edgeColor[2]);
+        prop->SetLineWidth(static_cast<float>(node->getEdgeWidth()));
     }
 }

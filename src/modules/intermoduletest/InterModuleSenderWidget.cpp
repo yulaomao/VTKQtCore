@@ -89,8 +89,10 @@ void InterModuleSenderWidget::submitText()
         return;
     }
 
-    m_actionDispatcher->sendCommand(
+    const bool accepted = m_actionDispatcher->sendCommand(
         InterModuleTest::sendTextCommand(),
         {{QStringLiteral("text"), text}});
-    m_input->selectAll();
+    if (accepted) {
+        m_input->selectAll();
+    }
 }
