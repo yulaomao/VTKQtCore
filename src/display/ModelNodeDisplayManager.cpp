@@ -9,7 +9,33 @@
 #include <vtkTransform.h>
 #include <vtkMatrix4x4.h>
 
+#include <cmath>
+
 namespace {
+
+constexpr double kTolerance = 1e-12;
+
+bool areScalarsEqual(double lhs, double rhs)
+{
+    return std::abs(lhs - rhs) <= kTolerance;
+}
+
+bool areArraysEqual(const double* lhs, const double* rhs, int count)
+{
+    for (int i = 0; i < count; ++i) {
+        if (!areScalarsEqual(lhs[i], rhs[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void copyArray(const double* source, double* target, int count)
+{
+    for (int i = 0; i < count; ++i) {
+        target[i] = source[i];
+    }
+}
 
 void deepCopyColumnMajorToVtkMatrix(vtkMatrix4x4* vtkMatrix, const double columnMajor[16])
 {
@@ -127,7 +153,6 @@ void ModelNodeDisplayManager::buildEntry(const QString& nodeId)
         return;
     }
 
-    bool visible = isNodeVisibleInWindow(node);
     int layer = getNodeLayerInWindow(node);
 
     vtkSmartPointer<vtkPolyData> polyData = node->getPolyData();
@@ -146,13 +171,12 @@ void ModelNodeDisplayManager::buildEntry(const QString& nodeId)
 
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);
-    actor->SetVisibility(visible ? 1 : 0);
+    actor->SetVisibility(0);
 
     ModelDisplayEntry entry;
     entry.actor = actor;
+    entry.currentPolyData = polyData;
     entry.currentLayer = layer;
-
-    applyVisualProperties(entry, node);
 
     vtkRenderer* renderer = getRenderer(layer);
     if (renderer) {
@@ -160,6 +184,8 @@ void ModelNodeDisplayManager::buildEntry(const QString& nodeId)
     }
 
     m_entries.insert(nodeId, entry);
+    updateDisplay(nodeId);
+    updateTransform(nodeId);
 }
 
 void ModelNodeDisplayManager::removeEntry(const QString& nodeId)
@@ -188,15 +214,18 @@ void ModelNodeDisplayManager::updateContent(const QString& nodeId)
         return;
     }
 
+    ModelDisplayEntry& entry = it.value();
+
     vtkSmartPointer<vtkPolyData> polyData = node->getPolyData();
     if (!polyData) {
         polyData = vtkSmartPointer<vtkPolyData>::New();
     }
 
-    auto mapper = vtkPolyDataMapper::SafeDownCast(it->actor->GetMapper());
-    if (mapper) {
+    auto mapper = vtkPolyDataMapper::SafeDownCast(entry.actor->GetMapper());
+    if (mapper && entry.currentPolyData != polyData) {
         mapper->SetInputData(polyData);
         mapper->Update();
+        entry.currentPolyData = polyData;
     }
 }
 
@@ -212,32 +241,42 @@ void ModelNodeDisplayManager::updateDisplay(const QString& nodeId)
         return;
     }
 
+    ModelDisplayEntry& entry = it.value();
+
     bool visible = isNodeVisibleInWindow(node);
     int newLayer = getNodeLayerInWindow(node);
 
-    it->actor->SetVisibility(visible ? 1 : 0);
-    applyVisualProperties(*it, node);
+    if (entry.actorVisible != visible) {
+        entry.actor->SetVisibility(visible ? 1 : 0);
+        entry.actorVisible = visible;
+    }
 
-    // Update scalar visibility
-    auto mapper = vtkPolyDataMapper::SafeDownCast(it->actor->GetMapper());
+    applyVisualProperties(entry, node);
+
+    auto mapper = vtkPolyDataMapper::SafeDownCast(entry.actor->GetMapper());
     if (mapper) {
-        if (node->isUseScalarColor()) {
-            mapper->ScalarVisibilityOn();
-        } else {
-            mapper->ScalarVisibilityOff();
+        bool scalarVisibility = node->isUseScalarColor();
+        if (!entry.hasScalarVisibility || entry.cachedScalarVisibility != scalarVisibility) {
+            if (scalarVisibility) {
+                mapper->ScalarVisibilityOn();
+            } else {
+                mapper->ScalarVisibilityOff();
+            }
+            entry.cachedScalarVisibility = scalarVisibility;
+            entry.hasScalarVisibility = true;
         }
     }
 
-    if (newLayer != it->currentLayer) {
-        vtkRenderer* oldRenderer = getRenderer(it->currentLayer);
+    if (newLayer != entry.currentLayer) {
+        vtkRenderer* oldRenderer = getRenderer(entry.currentLayer);
         vtkRenderer* newRenderer = getRenderer(newLayer);
         if (oldRenderer) {
-            oldRenderer->RemoveActor(it->actor);
+            oldRenderer->RemoveActor(entry.actor);
         }
         if (newRenderer) {
-            newRenderer->AddActor(it->actor);
+            newRenderer->AddActor(entry.actor);
         }
-        it->currentLayer = newLayer;
+        entry.currentLayer = newLayer;
     }
 }
 
@@ -248,49 +287,94 @@ void ModelNodeDisplayManager::updateTransform(const QString& nodeId)
         return;
     }
 
+    ModelDisplayEntry& entry = it.value();
+
     double matrix[16];
     if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
-        it->actor->SetUserTransform(nullptr);
+        if (entry.hasWorldTransform) {
+            entry.actor->SetUserTransform(nullptr);
+            entry.hasWorldTransform = false;
+        }
         return;
     }
 
-    auto transform = vtkSmartPointer<vtkTransform>::New();
-    auto mat = vtkSmartPointer<vtkMatrix4x4>::New();
-    deepCopyColumnMajorToVtkMatrix(mat, matrix);
-    transform->SetMatrix(mat);
+    if (entry.hasWorldTransform && areArraysEqual(entry.cachedWorldMatrix, matrix, 16)) {
+        return;
+    }
 
-    it->actor->SetUserTransform(transform);
+    if (!entry.transform) {
+        entry.transform = vtkSmartPointer<vtkTransform>::New();
+        entry.transformMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
+    }
+
+    deepCopyColumnMajorToVtkMatrix(entry.transformMatrix, matrix);
+    entry.transform->SetMatrix(entry.transformMatrix);
+    entry.actor->SetUserTransform(entry.transform);
+    copyArray(matrix, entry.cachedWorldMatrix, 16);
+    entry.hasWorldTransform = true;
 }
 
 void ModelNodeDisplayManager::applyVisualProperties(ModelDisplayEntry& entry, ModelNode* node)
 {
     vtkProperty* prop = entry.actor->GetProperty();
 
-    // Render mode
     QString renderMode = node->getRenderMode();
-    if (renderMode == QStringLiteral("wireframe")) {
-        prop->SetRepresentationToWireframe();
-    } else if (renderMode == QStringLiteral("points")) {
-        prop->SetRepresentationToPoints();
-    } else {
-        prop->SetRepresentationToSurface();
+    if (!entry.hasRenderMode || entry.cachedRenderMode != renderMode) {
+        if (renderMode == QStringLiteral("wireframe")) {
+            prop->SetRepresentationToWireframe();
+        } else if (renderMode == QStringLiteral("points")) {
+            prop->SetRepresentationToPoints();
+        } else {
+            prop->SetRepresentationToSurface();
+        }
+        entry.cachedRenderMode = renderMode;
+        entry.hasRenderMode = true;
     }
 
-    // Color and opacity
     double color[4];
     node->getColor(color);
-    prop->SetColor(color[0], color[1], color[2]);
-    prop->SetOpacity(node->getOpacity());
+    if (!entry.hasColor || !areArraysEqual(entry.cachedColor, color, 4)) {
+        prop->SetColor(color[0], color[1], color[2]);
+        copyArray(color, entry.cachedColor, 4);
+        entry.hasColor = true;
+    }
 
-    // Backface culling
-    prop->SetBackfaceCulling(node->isBackfaceCulling() ? 1 : 0);
+    double opacity = node->getOpacity();
+    if (!entry.hasOpacity || !areScalarsEqual(entry.cachedOpacity, opacity)) {
+        prop->SetOpacity(opacity);
+        entry.cachedOpacity = opacity;
+        entry.hasOpacity = true;
+    }
 
-    // Edge visibility
-    prop->SetEdgeVisibility(node->isShowEdges() ? 1 : 0);
-    if (node->isShowEdges()) {
+    bool backfaceCulling = node->isBackfaceCulling();
+    if (!entry.hasBackfaceCulling || entry.cachedBackfaceCulling != backfaceCulling) {
+        prop->SetBackfaceCulling(backfaceCulling ? 1 : 0);
+        entry.cachedBackfaceCulling = backfaceCulling;
+        entry.hasBackfaceCulling = true;
+    }
+
+    bool previousShowEdges = entry.hasShowEdges ? entry.cachedShowEdges : false;
+    bool showEdges = node->isShowEdges();
+    if (!entry.hasShowEdges || previousShowEdges != showEdges) {
+        prop->SetEdgeVisibility(showEdges ? 1 : 0);
+        entry.cachedShowEdges = showEdges;
+        entry.hasShowEdges = true;
+    }
+
+    if (showEdges) {
         double edgeColor[4];
         node->getEdgeColor(edgeColor);
-        prop->SetEdgeColor(edgeColor[0], edgeColor[1], edgeColor[2]);
-        prop->SetLineWidth(static_cast<float>(node->getEdgeWidth()));
+        if (!entry.hasEdgeColor || !areArraysEqual(entry.cachedEdgeColor, edgeColor, 4) || !previousShowEdges) {
+            prop->SetEdgeColor(edgeColor[0], edgeColor[1], edgeColor[2]);
+            copyArray(edgeColor, entry.cachedEdgeColor, 4);
+            entry.hasEdgeColor = true;
+        }
+
+        double edgeWidth = node->getEdgeWidth();
+        if (!entry.hasEdgeWidth || !areScalarsEqual(entry.cachedEdgeWidth, edgeWidth) || !previousShowEdges) {
+            prop->SetLineWidth(static_cast<float>(edgeWidth));
+            entry.cachedEdgeWidth = edgeWidth;
+            entry.hasEdgeWidth = true;
+        }
     }
 }

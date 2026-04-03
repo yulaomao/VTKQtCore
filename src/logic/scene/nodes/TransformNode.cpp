@@ -31,6 +31,9 @@ TransformNode::TransformNode(QObject* parent)
 
 void TransformNode::setMatrixTransformToParent(const double m[16])
 {
+    if (std::memcmp(m_matrixData, m, 16 * sizeof(double)) == 0) {
+        return;
+    }
     std::memcpy(m_matrixData, m, 16 * sizeof(double));
     invalidateInverseCache();
     touchModified();

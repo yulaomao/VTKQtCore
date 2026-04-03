@@ -4,6 +4,12 @@
 
 #include <vtkSmartPointer.h>
 #include <vtkActor.h>
+#include <vtkCellArray.h>
+#include <vtkMatrix4x4.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
+#include <vtkPolyDataMapper.h>
+#include <vtkTransform.h>
 
 #include <QMap>
 #include <QString>
@@ -28,7 +34,23 @@ public:
 private:
     struct LineDisplayEntry {
         vtkSmartPointer<vtkActor> actor;
+        vtkSmartPointer<vtkPolyData> polyData;
+        vtkSmartPointer<vtkPoints> points;
+        vtkSmartPointer<vtkCellArray> cells;
+        vtkSmartPointer<vtkPolyDataMapper> mapper;
+        vtkSmartPointer<vtkTransform> transform;
+        vtkSmartPointer<vtkMatrix4x4> transformMatrix;
         int currentLayer = 3;
+        bool actorVisible = false;
+        bool dashed = false;
+        bool hasColor = false;
+        bool hasOpacity = false;
+        bool hasLineWidth = false;
+        bool hasWorldTransform = false;
+        double cachedColor[4] = {0.0, 0.0, 0.0, 0.0};
+        double cachedOpacity = 1.0;
+        double cachedLineWidth = 1.0;
+        double cachedWorldMatrix[16] = {0.0};
     };
 
     void buildEntry(const QString& nodeId);
@@ -36,8 +58,6 @@ private:
     void updateContent(const QString& nodeId);
     void updateDisplay(const QString& nodeId);
     void updateTransform(const QString& nodeId);
-
-    vtkSmartPointer<vtkPolyData> buildPolyLine(class LineNode* node) const;
 
     QMap<QString, LineDisplayEntry> m_entries;
 };

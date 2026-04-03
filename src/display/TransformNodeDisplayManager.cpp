@@ -5,16 +5,43 @@
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkRenderer.h>
-#include <vtkTransform.h>
 
 #include <cmath>
 
+namespace {
+
+constexpr double kTolerance = 1e-12;
+
+bool areScalarsEqual(double lhs, double rhs)
+{
+    return std::abs(lhs - rhs) <= kTolerance;
+}
+
+bool areArraysEqual(const double* lhs, const double* rhs, int count)
+{
+    for (int i = 0; i < count; ++i) {
+        if (!areScalarsEqual(lhs[i], rhs[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void copyArray(const double* source, double* target, int count)
+{
+    for (int i = 0; i < count; ++i) {
+        target[i] = source[i];
+    }
+}
+
+}
+
 TransformNodeDisplayManager::TransformNodeDisplayManager(SceneGraph* scene,
-                                                           const QString& windowId,
-                                                           vtkRenderer* layer1,
-                                                           vtkRenderer* layer2,
-                                                           vtkRenderer* layer3,
-                                                           QObject* parent)
+                                                         const QString& windowId,
+                                                         vtkRenderer* layer1,
+                                                         vtkRenderer* layer2,
+                                                         vtkRenderer* layer3,
+                                                         QObject* parent)
     : NodeDisplayManager(scene, windowId, layer1, layer2, layer3, parent)
 {
 }
@@ -55,6 +82,7 @@ void TransformNodeDisplayManager::onNodeModified(const QString& nodeId, NodeEven
         updateAxes(nodeId);
         break;
     case NodeEventType::DisplayChanged:
+        updateAxes(nodeId);
         updateDisplay(nodeId);
         break;
     default:
@@ -104,7 +132,7 @@ void TransformNodeDisplayManager::clearAll()
 }
 
 void TransformNodeDisplayManager::computeAxisEndpoint(const double matrix[16], int axisIndex,
-                                                        double length, double out[3]) const
+                                                      double length, double out[3]) const
 {
     double origin[3] = {matrix[12], matrix[13], matrix[14]};
     double direction[3] = {
@@ -128,41 +156,33 @@ void TransformNodeDisplayManager::computeAxisEndpoint(const double matrix[16], i
     out[2] = origin[2] + direction[2] * length;
 }
 
-static vtkSmartPointer<vtkActor> createAxisActor(const double origin[3],
-                                                   const double endpoint[3],
-                                                   const double color[4])
+void TransformNodeDisplayManager::updateAxisGeometry(AxisDisplayEntry& axis,
+                                                     const double origin[3],
+                                                     const double endpoint[3])
 {
-    auto lineSource = vtkSmartPointer<vtkLineSource>::New();
-    lineSource->SetPoint1(origin[0], origin[1], origin[2]);
-    lineSource->SetPoint2(endpoint[0], endpoint[1], endpoint[2]);
-    lineSource->Update();
+    if (axis.hasGeometry &&
+        areArraysEqual(axis.cachedOrigin, origin, 3) &&
+        areArraysEqual(axis.cachedEndpoint, endpoint, 3)) {
+        return;
+    }
 
-    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputConnection(lineSource->GetOutputPort());
-
-    auto actor = vtkSmartPointer<vtkActor>::New();
-    actor->SetMapper(mapper);
-    actor->GetProperty()->SetColor(color[0], color[1], color[2]);
-    actor->GetProperty()->SetOpacity(color[3]);
-    actor->GetProperty()->SetLineWidth(2.0f);
-
-    return actor;
+    axis.lineSource->SetPoint1(origin[0], origin[1], origin[2]);
+    axis.lineSource->SetPoint2(endpoint[0], endpoint[1], endpoint[2]);
+    copyArray(origin, axis.cachedOrigin, 3);
+    copyArray(endpoint, axis.cachedEndpoint, 3);
+    axis.hasGeometry = true;
 }
 
-static void updateAxisActor(vtkActor* actor, const double origin[3],
-                             const double endpoint[3], const double color[4])
+void TransformNodeDisplayManager::updateAxisColor(AxisDisplayEntry& axis, const double color[4])
 {
-    auto lineSource = vtkSmartPointer<vtkLineSource>::New();
-    lineSource->SetPoint1(origin[0], origin[1], origin[2]);
-    lineSource->SetPoint2(endpoint[0], endpoint[1], endpoint[2]);
-    lineSource->Update();
+    if (axis.hasColor && areArraysEqual(axis.cachedColor, color, 4)) {
+        return;
+    }
 
-    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputConnection(lineSource->GetOutputPort());
-
-    actor->SetMapper(mapper);
-    actor->GetProperty()->SetColor(color[0], color[1], color[2]);
-    actor->GetProperty()->SetOpacity(color[3]);
+    axis.actor->GetProperty()->SetColor(color[0], color[1], color[2]);
+    axis.actor->GetProperty()->SetOpacity(color[3]);
+    copyArray(color, axis.cachedColor, 4);
+    axis.hasColor = true;
 }
 
 void TransformNodeDisplayManager::buildEntry(const QString& nodeId)
@@ -172,48 +192,34 @@ void TransformNodeDisplayManager::buildEntry(const QString& nodeId)
         return;
     }
 
-    bool visible = isNodeVisibleInWindow(node) && node->isShowAxes();
     int layer = getNodeLayerInWindow(node);
 
-    double matrix[16];
-    if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
-        node->getMatrixTransformToParent(matrix);
-    }
-    double origin[3] = {matrix[12], matrix[13], matrix[14]};
-    double axesLength = node->getAxesLength();
+    TransformDisplayEntry entry;
+    entry.currentLayer = layer;
 
-    // Compute endpoints for each axis
-    double xEnd[3], yEnd[3], zEnd[3];
-    computeAxisEndpoint(matrix, 0, axesLength, xEnd);
-    computeAxisEndpoint(matrix, 1, axesLength, yEnd);
-    computeAxisEndpoint(matrix, 2, axesLength, zEnd);
+    auto initializeAxis = [](AxisDisplayEntry& axis) {
+        axis.lineSource = vtkSmartPointer<vtkLineSource>::New();
+        axis.mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        axis.mapper->SetInputConnection(axis.lineSource->GetOutputPort());
+        axis.actor = vtkSmartPointer<vtkActor>::New();
+        axis.actor->SetMapper(axis.mapper);
+        axis.actor->GetProperty()->SetLineWidth(2.0f);
+        axis.actor->SetVisibility(0);
+    };
 
-    double xColor[4], yColor[4], zColor[4];
-    node->getAxesColorX(xColor);
-    node->getAxesColorY(yColor);
-    node->getAxesColorZ(zColor);
-
-    auto xActor = createAxisActor(origin, xEnd, xColor);
-    auto yActor = createAxisActor(origin, yEnd, yColor);
-    auto zActor = createAxisActor(origin, zEnd, zColor);
-
-    xActor->SetVisibility(visible ? 1 : 0);
-    yActor->SetVisibility(visible ? 1 : 0);
-    zActor->SetVisibility(visible ? 1 : 0);
+    initializeAxis(entry.xAxis);
+    initializeAxis(entry.yAxis);
+    initializeAxis(entry.zAxis);
 
     vtkRenderer* renderer = getRenderer(layer);
     if (renderer) {
-        renderer->AddActor(xActor);
-        renderer->AddActor(yActor);
-        renderer->AddActor(zActor);
+        renderer->AddActor(entry.xAxis.actor);
+        renderer->AddActor(entry.yAxis.actor);
+        renderer->AddActor(entry.zAxis.actor);
     }
 
-    TransformDisplayEntry entry;
-    entry.xAxisActor = xActor;
-    entry.yAxisActor = yActor;
-    entry.zAxisActor = zActor;
-    entry.currentLayer = layer;
     m_entries.insert(nodeId, entry);
+    updateDisplay(nodeId);
 }
 
 void TransformNodeDisplayManager::removeEntry(const QString& nodeId)
@@ -225,14 +231,14 @@ void TransformNodeDisplayManager::removeEntry(const QString& nodeId)
 
     vtkRenderer* renderer = getRenderer(it->currentLayer);
     if (renderer) {
-        if (it->xAxisActor) {
-            renderer->RemoveActor(it->xAxisActor);
+        if (it->xAxis.actor) {
+            renderer->RemoveActor(it->xAxis.actor);
         }
-        if (it->yAxisActor) {
-            renderer->RemoveActor(it->yAxisActor);
+        if (it->yAxis.actor) {
+            renderer->RemoveActor(it->yAxis.actor);
         }
-        if (it->zAxisActor) {
-            renderer->RemoveActor(it->zAxisActor);
+        if (it->zAxis.actor) {
+            renderer->RemoveActor(it->zAxis.actor);
         }
     }
     m_entries.erase(it);
@@ -250,6 +256,13 @@ void TransformNodeDisplayManager::updateAxes(const QString& nodeId)
         return;
     }
 
+    TransformDisplayEntry& entry = it.value();
+    bool visible = isNodeVisibleInWindow(node) && node->isShowAxes();
+    if (!visible) {
+        entry.geometryDirty = true;
+        return;
+    }
+
     double matrix[16];
     if (!scene()->getWorldTransformMatrix(nodeId, matrix)) {
         node->getMatrixTransformToParent(matrix);
@@ -262,14 +275,10 @@ void TransformNodeDisplayManager::updateAxes(const QString& nodeId)
     computeAxisEndpoint(matrix, 1, axesLength, yEnd);
     computeAxisEndpoint(matrix, 2, axesLength, zEnd);
 
-    double xColor[4], yColor[4], zColor[4];
-    node->getAxesColorX(xColor);
-    node->getAxesColorY(yColor);
-    node->getAxesColorZ(zColor);
-
-    updateAxisActor(it->xAxisActor, origin, xEnd, xColor);
-    updateAxisActor(it->yAxisActor, origin, yEnd, yColor);
-    updateAxisActor(it->zAxisActor, origin, zEnd, zColor);
+    updateAxisGeometry(entry.xAxis, origin, xEnd);
+    updateAxisGeometry(entry.yAxis, origin, yEnd);
+    updateAxisGeometry(entry.zAxis, origin, zEnd);
+    entry.geometryDirty = false;
 }
 
 void TransformNodeDisplayManager::updateDisplay(const QString& nodeId)
@@ -284,36 +293,44 @@ void TransformNodeDisplayManager::updateDisplay(const QString& nodeId)
         return;
     }
 
+    TransformDisplayEntry& entry = it.value();
+
     bool visible = isNodeVisibleInWindow(node) && node->isShowAxes();
     int newLayer = getNodeLayerInWindow(node);
 
-    it->xAxisActor->SetVisibility(visible ? 1 : 0);
-    it->yAxisActor->SetVisibility(visible ? 1 : 0);
-    it->zAxisActor->SetVisibility(visible ? 1 : 0);
+    if (visible && (!entry.visible || entry.geometryDirty)) {
+        updateAxes(nodeId);
+    }
 
-    // Update colors
+    if (entry.visible != visible) {
+        entry.xAxis.actor->SetVisibility(visible ? 1 : 0);
+        entry.yAxis.actor->SetVisibility(visible ? 1 : 0);
+        entry.zAxis.actor->SetVisibility(visible ? 1 : 0);
+        entry.visible = visible;
+    }
+
     double xColor[4], yColor[4], zColor[4];
     node->getAxesColorX(xColor);
     node->getAxesColorY(yColor);
     node->getAxesColorZ(zColor);
 
-    it->xAxisActor->GetProperty()->SetColor(xColor[0], xColor[1], xColor[2]);
-    it->yAxisActor->GetProperty()->SetColor(yColor[0], yColor[1], yColor[2]);
-    it->zAxisActor->GetProperty()->SetColor(zColor[0], zColor[1], zColor[2]);
+    updateAxisColor(entry.xAxis, xColor);
+    updateAxisColor(entry.yAxis, yColor);
+    updateAxisColor(entry.zAxis, zColor);
 
-    if (newLayer != it->currentLayer) {
-        vtkRenderer* oldRenderer = getRenderer(it->currentLayer);
+    if (newLayer != entry.currentLayer) {
+        vtkRenderer* oldRenderer = getRenderer(entry.currentLayer);
         vtkRenderer* newRenderer = getRenderer(newLayer);
         if (oldRenderer) {
-            oldRenderer->RemoveActor(it->xAxisActor);
-            oldRenderer->RemoveActor(it->yAxisActor);
-            oldRenderer->RemoveActor(it->zAxisActor);
+            oldRenderer->RemoveActor(entry.xAxis.actor);
+            oldRenderer->RemoveActor(entry.yAxis.actor);
+            oldRenderer->RemoveActor(entry.zAxis.actor);
         }
         if (newRenderer) {
-            newRenderer->AddActor(it->xAxisActor);
-            newRenderer->AddActor(it->yAxisActor);
-            newRenderer->AddActor(it->zAxisActor);
+            newRenderer->AddActor(entry.xAxis.actor);
+            newRenderer->AddActor(entry.yAxis.actor);
+            newRenderer->AddActor(entry.zAxis.actor);
         }
-        it->currentLayer = newLayer;
+        entry.currentLayer = newLayer;
     }
 }

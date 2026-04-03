@@ -4,6 +4,9 @@
 
 #include <vtkSmartPointer.h>
 #include <vtkActor.h>
+#include <vtkMatrix4x4.h>
+#include <vtkPolyData.h>
+#include <vtkTransform.h>
 
 #include <QMap>
 #include <QString>
@@ -28,7 +31,29 @@ public:
 private:
     struct ModelDisplayEntry {
         vtkSmartPointer<vtkActor> actor;
+        vtkSmartPointer<vtkPolyData> currentPolyData;
+        vtkSmartPointer<vtkTransform> transform;
+        vtkSmartPointer<vtkMatrix4x4> transformMatrix;
         int currentLayer = 1;
+        bool actorVisible = false;
+        bool hasRenderMode = false;
+        bool hasColor = false;
+        bool hasOpacity = false;
+        bool hasBackfaceCulling = false;
+        bool hasShowEdges = false;
+        bool hasEdgeColor = false;
+        bool hasEdgeWidth = false;
+        bool hasScalarVisibility = false;
+        bool hasWorldTransform = false;
+        QString cachedRenderMode;
+        double cachedColor[4] = {0.0, 0.0, 0.0, 0.0};
+        double cachedOpacity = 1.0;
+        bool cachedBackfaceCulling = false;
+        bool cachedShowEdges = false;
+        double cachedEdgeColor[4] = {0.0, 0.0, 0.0, 0.0};
+        double cachedEdgeWidth = 1.0;
+        bool cachedScalarVisibility = false;
+        double cachedWorldMatrix[16] = {0.0};
     };
 
     void buildEntry(const QString& nodeId);
