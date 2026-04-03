@@ -2,9 +2,12 @@
 
 #include "NodeDisplayManager.h"
 
+#include <vtkLineSource.h>
+#include <vtkPolyDataMapper.h>
 #include <vtkSmartPointer.h>
 #include <vtkActor.h>
 
+#include <array>
 #include <QMap>
 #include <QString>
 
@@ -27,9 +30,27 @@ public:
 
 private:
     struct TransformDisplayEntry {
+        vtkSmartPointer<vtkLineSource> xAxisLineSource;
+        vtkSmartPointer<vtkPolyDataMapper> xAxisMapper;
         vtkSmartPointer<vtkActor> xAxisActor;
+        std::array<double, 3> xAxisOrigin = {0.0, 0.0, 0.0};
+        std::array<double, 3> xAxisEndpoint = {0.0, 0.0, 0.0};
+        std::array<double, 4> xAxisColor = {0.0, 0.0, 0.0, 1.0};
+        bool xAxisInitialized = false;
+        vtkSmartPointer<vtkLineSource> yAxisLineSource;
+        vtkSmartPointer<vtkPolyDataMapper> yAxisMapper;
         vtkSmartPointer<vtkActor> yAxisActor;
+        std::array<double, 3> yAxisOrigin = {0.0, 0.0, 0.0};
+        std::array<double, 3> yAxisEndpoint = {0.0, 0.0, 0.0};
+        std::array<double, 4> yAxisColor = {0.0, 0.0, 0.0, 1.0};
+        bool yAxisInitialized = false;
+        vtkSmartPointer<vtkLineSource> zAxisLineSource;
+        vtkSmartPointer<vtkPolyDataMapper> zAxisMapper;
         vtkSmartPointer<vtkActor> zAxisActor;
+        std::array<double, 3> zAxisOrigin = {0.0, 0.0, 0.0};
+        std::array<double, 3> zAxisEndpoint = {0.0, 0.0, 0.0};
+        std::array<double, 4> zAxisColor = {0.0, 0.0, 0.0, 1.0};
+        bool zAxisInitialized = false;
         int currentLayer = 3;
     };
 

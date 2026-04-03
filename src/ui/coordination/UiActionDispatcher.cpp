@@ -33,18 +33,19 @@ QString UiActionDispatcher::getSourceModule() const
     return m_sourceModule;
 }
 
-bool UiActionDispatcher::sendAction(const UiAction& action)
+void UiActionDispatcher::sendAction(const UiAction& action)
 {
-    const bool accepted = m_gateway && m_gateway->sendAction(action);
-    emit actionDispatched(action, accepted);
-    return accepted;
+    if (m_gateway) {
+        m_gateway->sendAction(action);
+    }
+    emit actionDispatched(action);
 }
 
-bool UiActionDispatcher::sendCommand(const QString& command,
+void UiActionDispatcher::sendCommand(const QString& command,
                                      const QVariantMap& payload)
 {
     if (command.trimmed().isEmpty()) {
-        return false;
+        return;
     }
 
     return sendAction(UiAction::create(
@@ -53,23 +54,23 @@ bool UiActionDispatcher::sendCommand(const QString& command,
         withCommandPayload(command, payload)));
 }
 
-bool UiActionDispatcher::sendTargetedCommand(const QString& targetModule,
+void UiActionDispatcher::sendTargetedCommand(const QString& targetModule,
                                              const QString& command,
                                              const QVariantMap& payload)
 {
     if (targetModule.trimmed().isEmpty() || command.trimmed().isEmpty()) {
-        return false;
+        return;
     }
 
     QVariantMap targetedPayload = payload;
     targetedPayload.insert(QStringLiteral("targetModule"), targetModule);
-    return sendCommand(command, targetedPayload);
+    sendCommand(command, targetedPayload);
 }
 
-bool UiActionDispatcher::requestModuleSwitch(const QString& targetModule)
+void UiActionDispatcher::requestModuleSwitch(const QString& targetModule)
 {
     if (targetModule.trimmed().isEmpty()) {
-        return false;
+        return;
     }
 
     return sendCommand(

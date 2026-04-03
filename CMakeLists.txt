@@ -41,11 +41,13 @@ find_package(VTK REQUIRED COMPONENTS
 )
 
 # ---------------------------------------------------------------------------
-# Sources – collect every .h and .cpp under src/
+# Sources – collect every .h, .cpp, .ui, and .qrc under src/
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.qrc
 )
 
 # ---------------------------------------------------------------------------

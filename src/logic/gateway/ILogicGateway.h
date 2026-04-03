@@ -26,7 +26,7 @@ protected:
 
 public:
 
-    virtual bool sendAction(const UiAction& action) = 0;
+    virtual void sendAction(const UiAction& action) = 0;
 
     virtual int  subscribeNotification(
                      std::function<void(const LogicNotification&)> handler) = 0;
