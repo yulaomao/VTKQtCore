@@ -18,7 +18,7 @@ bool nearlyEqual(double left, double right)
 
 template <std::size_t Size>
 bool arrayEquals(const std::array<double, Size>& left,
-                 const double (&right)[Size])
+                 const double* right)
 {
     for (std::size_t index = 0; index < Size; ++index) {
         if (!nearlyEqual(left[index], right[index])) {
@@ -31,7 +31,7 @@ bool arrayEquals(const std::array<double, Size>& left,
 
 template <std::size_t Size>
 void copyArray(std::array<double, Size>& target,
-               const double (&source)[Size])
+               const double* source)
 {
     for (std::size_t index = 0; index < Size; ++index) {
         target[index] = source[index];
