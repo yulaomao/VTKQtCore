@@ -19,7 +19,7 @@ public:
                                QObject* parent = nullptr);
     ~LocalLogicGateway() override = default;
 
-    bool sendAction(const UiAction& action) override;
+    void sendAction(const UiAction& action) override;
     int subscribeNotification(std::function<void(const LogicNotification&)> handler) override;
     void unsubscribeNotification(int subscriptionId) override;
 

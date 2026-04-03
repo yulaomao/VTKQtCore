@@ -19,7 +19,7 @@ ApplicationCoordinator::ApplicationCoordinator(ILogicGateway* gateway,
     , m_actionDispatcher(new UiActionDispatcher(QStringLiteral("shell"), gateway, this))
 {
     connect(m_actionDispatcher, &UiActionDispatcher::actionDispatched,
-            this, [this](const UiAction& action, bool) {
+            this, [this](const UiAction& action) {
                 emit shellAction(action);
             });
 }

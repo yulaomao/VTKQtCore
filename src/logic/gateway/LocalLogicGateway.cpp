@@ -4,6 +4,27 @@
 #include "logic/runtime/LogicRuntime.h"
 #include "communication/redis/RedisGateway.h"
 
+namespace {
+
+LogicNotification createGatewayWarning(const QString& errorCode,
+                                       const QString& message,
+                                       const QString& suggestedAction,
+                                       const QString& sourceActionId = QString())
+{
+    LogicNotification notification = LogicNotification::create(
+        LogicNotification::ErrorOccurred,
+        LogicNotification::Shell,
+        {{QStringLiteral("errorCode"), errorCode},
+         {QStringLiteral("message"), message},
+         {QStringLiteral("recoverable"), true},
+         {QStringLiteral("suggestedAction"), suggestedAction}});
+    notification.setLevel(LogicNotification::Warning);
+    notification.setSourceActionId(sourceActionId);
+    return notification;
+}
+
+}
+
 LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime,
                                      CommunicationHub* communicationHub,
                                      RedisGateway* redisGateway,
@@ -27,22 +48,32 @@ LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime,
     }
 }
 
-bool LocalLogicGateway::sendAction(const UiAction& action)
+void LocalLogicGateway::sendAction(const UiAction& action)
 {
     if (m_connectionState == Disconnected) {
-        return false;
+        onRuntimeNotification(createGatewayWarning(
+            QStringLiteral("GATEWAY_DISCONNECTED"),
+            QStringLiteral("当前连接已断开，无法发送操作请求。"),
+            QStringLiteral("等待连接恢复后重试，或执行重新同步。"),
+            action.actionId));
+        return;
     }
 
     if (m_communicationHub) {
-        return m_communicationHub->sendActionRequest(action, true);
+        m_communicationHub->sendActionRequest(action, true);
+        return;
     }
 
     if (!m_runtime) {
-        return false;
+        onRuntimeNotification(createGatewayWarning(
+            QStringLiteral("GATEWAY_RUNTIME_UNAVAILABLE"),
+            QStringLiteral("逻辑运行时未就绪，无法处理操作请求。"),
+            QStringLiteral("检查应用初始化流程，确认 LogicRuntime 已创建。"),
+            action.actionId));
+        return;
     }
 
     m_runtime->onActionReceived(action);
-    return true;
 }
 
 int LocalLogicGateway::subscribeNotification(std::function<void(const LogicNotification&)> handler)
