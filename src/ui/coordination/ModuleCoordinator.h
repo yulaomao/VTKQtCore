@@ -37,8 +37,6 @@ public:
     void activate();
     void deactivate();
 
-    void sendModuleAction(UiAction::ActionType type, const QVariantMap& payload = {});
-
 public slots:
     void onModuleNotification(const LogicNotification& notification);
 

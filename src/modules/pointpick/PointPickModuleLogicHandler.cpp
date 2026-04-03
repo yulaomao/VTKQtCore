@@ -125,20 +125,19 @@ void PointPickModuleLogicHandler::onModuleActivated()
 
 void PointPickModuleLogicHandler::handleAction(const UiAction& action)
 {
+    if (action.actionType != UiAction::CustomAction) {
+        return;
+    }
+
     const QString command = action.payload.value(QStringLiteral("command")).toString().trimmed();
 
-    if (action.actionType == UiAction::ConfirmPoints ||
-        command == PointPickUiCommands::confirmPoints()) {
+    if (command == PointPickUiCommands::confirmPoints()) {
         if (!ensureSelectionNode(getSceneGraph())) {
             return;
         }
 
         m_confirmed = true;
         emitSelectionState(action.actionId);
-        return;
-    }
-
-    if (action.actionType != UiAction::CustomAction) {
         return;
     }
 

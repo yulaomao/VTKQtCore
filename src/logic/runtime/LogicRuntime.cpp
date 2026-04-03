@@ -17,9 +17,15 @@ QString normalizeKey(const QString& value)
     return normalized;
 }
 
-bool parseActionType(const QString& rawType, UiAction::ActionType& actionType)
+QString actionCommand(const QVariantMap& payload)
 {
-    return UiAction::fromString(rawType, actionType);
+    return normalizeKey(payload.value(QStringLiteral("command")).toString());
+}
+
+bool isSwitchModuleCommand(const QString& command)
+{
+    return command == QStringLiteral("switch_module") ||
+        command == QStringLiteral("request_switch_module");
 }
 
 QVariantMap extractPayloadMap(const QVariantMap& input)
@@ -89,6 +95,12 @@ QString resolveSwitchTargetModule(const UiAction& action)
     }
 
     return QString();
+}
+
+QString describeAction(const UiAction& action)
+{
+    const QString command = actionCommand(action.payload);
+    return command.isEmpty() ? UiAction::toString(action.actionType) : command;
 }
 
 } // namespace
@@ -202,13 +214,13 @@ ModuleInvokeResult LogicRuntime::invokeModule(const ModuleInvokeRequest& request
 
 void LogicRuntime::onActionReceived(const UiAction& action)
 {
-    switch (action.actionType) {
-    case UiAction::RequestSwitchModule: {
+    const QString command = actionCommand(action.payload);
+    if (isSwitchModuleCommand(command)) {
         const QString targetModule = resolveSwitchTargetModule(action);
         if (targetModule.isEmpty()) {
             LogicNotification notification = createShellError(
                 QStringLiteral("LOGIC_SWITCH_TARGET_EMPTY"),
-                QStringLiteral("Module switch action is missing targetModule"),
+                QStringLiteral("Module switch command is missing targetModule"),
                 true,
                 QStringLiteral("Provide payload.targetModule when requesting a shell-level module switch."));
             notification.setSourceActionId(action.actionId);
@@ -231,12 +243,10 @@ void LogicRuntime::onActionReceived(const UiAction& action)
         }
 
         switchToModule(targetModule, action.actionId);
-        break;
+        return;
     }
-    default:
-        routeToModuleHandler(action);
-        break;
-    }
+
+    routeToModuleHandler(action);
 }
 
 void LogicRuntime::onControlMessageReceived(const QString& module, const QVariantMap& payload)
@@ -247,16 +257,12 @@ void LogicRuntime::onControlMessageReceived(const QString& module, const QVarian
         return;
     }
 
-    UiAction::ActionType actionType = UiAction::CustomAction;
-    const QString rawActionType = payload.value(QStringLiteral("actionType")).toString();
-    if (!parseActionType(rawActionType, actionType)) {
-        emit logicNotification(createShellError(
-            QStringLiteral("COMM_UNSUPPORTED_ACTION"),
-            QStringLiteral("Unsupported control action type '%1'").arg(rawActionType),
-            true,
-            QStringLiteral("Verify server control message mapping."),
-            {{QStringLiteral("module"), module}}));
-        return;
+    QVariantMap actionPayload = extractPayloadMap(payload);
+    const QString rawActionType = normalizeKey(payload.value(QStringLiteral("actionType")).toString());
+    if (!rawActionType.isEmpty() &&
+        rawActionType != UiAction::toString(UiAction::CustomAction) &&
+        actionCommand(actionPayload).isEmpty()) {
+        actionPayload.insert(QStringLiteral("command"), rawActionType);
     }
 
     QString targetModule = module;
@@ -267,12 +273,12 @@ void LogicRuntime::onControlMessageReceived(const QString& module, const QVarian
         targetModule = payload.value(QStringLiteral("targetModule")).toString();
     }
     if (targetModule.isEmpty()) {
-        targetModule = actionType == UiAction::RequestSwitchModule
+        targetModule = isSwitchModuleCommand(actionCommand(actionPayload))
             ? QStringLiteral("shell")
             : m_activeModuleState->getCurrentModule();
     }
 
-    UiAction action = UiAction::create(actionType, targetModule, extractPayloadMap(payload));
+    UiAction action = UiAction::create(UiAction::CustomAction, targetModule, actionPayload);
     const QString externalActionId = payload.value(QStringLiteral("actionId")).toString().isEmpty()
         ? payload.value(QStringLiteral("msgId")).toString()
         : payload.value(QStringLiteral("actionId")).toString();
@@ -309,9 +315,10 @@ void LogicRuntime::onServerCommandReceived(const QString& commandType, const QVa
         }
 
         UiAction action = UiAction::create(
-            UiAction::RequestSwitchModule,
+            UiAction::CustomAction,
             QStringLiteral("shell"),
-            {{QStringLiteral("targetModule"), targetModule}});
+            {{QStringLiteral("command"), normalizedCommand},
+             {QStringLiteral("targetModule"), targetModule}});
         const QString sourceActionId = payload.value(QStringLiteral("msgId")).toString();
         if (!sourceActionId.isEmpty()) {
             action.actionId = sourceActionId;
@@ -330,12 +337,13 @@ void LogicRuntime::onServerCommandReceived(const QString& commandType, const QVa
             targetModule = m_activeModuleState->getCurrentModule();
         }
 
+        QVariantMap actionPayload = commandPayload;
+        actionPayload.insert(QStringLiteral("command"), normalizedCommand);
+
         UiAction action = UiAction::create(
-            normalizedCommand == QStringLiteral("next_step")
-                ? UiAction::NextStep
-                : UiAction::PrevStep,
+            UiAction::CustomAction,
             targetModule,
-            commandPayload);
+            actionPayload);
         const QString sourceActionId = payload.value(QStringLiteral("msgId")).toString();
         if (!sourceActionId.isEmpty()) {
             action.actionId = sourceActionId;
@@ -576,10 +584,11 @@ void LogicRuntime::routeToModuleHandler(const UiAction& action)
         LogicNotification notification = createShellError(
             QStringLiteral("LOGIC_ACTION_TARGET_EMPTY"),
             QStringLiteral("No active module is available for action '%1'")
-                .arg(UiAction::toString(action.actionType)),
+                .arg(describeAction(action)),
             true,
             QStringLiteral("Set payload.targetModule explicitly or switch to an active module first."),
-            {{QStringLiteral("actionType"), UiAction::toString(action.actionType)}});
+            {{QStringLiteral("actionType"), UiAction::toString(action.actionType)},
+             {QStringLiteral("command"), action.payload.value(QStringLiteral("command"))}});
         notification.setSourceActionId(action.actionId);
         notification.setLevel(LogicNotification::Error);
         emit logicNotification(notification);
@@ -598,7 +607,8 @@ void LogicRuntime::routeToModuleHandler(const UiAction& action)
         true,
         QStringLiteral("Check module registration and action routing."),
         {{QStringLiteral("targetModule"), targetModule},
-         {QStringLiteral("actionType"), UiAction::toString(action.actionType)}});
+         {QStringLiteral("actionType"), UiAction::toString(action.actionType)},
+         {QStringLiteral("command"), action.payload.value(QStringLiteral("command"))}});
     notification.setSourceActionId(action.actionId);
     notification.setLevel(LogicNotification::Error);
     emit logicNotification(notification);

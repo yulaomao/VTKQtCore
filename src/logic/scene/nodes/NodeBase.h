@@ -21,6 +21,11 @@ enum class NodeEventType {
     TransformChanged
 };
 
+inline uint qHash(NodeEventType key, uint seed = 0)
+{
+    return ::qHash(static_cast<int>(key), seed);
+}
+
 class NodeBase : public QObject
 {
     Q_OBJECT

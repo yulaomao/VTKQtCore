@@ -177,10 +177,13 @@ void NavigationModuleLogicHandler::onModuleActivated()
 
 void NavigationModuleLogicHandler::handleAction(const UiAction& action)
 {
+    if (action.actionType != UiAction::CustomAction) {
+        return;
+    }
+
     const QString command = action.payload.value(QStringLiteral("command")).toString().trimmed();
 
-    if (action.actionType == UiAction::StartNavigation ||
-        command == NavigationUiCommands::startNavigation()) {
+    if (command == NavigationUiCommands::startNavigation()) {
         SceneGraph* scene = getSceneGraph();
         for (const NavigationTransformDescriptor& descriptor : kNavigationTransformDescriptors) {
             ensureTrackedTransformNode(scene, toQString(descriptor.remoteId));
@@ -192,16 +195,11 @@ void NavigationModuleLogicHandler::handleAction(const UiAction& action)
         return;
     }
 
-    if (action.actionType == UiAction::StopNavigation ||
-        command == NavigationUiCommands::stopNavigation()) {
+    if (command == NavigationUiCommands::stopNavigation()) {
         m_navigating = false;
         m_navigationStatus = QStringLiteral("Idle");
         emitNavigationState(action.actionId);
         emitTransformHealth(true);
-        return;
-    }
-
-    if (action.actionType == UiAction::CustomAction) {
         return;
     }
 }

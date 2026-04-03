@@ -18,12 +18,12 @@ ParamsModuleLogicHandler::ParamsModuleLogicHandler(QObject* parent)
 
 void ParamsModuleLogicHandler::handleAction(const UiAction& action)
 {
-    if (action.actionType == UiAction::CustomAction) {
-        const QString command = action.payload.value(QStringLiteral("command")).toString().trimmed();
-        if (command != ParamsUiCommands::applyParameters()) {
-            return;
-        }
+    if (action.actionType != UiAction::CustomAction) {
+        return;
+    }
 
+    const QString command = action.payload.value(QStringLiteral("command")).toString().trimmed();
+    if (command == ParamsUiCommands::applyParameters()) {
         const QVariantMap parameters = action.payload.value(QStringLiteral("parameters")).toMap();
         if (parameters.isEmpty()) {
             return;
@@ -36,18 +36,22 @@ void ParamsModuleLogicHandler::handleAction(const UiAction& action)
         writeRedisJsonValue(paramsStateRedisKey(), m_parameters);
 
         const bool ready = !m_parameters.isEmpty();
+        const QStringList updatedKeys = parameters.keys();
+        QVariantMap notificationPayload;
+        notificationPayload.insert(QStringLiteral("parametersValid"), ready);
+        notificationPayload.insert(QStringLiteral("updatedKeys"), QVariant::fromValue(updatedKeys));
+        notificationPayload.insert(QStringLiteral("parameterCount"), m_parameters.size());
+
         LogicNotification notification = LogicNotification::create(
             LogicNotification::ButtonStateChanged,
             LogicNotification::CurrentModule,
-            {{QStringLiteral("parametersValid"), ready},
-             {QStringLiteral("updatedKeys"), parameters.keys()},
-             {QStringLiteral("parameterCount"), m_parameters.size()}});
+            notificationPayload);
         notification.setSourceActionId(action.actionId);
         emit logicNotification(notification);
         return;
     }
 
-    if (action.actionType != UiAction::UpdateParameter) {
+    if (command != ParamsUiCommands::updateParameter()) {
         return;
     }
 

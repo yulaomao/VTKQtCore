@@ -194,10 +194,13 @@ void PlanningModuleLogicHandler::onModuleActivated()
 
 void PlanningModuleLogicHandler::handleAction(const UiAction& action)
 {
+    if (action.actionType != UiAction::CustomAction) {
+        return;
+    }
+
     const QString command = action.payload.value(QStringLiteral("command")).toString().trimmed();
 
-    if (action.actionType == UiAction::GeneratePlan ||
-        command == PlanningUiCommands::generatePlan()) {
+    if (command == PlanningUiCommands::generatePlan()) {
         auto* modelNode = ensurePlanModelNode(getSceneGraph());
         auto* lineNode = ensurePlanPathNode(getSceneGraph());
         if (!modelNode || !lineNode) {
@@ -210,16 +213,11 @@ void PlanningModuleLogicHandler::handleAction(const UiAction& action)
         return;
     }
 
-    if (action.actionType == UiAction::AcceptPlan ||
-        command == PlanningUiCommands::acceptPlan()) {
+    if (command == PlanningUiCommands::acceptPlan()) {
         ensurePlanModelNode(getSceneGraph());
         ensurePlanPathNode(getSceneGraph());
         m_planStatus = QStringLiteral("accepted");
         emitPlanningState(LogicNotification::StageChanged, action.actionId);
-        return;
-    }
-
-    if (action.actionType == UiAction::CustomAction) {
         return;
     }
 }

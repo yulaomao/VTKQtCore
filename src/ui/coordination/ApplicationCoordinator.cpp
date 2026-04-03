@@ -189,10 +189,3 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
     }
 }
 
-void ApplicationCoordinator::dispatchShellAction(UiAction::ActionType type,
-                                                 const QVariantMap& payload)
-{
-    if (m_actionDispatcher) {
-        m_actionDispatcher->sendAction(type, payload);
-    }
-}

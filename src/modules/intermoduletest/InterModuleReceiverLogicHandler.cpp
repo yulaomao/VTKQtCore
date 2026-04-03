@@ -66,13 +66,16 @@ void InterModuleReceiverLogicHandler::emitTextUpdatedNotification(
     const QString& sourceModule,
     const QString& sourceActionId)
 {
+    QVariantMap payload;
+    payload.insert(QStringLiteral("eventName"), InterModuleTest::receiverTextUpdatedEvent());
+    payload.insert(QStringLiteral("text"), m_lastText);
+    payload.insert(QStringLiteral("sourceModule"), sourceModule);
+
     LogicNotification notification = LogicNotification::create(
         LogicNotification::CustomEvent,
         LogicNotification::ModuleList,
-        {{QStringLiteral("eventName"), InterModuleTest::receiverTextUpdatedEvent()},
-         {QStringLiteral("text"), m_lastText},
-         {QStringLiteral("sourceModule"), sourceModule}});
-    notification.targetModules = {InterModuleTest::receiverModuleId()};
+        payload);
+    notification.targetModules = QStringList{InterModuleTest::receiverModuleId()};
     notification.setSourceActionId(sourceActionId);
     emit logicNotification(notification);
 }
