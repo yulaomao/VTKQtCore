@@ -3,12 +3,18 @@
 #include "PlanningUiCommands.h"
 
 #include "logic/scene/SceneGraph.h"
+#include "logic/scene/nodes/BillboardArrowNode.h"
+#include "logic/scene/nodes/BillboardLineNode.h"
 #include "logic/scene/nodes/LineNode.h"
 #include "logic/scene/nodes/ModelNode.h"
 
+#include <algorithm>
 #include <array>
 
 namespace {
+
+constexpr char kPlanPathSegmentRole[] = "plan_path_segment";
+constexpr char kPlanPathArrowRole[] = "plan_path_arrow";
 
 QVector<std::array<double, 3>> createPlanVertices()
 {
@@ -147,7 +153,7 @@ void configurePlanningModelTargets(ModelNode* modelNode)
     modelNode->setWindowDisplayTarget(QStringLiteral("planning_overview"), overviewTarget);
 }
 
-void configurePlanningPathTargets(LineNode* lineNode)
+void configurePlanningBillboardLineTargets(BillboardLineNode* lineNode)
 {
     if (!lineNode) {
         return;
@@ -162,6 +168,63 @@ void configurePlanningPathTargets(LineNode* lineNode)
     overviewTarget.visible = true;
     overviewTarget.layer = 2;
     lineNode->setWindowDisplayTarget(QStringLiteral("planning_overview"), overviewTarget);
+}
+
+void configurePlanningArrowTargets(BillboardArrowNode* arrowNode)
+{
+    if (!arrowNode) {
+        return;
+    }
+
+    DisplayTarget mainTarget;
+    mainTarget.visible = true;
+    mainTarget.layer = 3;
+    arrowNode->setWindowDisplayTarget(QStringLiteral("planning_main"), mainTarget);
+
+    DisplayTarget overviewTarget;
+    overviewTarget.visible = true;
+    overviewTarget.layer = 2;
+    arrowNode->setWindowDisplayTarget(QStringLiteral("planning_overview"), overviewTarget);
+}
+
+void applyPlanPathSegmentStyle(BillboardLineNode* lineNode)
+{
+    if (!lineNode) {
+        return;
+    }
+
+    const double lineColor[4] = {0.95, 0.78, 0.12, 1.0};
+    lineNode->setColor(lineColor);
+    lineNode->setLineWidth(4.0);
+    lineNode->setDashed(false);
+    lineNode->setDashPattern(0.5, 0.25);
+}
+
+void applyPlanArrowStyle(BillboardArrowNode* arrowNode)
+{
+    if (!arrowNode) {
+        return;
+    }
+
+    const double arrowColor[4] = {0.95, 0.85, 0.2, 1.0};
+    arrowNode->setColor(arrowColor);
+    arrowNode->setDirection(QStringLiteral("up"));
+    arrowNode->setFollowCameraRotation(false);
+    arrowNode->setSize(30.0, 3.0, 14.0, 18.0);
+}
+
+bool compareSegmentIndex(BillboardLineNode* lhs, BillboardLineNode* rhs)
+{
+    if (!lhs || !rhs) {
+        return lhs != nullptr;
+    }
+
+    const int lhsIndex = lhs->getAttribute(QStringLiteral("segmentIndex"), 0).toInt();
+    const int rhsIndex = rhs->getAttribute(QStringLiteral("segmentIndex"), 0).toInt();
+    if (lhsIndex != rhsIndex) {
+        return lhsIndex < rhsIndex;
+    }
+    return lhs->getNodeId() < rhs->getNodeId();
 }
 
 } // namespace
@@ -179,12 +242,12 @@ void PlanningModuleLogicHandler::onModuleActivated()
     }
 
     auto* modelNode = ensurePlanModelNode(scene);
-    auto* lineNode = ensurePlanPathNode(scene);
-    if (!modelNode || !lineNode) {
+    if (!modelNode) {
         return;
     }
 
-    ensureDefaultPlanGeometry(modelNode, lineNode);
+    restorePlanPathVisualizationNodes(scene);
+    ensureDefaultPlanGeometry(scene, modelNode);
     if (m_planStatus.isEmpty() || m_planStatus == QStringLiteral("not_started")) {
         m_planStatus = QStringLiteral("ready");
     }
@@ -202,12 +265,12 @@ void PlanningModuleLogicHandler::handleAction(const UiAction& action)
 
     if (command == PlanningUiCommands::generatePlan()) {
         auto* modelNode = ensurePlanModelNode(getSceneGraph());
-        auto* lineNode = ensurePlanPathNode(getSceneGraph());
-        if (!modelNode || !lineNode) {
+        if (!modelNode) {
             return;
         }
 
-        ensureDefaultPlanGeometry(modelNode, lineNode);
+        syncPlanPathVisualization(getSceneGraph(), createPlanPath());
+        ensureDefaultPlanGeometry(getSceneGraph(), modelNode);
         m_planStatus = QStringLiteral("generated");
         emitPlanningState(LogicNotification::SceneNodesUpdated, action.actionId);
         return;
@@ -215,7 +278,7 @@ void PlanningModuleLogicHandler::handleAction(const UiAction& action)
 
     if (command == PlanningUiCommands::acceptPlan()) {
         ensurePlanModelNode(getSceneGraph());
-        ensurePlanPathNode(getSceneGraph());
+        restorePlanPathVisualizationNodes(getSceneGraph());
         m_planStatus = QStringLiteral("accepted");
         emitPlanningState(LogicNotification::StageChanged, action.actionId);
         return;
@@ -226,10 +289,11 @@ void PlanningModuleLogicHandler::handleStateSample(const StateSample& sample)
 {
     SceneGraph* scene = getSceneGraph();
     auto* modelNode = ensurePlanModelNode(scene);
-    auto* lineNode = ensurePlanPathNode(scene);
-    if (!modelNode || !lineNode) {
+    if (!modelNode) {
         return;
     }
+
+    restorePlanPathVisualizationNodes(scene);
 
     const QVariantMap payloadData = normalizedSampleData(sample);
     bool changed = false;
@@ -250,7 +314,7 @@ void PlanningModuleLogicHandler::handleStateSample(const StateSample& sample)
         const QVector<std::array<double, 3>> path = extractPointArray(
             payloadData.value(QStringLiteral("path")));
         if (!path.isEmpty()) {
-            lineNode->setPolyline(path);
+            syncPlanPathVisualization(scene, path);
             changed = true;
         }
     }
@@ -277,6 +341,7 @@ void PlanningModuleLogicHandler::onModuleDeactivated()
 
 void PlanningModuleLogicHandler::onResync()
 {
+    restorePlanPathVisualizationNodes(getSceneGraph());
     emitPlanningState(LogicNotification::SceneNodesUpdated);
 }
 
@@ -312,35 +377,35 @@ ModelNode* PlanningModuleLogicHandler::ensurePlanModelNode(SceneGraph* scene)
     return modelNode;
 }
 
-LineNode* PlanningModuleLogicHandler::ensurePlanPathNode(SceneGraph* scene)
+BillboardArrowNode* PlanningModuleLogicHandler::ensurePlanPathArrowNode(SceneGraph* scene)
 {
     if (!scene) {
         return nullptr;
     }
 
-    if (!m_planPathNodeId.isEmpty()) {
-        if (auto* existing = scene->getNodeById<LineNode>(m_planPathNodeId)) {
-            configurePlanningPathTargets(existing);
+    if (!m_planPathArrowNodeId.isEmpty()) {
+        if (auto* existing = scene->getNodeById<BillboardArrowNode>(m_planPathArrowNodeId)) {
+            applyPlanArrowStyle(existing);
+            configurePlanningArrowTargets(existing);
             return existing;
         }
-        m_planPathNodeId.clear();
+        m_planPathArrowNodeId.clear();
     }
 
-    if (auto* existing = findPlanPathNode(scene)) {
-        m_planPathNodeId = existing->getNodeId();
-        configurePlanningPathTargets(existing);
+    if (auto* existing = findPlanPathArrowNode(scene)) {
+        m_planPathArrowNodeId = existing->getNodeId();
+        applyPlanArrowStyle(existing);
+        configurePlanningArrowTargets(existing);
         return existing;
     }
 
-    auto* lineNode = new LineNode(scene);
-    lineNode->setLineRole(QStringLiteral("plan_path"));
-    const double lineColor[4] = {0.95, 0.78, 0.12, 1.0};
-    lineNode->setColor(lineColor);
-    lineNode->setLineWidth(4.0);
-    configurePlanningPathTargets(lineNode);
-    scene->addNode(lineNode);
-    m_planPathNodeId = lineNode->getNodeId();
-    return lineNode;
+    auto* arrowNode = new BillboardArrowNode(scene);
+    arrowNode->setArrowRole(QString::fromLatin1(kPlanPathArrowRole));
+    applyPlanArrowStyle(arrowNode);
+    configurePlanningArrowTargets(arrowNode);
+    scene->addNode(arrowNode);
+    m_planPathArrowNodeId = arrowNode->getNodeId();
+    return arrowNode;
 }
 
 ModelNode* PlanningModuleLogicHandler::findPlanModelNode(SceneGraph* scene) const
@@ -359,15 +424,75 @@ ModelNode* PlanningModuleLogicHandler::findPlanModelNode(SceneGraph* scene) cons
     return nullptr;
 }
 
-LineNode* PlanningModuleLogicHandler::findPlanPathNode(SceneGraph* scene) const
+QVector<BillboardLineNode*> PlanningModuleLogicHandler::ensurePlanPathSegmentNodes(SceneGraph* scene,
+                                                                                   int segmentCount)
+{
+    QVector<BillboardLineNode*> nodes;
+    if (!scene) {
+        return nodes;
+    }
+
+    bool allCachedNodesValid = !m_planPathSegmentNodeIds.isEmpty();
+    if (allCachedNodesValid) {
+        nodes.reserve(m_planPathSegmentNodeIds.size());
+        for (const QString& nodeId : m_planPathSegmentNodeIds) {
+            auto* node = scene->getNodeById<BillboardLineNode>(nodeId);
+            if (!node) {
+                allCachedNodesValid = false;
+                nodes.clear();
+                break;
+            }
+            nodes.append(node);
+        }
+    }
+
+    if (!allCachedNodesValid) {
+        nodes = findPlanPathSegmentNodes(scene);
+    }
+
+    while (nodes.size() > segmentCount) {
+        BillboardLineNode* node = nodes.takeLast();
+        if (node) {
+            scene->removeNode(node->getNodeId());
+        }
+    }
+
+    while (nodes.size() < segmentCount) {
+        auto* lineNode = new BillboardLineNode(scene);
+        lineNode->setLineRole(QString::fromLatin1(kPlanPathSegmentRole));
+        lineNode->setAttribute(QStringLiteral("segmentIndex"), nodes.size());
+        applyPlanPathSegmentStyle(lineNode);
+        configurePlanningBillboardLineTargets(lineNode);
+        scene->addNode(lineNode);
+        nodes.append(lineNode);
+    }
+
+    m_planPathSegmentNodeIds.clear();
+    for (int index = 0; index < nodes.size(); ++index) {
+        BillboardLineNode* node = nodes.at(index);
+        if (!node) {
+            continue;
+        }
+
+        node->setAttribute(QStringLiteral("segmentIndex"), index);
+        node->setLineRole(QString::fromLatin1(kPlanPathSegmentRole));
+        applyPlanPathSegmentStyle(node);
+        configurePlanningBillboardLineTargets(node);
+        m_planPathSegmentNodeIds.append(node->getNodeId());
+    }
+
+    return nodes;
+}
+
+BillboardArrowNode* PlanningModuleLogicHandler::findPlanPathArrowNode(SceneGraph* scene) const
 {
     if (!scene) {
         return nullptr;
     }
 
-    const QVector<LineNode*> nodes = scene->getAllLineNodes();
-    for (LineNode* node : nodes) {
-        if (node && node->getLineRole() == QStringLiteral("plan_path")) {
+    const QVector<BillboardArrowNode*> nodes = scene->getAllBillboardArrowNodes();
+    for (BillboardArrowNode* node : nodes) {
+        if (node && node->getArrowRole() == QString::fromLatin1(kPlanPathArrowRole)) {
             return node;
         }
     }
@@ -375,14 +500,132 @@ LineNode* PlanningModuleLogicHandler::findPlanPathNode(SceneGraph* scene) const
     return nullptr;
 }
 
-void PlanningModuleLogicHandler::ensureDefaultPlanGeometry(ModelNode* modelNode, LineNode* pathNode) const
+QVector<BillboardLineNode*> PlanningModuleLogicHandler::findPlanPathSegmentNodes(SceneGraph* scene) const
+{
+    QVector<BillboardLineNode*> result;
+    if (!scene) {
+        return result;
+    }
+
+    const QVector<BillboardLineNode*> nodes = scene->getAllBillboardLineNodes();
+    result.reserve(nodes.size());
+    for (BillboardLineNode* node : nodes) {
+        if (node && node->getLineRole() == QString::fromLatin1(kPlanPathSegmentRole)) {
+            result.append(node);
+        }
+    }
+
+    std::sort(result.begin(), result.end(), compareSegmentIndex);
+    return result;
+}
+
+void PlanningModuleLogicHandler::restorePlanPathVisualizationNodes(SceneGraph* scene)
+{
+    if (!scene) {
+        return;
+    }
+
+    removeLegacyPlanPathNodes(scene);
+
+    const QVector<BillboardLineNode*> segments = findPlanPathSegmentNodes(scene);
+    m_planPathSegmentNodeIds.clear();
+    for (int index = 0; index < segments.size(); ++index) {
+        BillboardLineNode* node = segments.at(index);
+        if (!node) {
+            continue;
+        }
+        node->setAttribute(QStringLiteral("segmentIndex"), index);
+        node->setLineRole(QString::fromLatin1(kPlanPathSegmentRole));
+        applyPlanPathSegmentStyle(node);
+        configurePlanningBillboardLineTargets(node);
+        m_planPathSegmentNodeIds.append(node->getNodeId());
+    }
+
+    if (segments.isEmpty()) {
+        removePlanPathArrowNode(scene);
+        return;
+    }
+
+    BillboardArrowNode* arrowNode = ensurePlanPathArrowNode(scene);
+    if (!arrowNode) {
+        return;
+    }
+
+    arrowNode->setTipPoint(segments.last()->getEndPoint());
+}
+
+void PlanningModuleLogicHandler::syncPlanPathVisualization(
+    SceneGraph* scene,
+    const QVector<std::array<double, 3>>& pathPoints)
+{
+    if (!scene) {
+        return;
+    }
+
+    removeLegacyPlanPathNodes(scene);
+
+    const int pointCount = static_cast<int>(pathPoints.size());
+    const int segmentCount = pointCount > 1 ? (pointCount - 1) : 0;
+    QVector<BillboardLineNode*> segments = ensurePlanPathSegmentNodes(scene, segmentCount);
+
+    if (segmentCount <= 0) {
+        removePlanPathArrowNode(scene);
+        return;
+    }
+
+    for (int index = 0; index < segmentCount; ++index) {
+        BillboardLineNode* segmentNode = segments.value(index, nullptr);
+        if (!segmentNode) {
+            continue;
+        }
+        segmentNode->setEndpoints(pathPoints.at(index), pathPoints.at(index + 1));
+    }
+
+    if (BillboardArrowNode* arrowNode = ensurePlanPathArrowNode(scene)) {
+        arrowNode->setTipPoint(pathPoints.last());
+    }
+}
+
+void PlanningModuleLogicHandler::removeLegacyPlanPathNodes(SceneGraph* scene) const
+{
+    if (!scene) {
+        return;
+    }
+
+    const QVector<LineNode*> legacyNodes = scene->getAllLineNodes();
+    for (LineNode* node : legacyNodes) {
+        if (node && node->getLineRole() == QStringLiteral("plan_path")) {
+            scene->removeNode(node->getNodeId());
+        }
+    }
+}
+
+void PlanningModuleLogicHandler::removePlanPathArrowNode(SceneGraph* scene)
+{
+    if (!scene) {
+        return;
+    }
+
+    if (!m_planPathArrowNodeId.isEmpty()) {
+        scene->removeNode(m_planPathArrowNodeId);
+        m_planPathArrowNodeId.clear();
+        return;
+    }
+
+    if (BillboardArrowNode* arrowNode = findPlanPathArrowNode(scene)) {
+        scene->removeNode(arrowNode->getNodeId());
+    }
+    m_planPathArrowNodeId.clear();
+}
+
+void PlanningModuleLogicHandler::ensureDefaultPlanGeometry(SceneGraph* scene, ModelNode* modelNode)
 {
     if (modelNode && !modelNode->getPolyData()) {
         modelNode->setMeshData(createPlanVertices(), createPlanTriangles());
     }
 
-    if (pathNode && pathNode->getVertexCount() == 0) {
-        pathNode->setPolyline(createPlanPath());
+    if (scene && m_planPathSegmentNodeIds.isEmpty()) {
+        syncPlanPathVisualization(scene, createPlanPath());
     }
 }
 
@@ -392,7 +635,10 @@ void PlanningModuleLogicHandler::emitPlanningState(LogicNotification::EventType 
 {
     QVariantMap payload;
     payload.insert(QStringLiteral("planModelNodeId"), m_planModelNodeId);
-    payload.insert(QStringLiteral("planPathNodeId"), m_planPathNodeId);
+    payload.insert(QStringLiteral("planPathNodeId"),
+                   m_planPathSegmentNodeIds.isEmpty() ? QString() : m_planPathSegmentNodeIds.first());
+    payload.insert(QStringLiteral("planPathSegmentNodeIds"), m_planPathSegmentNodeIds);
+    payload.insert(QStringLiteral("planPathArrowNodeId"), m_planPathArrowNodeId);
     payload.insert(QStringLiteral("status"), m_planStatus);
     if (!sourceSampleId.isEmpty()) {
         payload.insert(QStringLiteral("sourceSampleId"), sourceSampleId);

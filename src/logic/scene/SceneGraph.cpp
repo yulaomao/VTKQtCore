@@ -326,6 +326,30 @@ QVector<PointNode*> SceneGraph::getAllPointNodes() const
     return result;
 }
 
+QVector<BillboardLineNode*> SceneGraph::getAllBillboardLineNodes() const
+{
+    QReadLocker locker(&m_lock);
+    QVector<BillboardLineNode*> result;
+    for (NodeBase* node : m_nodes) {
+        if (auto* typed = dynamic_cast<BillboardLineNode*>(node)) {
+            result.append(typed);
+        }
+    }
+    return result;
+}
+
+QVector<BillboardArrowNode*> SceneGraph::getAllBillboardArrowNodes() const
+{
+    QReadLocker locker(&m_lock);
+    QVector<BillboardArrowNode*> result;
+    for (NodeBase* node : m_nodes) {
+        if (auto* typed = dynamic_cast<BillboardArrowNode*>(node)) {
+            result.append(typed);
+        }
+    }
+    return result;
+}
+
 QVector<LineNode*> SceneGraph::getAllLineNodes() const
 {
     QReadLocker locker(&m_lock);

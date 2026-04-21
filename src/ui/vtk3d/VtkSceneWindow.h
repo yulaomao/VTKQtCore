@@ -12,9 +12,13 @@
 #include <QVBoxLayout>
 #include <QVector>
 #include <QString>
+#include <QPointF>
 #include <QShowEvent>
+#include <QTouchEvent>
 
 #include "display/NodeDisplayManager.h"
+#include "display/BillboardArrowNodeDisplayManager.h"
+#include "display/BillboardLineNodeDisplayManager.h"
 #include "display/PointNodeDisplayManager.h"
 #include "display/LineNodeDisplayManager.h"
 #include "display/ModelNodeDisplayManager.h"
@@ -54,9 +58,19 @@ private slots:
     void renderQueuedScene();
 
 protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void showEvent(QShowEvent* event) override;
 
 private:
+    bool handleTouchBegin(QTouchEvent* event);
+    bool handleTouchUpdate(QTouchEvent* event);
+    bool handleTouchEnd(QTouchEvent* event);
+    void rotateCamera(double deltaX, double deltaY);
+    void panCamera(double deltaX, double deltaY);
+    double calculateDistance(const QPointF& point1, const QPointF& point2) const;
+    void renderAfterTouch();
+    void resetTouchState();
+    bool shouldBlockMouseEvent(QEvent::Type eventType) const;
     void detachInteractorObserver();
     void teardownRenderWindow();
 
@@ -80,4 +94,12 @@ private:
     unsigned long m_interactionObserverTag = 0;
     bool m_isShuttingDown = false;
     bool m_renderQueued = false;
+    bool m_touchSequenceActive = false;
+    bool m_isPinching = false;
+    bool m_isRotating = false;
+    double m_initialPinchDistance = 0.0;
+    double m_currentCameraDistance = 0.0;
+    double m_currentParallelScale = 1.0;
+    QPointF m_lastPinchCenter;
+    QPointF m_lastRotatePos;
 };

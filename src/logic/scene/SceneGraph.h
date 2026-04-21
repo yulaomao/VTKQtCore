@@ -2,6 +2,8 @@
 
 #include "nodes/NodeBase.h"
 #include "nodes/PointNode.h"
+#include "nodes/BillboardArrowNode.h"
+#include "nodes/BillboardLineNode.h"
 #include "nodes/LineNode.h"
 #include "nodes/ModelNode.h"
 #include "nodes/TransformNode.h"
@@ -48,6 +50,8 @@ public:
 
     // Convenience typed queries
     QVector<PointNode*> getAllPointNodes() const;
+    QVector<BillboardLineNode*> getAllBillboardLineNodes() const;
+    QVector<BillboardArrowNode*> getAllBillboardArrowNodes() const;
     QVector<LineNode*> getAllLineNodes() const;
     QVector<ModelNode*> getAllModelNodes() const;
     QVector<TransformNode*> getAllTransformNodes() const;

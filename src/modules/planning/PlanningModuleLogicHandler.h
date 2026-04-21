@@ -2,10 +2,15 @@
 
 #include "logic/registry/ModuleLogicHandler.h"
 #include <QString>
+#include <QStringList>
+#include <QVector>
+
+#include <array>
 
 class SceneGraph;
+class BillboardArrowNode;
+class BillboardLineNode;
 class ModelNode;
-class LineNode;
 
 class PlanningModuleLogicHandler : public ModuleLogicHandler
 {
@@ -22,15 +27,23 @@ public:
 
 private:
     ModelNode* ensurePlanModelNode(SceneGraph* scene);
-    LineNode* ensurePlanPathNode(SceneGraph* scene);
+    BillboardArrowNode* ensurePlanPathArrowNode(SceneGraph* scene);
+    QVector<BillboardLineNode*> ensurePlanPathSegmentNodes(SceneGraph* scene, int segmentCount);
     ModelNode* findPlanModelNode(SceneGraph* scene) const;
-    LineNode* findPlanPathNode(SceneGraph* scene) const;
-    void ensureDefaultPlanGeometry(ModelNode* modelNode, LineNode* pathNode) const;
+    BillboardArrowNode* findPlanPathArrowNode(SceneGraph* scene) const;
+    QVector<BillboardLineNode*> findPlanPathSegmentNodes(SceneGraph* scene) const;
+    void restorePlanPathVisualizationNodes(SceneGraph* scene);
+    void syncPlanPathVisualization(SceneGraph* scene,
+                                   const QVector<std::array<double, 3>>& pathPoints);
+    void removeLegacyPlanPathNodes(SceneGraph* scene) const;
+    void removePlanPathArrowNode(SceneGraph* scene);
+    void ensureDefaultPlanGeometry(SceneGraph* scene, ModelNode* modelNode);
     void emitPlanningState(LogicNotification::EventType eventType,
                            const QString& sourceActionId = QString(),
                            const QString& sourceSampleId = QString());
 
     QString m_planModelNodeId;
-    QString m_planPathNodeId;
+    QStringList m_planPathSegmentNodeIds;
+    QString m_planPathArrowNodeId;
     QString m_planStatus = QStringLiteral("not_started");
 };
