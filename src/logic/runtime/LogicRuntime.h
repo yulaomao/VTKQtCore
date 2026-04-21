@@ -13,6 +13,7 @@ class SceneGraph;
 class ActiveModuleState;
 class ModuleLogicRegistry;
 class ModuleLogicHandler;
+class GlobalPollingSampleParser;
 class IRedisCommandAccess;
 
 class LogicRuntime : public QObject, public IModuleInvoker
@@ -25,6 +26,7 @@ public:
     SceneGraph* getSceneGraph() const;
     ActiveModuleState* getActiveModuleState() const;
     ModuleLogicRegistry* getModuleLogicRegistry() const;
+    void setGlobalPollingSampleParser(GlobalPollingSampleParser* parser);
     void setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess);
     bool hasRedisCommandAccess() const;
     QVariant readRedisValue(const QString& key);
@@ -63,6 +65,7 @@ private:
     SceneGraph* m_sceneGraph;
     ActiveModuleState* m_activeModuleState;
     ModuleLogicRegistry* m_moduleLogicRegistry;
+    GlobalPollingSampleParser* m_globalPollingSampleParser = nullptr;
     IRedisCommandAccess* m_redisCommandAccess = nullptr;
     QMap<QString, qint64> m_lastInboundSeqByStream;
 };

@@ -1,14 +1,14 @@
 #include "DefaultSoftwareInitializer.h"
 
+#include "DefaultGlobalPollingSampleParser.h"
 #include "ModuleUiAssemblers.h"
 #include "SoftwareInitializerFactory.h"
 #include "ApplicationCoordinator.h"
 #include "ILogicGateway.h"
 #include "LogicRuntime.h"
 #include "MainWindow.h"
+#include "communication/datasource/GlobalPollingPlan.h"
 #include "communication/hub/CommunicationHub.h"
-#include "communication/datasource/PollingTask.h"
-#include "communication/datasource/SubscriptionSource.h"
 #include "modules/intermoduletest/InterModuleReceiverLogicHandler.h"
 #include "modules/intermoduletest/InterModuleReceiverWidget.h"
 #include "modules/intermoduletest/InterModuleSenderLogicHandler.h"
@@ -105,89 +105,32 @@ QString ackChannelFromProfile(const QVariantMap& profile)
         defaultAckChannel());
 }
 
-QString subscriptionChannelForModule(const QVariantMap& profile, const QString& moduleId)
+QStringList defaultGlobalPollingKeys()
 {
-    const QVariantMap channels = communicationProfile(profile).value(
-        QStringLiteral("subscriptionChannels")).toMap();
-    return stringFromVariantOrDefault(
-        channels.value(moduleId),
-        defaultSubscriptionChannel(moduleId));
-}
-
-QString pollingKeyForModule(const QVariantMap& profile, const QString& moduleId)
-{
-    const QVariantMap keys = communicationProfile(profile).value(
-        QStringLiteral("pollingKeys")).toMap();
-    return stringFromVariantOrDefault(
-        keys.value(moduleId),
-        defaultPollingKey(moduleId));
-}
-
-int pollingIntervalForModule(const QVariantMap& profile, const QString& moduleId)
-{
-    const QVariantMap intervals = communicationProfile(profile).value(
-        QStringLiteral("pollingIntervalsMs")).toMap();
-    const int interval = intervals.value(moduleId).toInt();
-    return interval > 0 ? interval : 100;
-}
-
-double dispatchRateForModule(const QVariantMap& profile, const QString& moduleId)
-{
-    const QVariantMap rates = communicationProfile(profile).value(
-        QStringLiteral("maxDispatchRateHz")).toMap();
-    const double rate = rates.value(moduleId).toDouble();
-    return rate > 0.0 ? rate : 30.0;
-}
-
-struct NavigationTransformPollingSpec {
-    QString nodeId;
-    QString redisKey;
-};
-
-QVector<NavigationTransformPollingSpec> navigationTransformPollingSpecsFromProfile(
-    const QVariantMap& profile)
-{
-    struct DefaultSpec {
-        const char* nodeId;
-        const char* redisKey;
+    return {
+        defaultPollingKey(QStringLiteral("params")),
+        defaultPollingKey(QStringLiteral("pointpick")),
+        defaultPollingKey(QStringLiteral("planning")),
+        defaultPollingKey(QStringLiteral("navigation")),
+        QStringLiteral("demo:navigation:transform:world"),
+        QStringLiteral("demo:navigation:transform:reference"),
+        QStringLiteral("demo:navigation:transform:patient"),
+        QStringLiteral("demo:navigation:transform:instrument"),
+        QStringLiteral("demo:navigation:transform:guide"),
+        QStringLiteral("demo:navigation:transform:tip"),
     };
-
-    static const DefaultSpec defaults[] = {
-        {"navigation-world-transform", "demo:navigation:transform:world"},
-        {"navigation-reference-transform", "demo:navigation:transform:reference"},
-        {"navigation-patient-transform", "demo:navigation:transform:patient"},
-        {"navigation-instrument-transform", "demo:navigation:transform:instrument"},
-        {"navigation-guide-transform", "demo:navigation:transform:guide"},
-        {"navigation-tip-transform", "demo:navigation:transform:tip"},
-    };
-
-    const QVariantMap overrides = communicationProfile(profile).value(
-        QStringLiteral("navigationTransformPollingKeys")).toMap();
-
-    QVector<NavigationTransformPollingSpec> specs;
-    specs.reserve(static_cast<int>(std::size(defaults)));
-    for (const DefaultSpec& spec : defaults) {
-        const QString nodeId = QString::fromLatin1(spec.nodeId);
-        const QString redisKey = stringFromVariantOrDefault(
-            overrides.value(nodeId),
-            QString::fromLatin1(spec.redisKey));
-        specs.push_back({nodeId, redisKey});
-    }
-    return specs;
 }
 
-int navigationTransformPollingIntervalMs(const QVariantMap& profile)
+GlobalPollingPlan createDefaultGlobalPollingPlan()
 {
-    const int interval = communicationProfile(profile).value(
-        QStringLiteral("navigationTransformPollingIntervalMs")).toInt();
-    return interval > 0 ? interval : 16;
-}
-
-double navigationTransformDispatchRateHz(const QVariantMap& profile)
-{
-    const double rate = communicationProfile(profile).value(
-        QStringLiteral("navigationTransformMaxDispatchRateHz")).toDouble();
-    return rate > 0.0 ? rate : 60.0;
+    GlobalPollingPlan plan(
+        QStringLiteral("framework_global_poll"),
+        defaultGlobalPollingKeys(),
+        16);
+    plan.setChangeDetection(true);
+    plan.setMaxDispatchRateHz(60.0);
+    plan.setActive(true);
+    return plan;
 }
 
 QString gatewayStateName(ILogicGateway* gateway)
@@ -377,6 +320,15 @@ void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
                      workflowMenu, &ModuleNavigationModule::onGatewayNotification);
 }
 
+void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runtime)
+{
+    if (!runtime) {
+        return;
+    }
+
+    runtime->setGlobalPollingSampleParser(new DefaultGlobalPollingSampleParser(runtime));
+}
+
 void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
 {
     if (!commHub) {
@@ -391,46 +343,6 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
         commHub->addRoutingChannel(routingChannel);
     }
 
-    const QStringList modules = configuredEnabledModules();
-    for (const QString& moduleId : modules) {
-        const QString channel = subscriptionChannelForModule(profile, moduleId);
-        if (!channel.isEmpty()) {
-            commHub->addSubscriptionSource(new SubscriptionSource(
-                QStringLiteral("%1_subscription").arg(moduleId),
-                channel,
-                moduleId));
-        }
-
-        const QString pollingKey = pollingKeyForModule(profile, moduleId);
-        if (!pollingKey.isEmpty()) {
-            auto* task = new PollingTask(
-                QStringLiteral("%1_poll").arg(moduleId),
-                moduleId,
-                pollingKey,
-                pollingIntervalForModule(profile, moduleId));
-            task->setLatestWins(true);
-            task->setChangeDetection(true);
-            task->setMaxDispatchRateHz(dispatchRateForModule(profile, moduleId));
-            commHub->addPollingTask(task);
-        }
-    }
-
-    if (modules.contains(QStringLiteral("navigation"))) {
-        const int intervalMs = navigationTransformPollingIntervalMs(profile);
-        const double dispatchRateHz = navigationTransformDispatchRateHz(profile);
-        const QVector<NavigationTransformPollingSpec> specs =
-            navigationTransformPollingSpecsFromProfile(profile);
-        for (const NavigationTransformPollingSpec& spec : specs) {
-            auto* task = new PollingTask(
-                QStringLiteral("%1_poll").arg(spec.nodeId),
-                QStringLiteral("navigation"),
-                spec.redisKey,
-                intervalMs);
-            task->setLatestWins(true);
-            task->setChangeDetection(true);
-            task->setMaxDispatchRateHz(dispatchRateHz);
-            commHub->addPollingTask(task);
-        }
-    }
+    commHub->setGlobalPollingPlan(createDefaultGlobalPollingPlan());
 }
 

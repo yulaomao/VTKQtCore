@@ -3,12 +3,9 @@
 #include <QObject>
 #include <QMap>
 #include <QTimer>
-#include <QVariant>
-#include <QVector>
 
 #include "SourceBase.h"
-
-class PollingTask;
+#include "GlobalPollingPlan.h"
 
 class PollingSource : public SourceBase
 {
@@ -18,21 +15,21 @@ public:
     explicit PollingSource(const QString& sourceId, QObject* parent = nullptr);
     ~PollingSource() override = default;
 
-    Q_INVOKABLE int getTaskCount() const;
-    Q_INVOKABLE int getActiveTaskCount() const;
+    Q_INVOKABLE bool hasPlan() const;
+    Q_INVOKABLE int getKeyCount() const;
     bool isRunning() const override;
 
 public slots:
     void start() override;
     void stop() override;
-    void addTask(PollingTask* task);
-    void removeTask(const QString& taskId);
+    void configurePlan(const GlobalPollingPlan& plan);
+    void clearPlan();
 
 signals:
-    void pollRequested(const QString& redisKey);
+    void batchPollRequested(const QStringList& redisKeys);
 
 public slots:
-    void onPollResult(const QString& redisKey, const QVariant& value);
+    void onBatchPollResult(const QVariantMap& values);
 
 private slots:
     void onTimerTick();
@@ -40,10 +37,10 @@ private slots:
 private:
     void scheduleNextTick(qint64 nowMs = -1);
 
-    QVector<PollingTask*> m_pollingTasks;
+    GlobalPollingPlan m_plan;
     QTimer* m_timer = nullptr;
     bool m_running = false;
-    QMap<QString, QVariant> m_lastValues;
-    QMap<QString, qint64> m_lastDispatchTime;
-    QMap<QString, qint64> m_nextPollDueTime;
+    QVariantMap m_lastValues;
+    qint64 m_lastDispatchTime = 0;
+    qint64 m_nextPollDueTime = 0;
 };

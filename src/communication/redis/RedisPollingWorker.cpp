@@ -2,6 +2,9 @@
 
 #include <hiredis/hiredis.h>
 
+#include <algorithm>
+#include <QVector>
+
 #ifdef _WIN32
 #include <winsock2.h>
 #endif
@@ -63,31 +66,54 @@ void RedisPollingWorker::setConnection(const QString& host, int port)
     closeContext();
 }
 
-void RedisPollingWorker::readKey(const QString& key)
+void RedisPollingWorker::readKeys(const QStringList& keys)
 {
+    if (keys.isEmpty()) {
+        emit keyValuesReceived({});
+        return;
+    }
+
     if (!ensureConnected()) {
         return;
     }
 
-    const QByteArray keyBytes = key.toUtf8();
+    QVector<QByteArray> commandParts;
+    commandParts.reserve(keys.size() + 1);
+    commandParts.append(QByteArrayLiteral("MGET"));
+    for (const QString& key : keys) {
+        commandParts.append(key.toUtf8());
+    }
+
+    QVector<const char*> argv;
+    QVector<size_t> argvlen;
+    argv.reserve(commandParts.size());
+    argvlen.reserve(commandParts.size());
+    for (const QByteArray& part : commandParts) {
+        argv.append(part.constData());
+        argvlen.append(static_cast<size_t>(part.size()));
+    }
+
     redisReply* reply = static_cast<redisReply*>(
-        redisCommand(m_context, "GET %b",
-                     keyBytes.constData(),
-                     static_cast<size_t>(keyBytes.size())));
+        redisCommandArgv(m_context,
+                         commandParts.size(),
+                         argv.data(),
+                         argvlen.data()));
 
     if (!reply) {
-        // Connection lost; drop context so next call reconnects.
         closeContext();
         return;
     }
 
-    QVariant value;
-    if (reply->type != REDIS_REPLY_ERROR) {
-        value = replyToVariantPoll(reply);
+    QVariantMap values;
+    if (reply->type == REDIS_REPLY_ARRAY) {
+        const size_t count = (std::min)(reply->elements, static_cast<size_t>(keys.size()));
+        for (size_t index = 0; index < count; ++index) {
+            values.insert(keys.at(static_cast<int>(index)), replyToVariantPoll(reply->element[index]));
+        }
     }
     freeReplyObject(reply);
 
-    emit keyValueReceived(key, value);
+    emit keyValuesReceived(values);
 }
 
 bool RedisPollingWorker::ensureConnected()

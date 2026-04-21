@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 
 struct redisContext;
@@ -23,10 +24,10 @@ public:
 
 public slots:
     void setConnection(const QString& host, int port);
-    void readKey(const QString& key);
+    void readKeys(const QStringList& keys);
 
 signals:
-    void keyValueReceived(const QString& key, const QVariant& value);
+    void keyValuesReceived(const QVariantMap& values);
 
 private:
     bool ensureConnected();

@@ -1,12 +1,10 @@
 #include "PollingSource.h"
-#include "PollingTask.h"
 
 #include <QDateTime>
-#include <algorithm>
-#include <limits>
 
 namespace {
 constexpr int MIN_TIMER_INTERVAL_MS = 10;
+constexpr auto kGlobalPollSampleType = "global_poll_batch";
 
 qint64 currentTimeMs()
 {
@@ -29,13 +27,10 @@ void PollingSource::start()
     }
 
     m_running = true;
-    const qint64 now = currentTimeMs();
-    for (PollingTask* task : m_pollingTasks) {
-        if (task && task->isActive()) {
-            m_nextPollDueTime.insert(task->getTaskId(), now);
-        }
+    if (m_plan.isActive() && !m_plan.getRedisKeys().isEmpty()) {
+        m_nextPollDueTime = currentTimeMs();
     }
-    scheduleNextTick(now);
+    scheduleNextTick(m_nextPollDueTime);
 }
 
 void PollingSource::stop()
@@ -46,7 +41,7 @@ void PollingSource::stop()
 
     m_running = false;
     m_timer->stop();
-    m_nextPollDueTime.clear();
+    m_nextPollDueTime = 0;
 }
 
 bool PollingSource::isRunning() const
@@ -54,133 +49,82 @@ bool PollingSource::isRunning() const
     return m_running;
 }
 
-int PollingSource::getTaskCount() const
+bool PollingSource::hasPlan() const
 {
-    return m_pollingTasks.size();
+    return !m_plan.getPlanId().isEmpty();
 }
 
-int PollingSource::getActiveTaskCount() const
+int PollingSource::getKeyCount() const
 {
-    int count = 0;
-    for (const PollingTask* task : m_pollingTasks) {
-        if (task && task->isActive()) {
-            ++count;
-        }
-    }
-    return count;
+    return m_plan.getRedisKeys().size();
 }
 
-void PollingSource::addTask(PollingTask* task)
+void PollingSource::configurePlan(const GlobalPollingPlan& plan)
 {
-    if (!task) {
-        return;
-    }
-
-    for (const PollingTask* existing : m_pollingTasks) {
-        if (existing && existing->getTaskId() == task->getTaskId()) {
-            emit sourceError(m_sourceId,
-                             QStringLiteral("Duplicate polling task '%1'").arg(task->getTaskId()));
-            return;
-        }
-    }
-
-    task->setParent(this);
-    m_pollingTasks.append(task);
-    if (m_running && task->isActive()) {
-        m_nextPollDueTime.insert(task->getTaskId(), currentTimeMs());
+    m_plan = plan;
+    m_lastValues.clear();
+    m_lastDispatchTime = 0;
+    if (m_running && m_plan.isActive() && !m_plan.getRedisKeys().isEmpty()) {
+        m_nextPollDueTime = currentTimeMs();
         scheduleNextTick();
+    } else if (!m_plan.isActive() || m_plan.getRedisKeys().isEmpty()) {
+        m_nextPollDueTime = 0;
+        m_timer->stop();
     }
 }
 
-void PollingSource::removeTask(const QString& taskId)
+void PollingSource::clearPlan()
 {
-    for (int i = 0; i < m_pollingTasks.size(); ++i) {
-        if (m_pollingTasks[i]->getTaskId() == taskId) {
-            PollingTask* task = m_pollingTasks.takeAt(i);
-            m_lastValues.remove(task->getTaskId());
-            m_lastDispatchTime.remove(task->getTaskId());
-            m_nextPollDueTime.remove(task->getTaskId());
-            task->deleteLater();
-            break;
-        }
-    }
-    scheduleNextTick();
+    configurePlan(GlobalPollingPlan());
 }
 
-void PollingSource::onPollResult(const QString& redisKey, const QVariant& value)
+void PollingSource::onBatchPollResult(const QVariantMap& values)
 {
-    if (!m_running) {
-        return;
-    }
-
-    bool handled = false;
-    for (PollingTask* task : m_pollingTasks) {
-        if (!task || !task->isActive() || task->getRedisKey() != redisKey) {
-            continue;
-        }
-
-        const QString taskId = task->getTaskId();
-
-        if (task->getChangeDetection() && m_lastValues.contains(taskId)) {
-            if (m_lastValues.value(taskId) == value) {
-                continue;
-            }
-        }
-
-        const qint64 now = currentTimeMs();
-        if (task->getMaxDispatchRateHz() > 0.0) {
-            const double minIntervalMs = 1000.0 / task->getMaxDispatchRateHz();
-            if (m_lastDispatchTime.contains(taskId)) {
-                const qint64 elapsed = now - m_lastDispatchTime.value(taskId);
-                if (elapsed < static_cast<qint64>(minIntervalMs)) {
-                    continue;
-                }
-            }
-        }
-
-        m_lastValues[taskId] = value;
-        m_lastDispatchTime[taskId] = now;
-
-        QVariantMap data;
-        data[QStringLiteral("key")] = redisKey;
-        data[QStringLiteral("value")] = value;
-        data[QStringLiteral("taskId")] = taskId;
-
-        StateSample sample = StateSample::create(
-            m_sourceId, task->getModule(),
-            task->getRedisKey(), data);
-        emit sampleReady(sample);
-        handled = true;
-    }
-
-    if (!handled) {
-        return;
-    }
-}
-
-void PollingSource::onTimerTick()
-{
-    if (!m_running) {
+    if (!m_running || !m_plan.isActive() || m_plan.getRedisKeys().isEmpty()) {
         return;
     }
 
     const qint64 now = currentTimeMs();
-    for (PollingTask* task : m_pollingTasks) {
-        if (!task || !task->isActive()) {
-            continue;
-        }
-
-        const QString taskId = task->getTaskId();
-        const qint64 dueTime = m_nextPollDueTime.value(taskId, now);
-        if (dueTime > now) {
-            continue;
-        }
-
-        emit pollRequested(task->getRedisKey());
-        m_nextPollDueTime.insert(
-            taskId,
-            now + std::max(MIN_TIMER_INTERVAL_MS, task->getPollIntervalMs()));
+    if (m_plan.getChangeDetection() && !m_lastValues.isEmpty() && m_lastValues == values) {
+        return;
     }
+
+    if (m_plan.getMaxDispatchRateHz() > 0.0 && m_lastDispatchTime > 0) {
+        const double minIntervalMs = 1000.0 / m_plan.getMaxDispatchRateHz();
+        if (now - m_lastDispatchTime < static_cast<qint64>(minIntervalMs)) {
+            return;
+        }
+    }
+
+    m_lastValues = values;
+    m_lastDispatchTime = now;
+
+    QVariantMap data;
+    data.insert(QStringLiteral("planId"), m_plan.getPlanId());
+    data.insert(QStringLiteral("keys"), m_plan.getRedisKeys());
+    data.insert(QStringLiteral("values"), values);
+
+    emit sampleReady(StateSample::create(
+        m_sourceId,
+        QString(),
+        QString::fromLatin1(kGlobalPollSampleType),
+        data));
+}
+
+void PollingSource::onTimerTick()
+{
+    if (!m_running || !m_plan.isActive() || m_plan.getRedisKeys().isEmpty()) {
+        return;
+    }
+
+    const qint64 now = currentTimeMs();
+    if (m_nextPollDueTime > now) {
+        scheduleNextTick(now);
+        return;
+    }
+
+    emit batchPollRequested(m_plan.getRedisKeys());
+    m_nextPollDueTime = now + std::max(MIN_TIMER_INTERVAL_MS, m_plan.getPollIntervalMs());
 
     scheduleNextTick(now);
 }
@@ -192,29 +136,16 @@ void PollingSource::scheduleNextTick(qint64 nowMs)
         return;
     }
 
-    const qint64 now = nowMs >= 0 ? nowMs : currentTimeMs();
-    qint64 earliestDueTime = std::numeric_limits<qint64>::max();
-    bool hasActiveTask = false;
-
-    for (PollingTask* task : m_pollingTasks) {
-        if (!task || !task->isActive()) {
-            continue;
-        }
-
-        hasActiveTask = true;
-        const QString taskId = task->getTaskId();
-        if (!m_nextPollDueTime.contains(taskId)) {
-            m_nextPollDueTime.insert(taskId, now);
-        }
-
-        earliestDueTime = std::min(earliestDueTime, m_nextPollDueTime.value(taskId));
-    }
-
-    if (!hasActiveTask) {
+    if (!m_plan.isActive() || m_plan.getRedisKeys().isEmpty()) {
         m_timer->stop();
         return;
     }
 
-    const int nextIntervalMs = static_cast<int>(std::max<qint64>(0, earliestDueTime - now));
+    const qint64 now = nowMs >= 0 ? nowMs : currentTimeMs();
+    if (m_nextPollDueTime <= 0) {
+        m_nextPollDueTime = now;
+    }
+
+    const int nextIntervalMs = static_cast<int>(std::max<qint64>(0, m_nextPollDueTime - now));
     m_timer->start(nextIntervalMs);
 }

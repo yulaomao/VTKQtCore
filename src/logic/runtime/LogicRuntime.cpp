@@ -1,6 +1,7 @@
 #include "LogicRuntime.h"
 
 #include "communication/hub/IRedisCommandAccess.h"
+#include "logic/runtime/GlobalPollingSampleParser.h"
 #include "scene/SceneGraph.h"
 #include "workflow/ActiveModuleState.h"
 #include "registry/ModuleLogicRegistry.h"
@@ -103,6 +104,11 @@ QString describeAction(const UiAction& action)
     return command.isEmpty() ? UiAction::toString(action.actionType) : command;
 }
 
+bool isGlobalPollingBatchSample(const StateSample& sample)
+{
+    return sample.module.isEmpty() && sample.sampleType == QStringLiteral("global_poll_batch");
+}
+
 } // namespace
 
 LogicRuntime::LogicRuntime(QObject* parent)
@@ -126,6 +132,22 @@ ActiveModuleState* LogicRuntime::getActiveModuleState() const
 ModuleLogicRegistry* LogicRuntime::getModuleLogicRegistry() const
 {
     return m_moduleLogicRegistry;
+}
+
+void LogicRuntime::setGlobalPollingSampleParser(GlobalPollingSampleParser* parser)
+{
+    if (m_globalPollingSampleParser == parser) {
+        return;
+    }
+
+    if (m_globalPollingSampleParser) {
+        m_globalPollingSampleParser->deleteLater();
+    }
+
+    m_globalPollingSampleParser = parser;
+    if (m_globalPollingSampleParser && !m_globalPollingSampleParser->parent()) {
+        m_globalPollingSampleParser->setParent(this);
+    }
 }
 
 void LogicRuntime::setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess)
@@ -425,6 +447,24 @@ void LogicRuntime::onServerCommandReceived(const QString& commandType, const QVa
 
 void LogicRuntime::onStateSampleReceived(const StateSample& sample)
 {
+    if (isGlobalPollingBatchSample(sample)) {
+        if (!m_globalPollingSampleParser) {
+            emit logicNotification(createShellError(
+                QStringLiteral("DATA_GLOBAL_POLLING_PARSER_MISSING"),
+                QStringLiteral("Global polling batch received without a configured parser"),
+                true,
+                QStringLiteral("Configure a GlobalPollingSampleParser before starting Redis mode."),
+                {{QStringLiteral("sampleId"), sample.sampleId}}));
+            return;
+        }
+
+        const QVector<StateSample> routedSamples = m_globalPollingSampleParser->parse(sample);
+        for (const StateSample& routedSample : routedSamples) {
+            onStateSampleReceived(routedSample);
+        }
+        return;
+    }
+
     QString targetModule = sample.module;
     if (targetModule.isEmpty()) {
         targetModule = m_activeModuleState->getCurrentModule();

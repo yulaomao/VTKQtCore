@@ -9,12 +9,12 @@
 #include <QVector>
 
 #include "contracts/UiAction.h"
+#include "communication/datasource/GlobalPollingPlan.h"
 #include "communication/datasource/StateSample.h"
 #include "communication/redis/RedisGateway.h"
 
 class MessageRouter;
 class PollingSource;
-class PollingTask;
 class QThread;
 class QTimer;
 class RedisPollingWorker;
@@ -41,7 +41,7 @@ public:
     void initialize();
     void addRoutingChannel(const QString& channel);
     void addSubscriptionSource(SubscriptionSource* source);
-    void addPollingTask(PollingTask* task);
+    void setGlobalPollingPlan(const GlobalPollingPlan& plan);
     void setOutboundChannels(const QString& controlPublishChannel,
                              const QString& ackChannel);
     void sendActionRequest(const UiAction& action, bool loopbackToLocal = true);
@@ -89,9 +89,8 @@ private:
                    const QVariantMap& context = {});
     void cleanupIdempotencyWindow(qint64 nowMs);
     void refreshHealthSnapshot();
-    int activePollingTaskCount() const;
+    int activePollingPlanCount() const;
     bool hasSubscriptionSource(const QString& sourceId) const;
-    bool hasPollingTask(const QString& taskId) const;
 
     RedisGateway* m_redisGateway = nullptr;
     MessageRouter* m_messageRouter = nullptr;
@@ -101,9 +100,10 @@ private:
     QThread* m_pollingThread = nullptr;
     QTimer* m_outboundRetryTimer = nullptr;
     QSet<QString> m_routingChannels;
-    QSet<QString> m_pollingTaskIds;
     bool m_started = false;
     bool m_pollingTransportRunning = false;
+    bool m_hasActivePollingPlan = false;
+    int m_globalPollingKeyCount = 0;
     RedisGateway::ConnectionState m_lastConnectionState = RedisGateway::Disconnected;
     QString m_controlPublishChannel = QStringLiteral("control.upstream");
     QString m_ackChannel = QStringLiteral("control.ack");
@@ -122,7 +122,6 @@ private:
     int m_droppedReliableCount = 0;
     int m_receivedControlCount = 0;
     int m_receivedSampleCount = 0;
-    int m_activePollingTaskCount = 0;
     qint64 m_nextOutboundSeq = 1;
     QList<OutboundControlMessage> m_outboundQueue;
     QMap<QString, OutboundControlMessage> m_inflightReliableMessages;

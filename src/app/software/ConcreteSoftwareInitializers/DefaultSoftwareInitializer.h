@@ -20,5 +20,6 @@ public:
     void registerShellModules(MainWindow* mainWindow, LogicRuntime* runtime,
                               ApplicationCoordinator* appCoord,
                               ILogicGateway* gateway) override;
+    void configureAdditionalSettings(LogicRuntime* runtime) override;
     void registerCommunicationSources(CommunicationHub* commHub) override;
 };

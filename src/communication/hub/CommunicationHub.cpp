@@ -1,7 +1,7 @@
 #include "CommunicationHub.h"
 
+#include "communication/datasource/GlobalPollingPlan.h"
 #include "communication/datasource/PollingSource.h"
-#include "communication/datasource/PollingTask.h"
 #include "communication/datasource/SubscriptionSource.h"
 #include "communication/redis/RedisGateway.h"
 #include "communication/redis/RedisPollingWorker.h"
@@ -43,7 +43,7 @@ CommunicationHub::CommunicationHub(RedisGateway* gateway, QObject* parent)
     , m_clientInstanceId(QUuid::createUuid().toString(QUuid::WithoutBraces))
 {
     qRegisterMetaType<StateSample>("StateSample");
-    qRegisterMetaType<PollingTask*>("PollingTask*");
+    qRegisterMetaType<GlobalPollingPlan>("GlobalPollingPlan");
 
     m_pollingThread->setObjectName(QStringLiteral("CommunicationHubPollingThread"));
     m_pollingSource->moveToThread(m_pollingThread);
@@ -185,10 +185,10 @@ void CommunicationHub::initialize()
         // Route poll requests directly to the persistent polling worker that
         // lives on the polling thread.  Both objects share the same thread, so
         // this is a Qt::DirectConnection and no extra thread is ever spawned.
-        connect(m_pollingSource, &PollingSource::pollRequested,
-                m_pollingWorker, &RedisPollingWorker::readKey);
-        connect(m_pollingWorker, &RedisPollingWorker::keyValueReceived,
-                m_pollingSource, &PollingSource::onPollResult);
+        connect(m_pollingSource, &PollingSource::batchPollRequested,
+                m_pollingWorker, &RedisPollingWorker::readKeys);
+        connect(m_pollingWorker, &RedisPollingWorker::keyValuesReceived,
+                m_pollingSource, &PollingSource::onBatchPollResult);
     }
 
     if (m_redisGateway) {
@@ -238,26 +238,24 @@ void CommunicationHub::addSubscriptionSource(SubscriptionSource* source)
     }
 }
 
-void CommunicationHub::addPollingTask(PollingTask* task)
+void CommunicationHub::setGlobalPollingPlan(const GlobalPollingPlan& plan)
 {
-    if (!task || hasPollingTask(task->getTaskId())) {
-        return;
-    }
-
-    m_pollingTaskIds.insert(task->getTaskId());
-    if (task->isActive()) {
-        ++m_activePollingTaskCount;
-    }
-
-    task->moveToThread(m_pollingThread);
     QMetaObject::invokeMethod(
         m_pollingSource,
-        "addTask",
+        "configurePlan",
         Qt::BlockingQueuedConnection,
-        Q_ARG(PollingTask*, task));
+        Q_ARG(GlobalPollingPlan, plan));
 
-    if (m_started && m_redisGateway && m_redisGateway->getConnectionState() == RedisGateway::Connected &&
-        !m_pollingTransportRunning) {
+    m_hasActivePollingPlan = plan.isActive() && !plan.getRedisKeys().isEmpty();
+    m_globalPollingKeyCount = plan.getRedisKeys().size();
+
+    if (!m_hasActivePollingPlan) {
+        if (m_pollingTransportRunning) {
+            stopPollingTransport();
+        }
+    } else if (m_started && m_redisGateway &&
+               m_redisGateway->getConnectionState() == RedisGateway::Connected &&
+               !m_pollingTransportRunning) {
         startPollingTransport();
     }
 
@@ -523,7 +521,8 @@ void CommunicationHub::deactivateTransport()
 
 void CommunicationHub::startPollingTransport(bool blocking)
 {
-    if (!m_pollingSource || !m_pollingThread || !m_pollingThread->isRunning() || m_pollingTransportRunning) {
+    if (!m_pollingSource || !m_pollingThread || !m_pollingThread->isRunning() ||
+        m_pollingTransportRunning || !m_hasActivePollingPlan) {
         return;
     }
 
@@ -780,7 +779,8 @@ void CommunicationHub::refreshHealthSnapshot()
     snapshot.insert(QStringLiteral("receivedSampleCount"), m_receivedSampleCount);
     snapshot.insert(QStringLiteral("routingChannelCount"), m_routingChannels.size());
     snapshot.insert(QStringLiteral("subscriptionSourceCount"), m_subscriptionSources.size());
-    snapshot.insert(QStringLiteral("activePollingTaskCount"), activePollingTaskCount());
+    snapshot.insert(QStringLiteral("activePollingPlanCount"), activePollingPlanCount());
+    snapshot.insert(QStringLiteral("globalPollingKeyCount"), m_globalPollingKeyCount);
     snapshot.insert(QStringLiteral("pendingAckCount"), m_inflightReliableMessages.size());
     snapshot.insert(QStringLiteral("confirmedWindowCount"), m_confirmedOutboundWindow.size());
     snapshot.insert(QStringLiteral("queuedOutboundControlCount"), m_outboundQueue.size());
@@ -793,9 +793,9 @@ void CommunicationHub::refreshHealthSnapshot()
     }
 }
 
-int CommunicationHub::activePollingTaskCount() const
+int CommunicationHub::activePollingPlanCount() const
 {
-    return m_activePollingTaskCount;
+    return m_hasActivePollingPlan ? 1 : 0;
 }
 
 bool CommunicationHub::hasSubscriptionSource(const QString& sourceId) const
@@ -806,9 +806,4 @@ bool CommunicationHub::hasSubscriptionSource(const QString& sourceId) const
         }
     }
     return false;
-}
-
-bool CommunicationHub::hasPollingTask(const QString& taskId) const
-{
-    return m_pollingTaskIds.contains(taskId);
 }
