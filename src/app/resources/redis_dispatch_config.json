@@ -21,7 +21,7 @@
       "connectionId": "conn_nav",
       "host": "127.0.0.1",
       "port": 6379,
-      "db": 0,
+      "db": 1,
       "pollIntervalMs": 16,
       "pollingKeys": [
         "state.navigation.latest",
