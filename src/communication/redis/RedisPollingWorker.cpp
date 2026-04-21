@@ -66,6 +66,16 @@ void RedisPollingWorker::setConnection(const QString& host, int port)
     closeContext();
 }
 
+void RedisPollingWorker::setDb(int db)
+{
+    if (m_db == db) {
+        return;
+    }
+    m_db = db;
+    // Force a fresh SELECT on the next readKeys call.
+    m_dbSelected = false;
+}
+
 void RedisPollingWorker::readKeys(const QStringList& keys)
 {
     if (keys.isEmpty()) {
@@ -75,6 +85,19 @@ void RedisPollingWorker::readKeys(const QStringList& keys)
 
     if (!ensureConnected()) {
         return;
+    }
+
+    if (m_db > 0 && !m_dbSelected) {
+        redisReply* selectReply = static_cast<redisReply*>(
+            redisCommand(m_context, "SELECT %d", m_db));
+        if (selectReply) {
+            m_dbSelected = (selectReply->type == REDIS_REPLY_STATUS);
+            freeReplyObject(selectReply);
+        }
+        if (!m_dbSelected) {
+            closeContext();
+            return;
+        }
     }
 
     QVector<QByteArray> commandParts;
@@ -155,4 +178,5 @@ void RedisPollingWorker::closeContext()
         redisFree(m_context);
         m_context = nullptr;
     }
+    m_dbSelected = false;
 }

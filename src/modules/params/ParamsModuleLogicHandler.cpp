@@ -80,16 +80,32 @@ void ParamsModuleLogicHandler::handleAction(const UiAction& action)
 
 void ParamsModuleLogicHandler::handleStateSample(const StateSample& sample)
 {
-    QVariantMap incomingParameters = sample.data.value(QStringLiteral("parameters")).toMap();
-    if (incomingParameters.isEmpty()) {
-        incomingParameters = sample.data.value(QStringLiteral("value")).toMap();
-    }
-
-    if (incomingParameters.isEmpty()) {
-        const QString key = sample.data.value(QStringLiteral("key")).toString();
-        const QVariant value = sample.data.value(QStringLiteral("value"));
-        if (!key.isEmpty() && value.isValid()) {
-            incomingParameters.insert(key, value);
+    // New batch format: data["values"]["state"] = parameter map
+    const QVariantMap values = sample.data.value(QStringLiteral("values")).toMap();
+    QVariantMap incomingParameters;
+    if (!values.isEmpty()) {
+        incomingParameters = values.value(QStringLiteral("state")).toMap();
+        if (incomingParameters.isEmpty()) {
+            // Fallback: merge all sub-maps
+            for (auto it = values.cbegin(); it != values.cend(); ++it) {
+                const QVariantMap subMap = it.value().toMap();
+                for (auto sit = subMap.cbegin(); sit != subMap.cend(); ++sit) {
+                    incomingParameters.insert(sit.key(), sit.value());
+                }
+            }
+        }
+    } else {
+        // Subscription / legacy batch: data["parameters"] or data["value"]
+        incomingParameters = sample.data.value(QStringLiteral("parameters")).toMap();
+        if (incomingParameters.isEmpty()) {
+            incomingParameters = sample.data.value(QStringLiteral("value")).toMap();
+        }
+        if (incomingParameters.isEmpty()) {
+            const QString key = sample.data.value(QStringLiteral("key")).toString();
+            const QVariant value = sample.data.value(QStringLiteral("value"));
+            if (!key.isEmpty() && value.isValid()) {
+                incomingParameters.insert(key, value);
+            }
         }
     }
 

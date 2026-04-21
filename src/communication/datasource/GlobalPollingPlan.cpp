@@ -48,3 +48,23 @@ void GlobalPollingPlan::setMaxDispatchRateHz(double rateHz) { m_maxDispatchRateH
 
 bool GlobalPollingPlan::isActive() const { return m_active; }
 void GlobalPollingPlan::setActive(bool active) { m_active = active; }
+
+void GlobalPollingPlan::addKeyRoute(const QString& redisKey, const PollingKeyRoute& route)
+{
+    if (!redisKey.trimmed().isEmpty()) {
+        m_keyRoutes.insert(redisKey.trimmed(), route);
+    }
+}
+
+void GlobalPollingPlan::setKeyRoutes(const QMap<QString, PollingKeyRoute>& routes)
+{
+    m_keyRoutes = routes;
+}
+
+QMap<QString, PollingKeyRoute> GlobalPollingPlan::getKeyRoutes() const
+{
+    return m_keyRoutes;
+}
+
+int GlobalPollingPlan::getDb() const { return m_db; }
+void GlobalPollingPlan::setDb(int db) { m_db = db; }

@@ -246,6 +246,11 @@ void CommunicationHub::setGlobalPollingPlan(const GlobalPollingPlan& plan)
         Qt::BlockingQueuedConnection,
         Q_ARG(GlobalPollingPlan, plan));
 
+    // Forward the DB number so the worker issues SELECT before the first MGET.
+    QMetaObject::invokeMethod(m_pollingWorker, "setDb",
+                              Qt::QueuedConnection,
+                              Q_ARG(int, plan.getDb()));
+
     m_hasActivePollingPlan = plan.isActive() && !plan.getRedisKeys().isEmpty();
     m_globalPollingKeyCount = plan.getRedisKeys().size();
 
