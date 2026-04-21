@@ -9,6 +9,10 @@ InterModuleReceiverLogicHandler::InterModuleReceiverLogicHandler(QObject* parent
 
 void InterModuleReceiverLogicHandler::handleAction(const UiAction& action)
 {
+    if (forwardModuleUiEventAction(action)) {
+        return;
+    }
+
     if (action.actionType != UiAction::CustomAction) {
         return;
     }

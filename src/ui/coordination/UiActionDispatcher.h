@@ -25,6 +25,9 @@ public:
     void sendTargetedCommand(const QString& targetModule,
                              const QString& command,
                              const QVariantMap& payload = {});
+    void sendModuleUiEvent(const QString& targetModule,
+                           const QString& eventName,
+                           const QVariantMap& payload = {});
     void requestModuleSwitch(const QString& targetModule);
     void requestResync(const QString& reason) const;
 

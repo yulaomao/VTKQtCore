@@ -1,6 +1,7 @@
 #include "ModuleLogicHandler.h"
 
 #include "communication/hub/IRedisCommandAccess.h"
+#include "ModuleUiEvent.h"
 #include "logic/runtime/IModuleInvoker.h"
 
 ModuleLogicHandler::ModuleLogicHandler(const QString& moduleId, QObject* parent)
@@ -89,6 +90,54 @@ ModuleInvokeResult ModuleLogicHandler::invokeModule(const QString& targetModule,
 
     return m_moduleInvoker->invokeModule(
         ModuleInvokeRequest::create(m_moduleId, targetModule, method, payload));
+}
+
+bool ModuleLogicHandler::forwardModuleUiEventAction(const UiAction& action,
+                                                    const QString& sourceModule)
+{
+    QString eventName;
+    if (!ModuleUiEvent::isAction(action, &eventName)) {
+        return false;
+    }
+
+    const QString normalizedSourceModule = sourceModule.trimmed().isEmpty()
+        ? action.module.trimmed()
+        : sourceModule.trimmed();
+    emitModuleUiEvent(eventName,
+                      action.payload,
+                      normalizedSourceModule,
+                      action.actionId);
+    return true;
+}
+
+void ModuleLogicHandler::emitModuleUiEvent(const QString& eventName,
+                                           const QVariantMap& payload,
+                                           const QString& sourceModule,
+                                           const QString& sourceActionId,
+                                           LogicNotification::TargetScope scope,
+                                           const QStringList& targetModules)
+{
+    const QString normalizedEventName = eventName.trimmed();
+    if (normalizedEventName.isEmpty()) {
+        return;
+    }
+
+    const QString normalizedSourceModule = sourceModule.trimmed().isEmpty()
+        ? m_moduleId
+        : sourceModule.trimmed();
+    LogicNotification notification = LogicNotification::create(
+        LogicNotification::CustomEvent,
+        scope,
+        ModuleUiEvent::createNotificationPayload(normalizedEventName,
+                                                 normalizedSourceModule,
+                                                 payload));
+    if (scope == LogicNotification::ModuleList) {
+        notification.targetModules = targetModules.isEmpty()
+            ? QStringList{m_moduleId}
+            : targetModules;
+    }
+    notification.setSourceActionId(sourceActionId);
+    emit logicNotification(notification);
 }
 
 void ModuleLogicHandler::emitInvokeFailureNotification(const ModuleInvokeResult& result,

@@ -1,5 +1,6 @@
 #include "UiActionDispatcher.h"
 
+#include "ModuleUiEvent.h"
 #include "logic/gateway/ILogicGateway.h"
 
 namespace {
@@ -66,6 +67,19 @@ void UiActionDispatcher::sendTargetedCommand(const QString& targetModule,
     QVariantMap targetedPayload = payload;
     targetedPayload.insert(QStringLiteral("targetModule"), targetModule);
     sendCommand(command, targetedPayload);
+}
+
+void UiActionDispatcher::sendModuleUiEvent(const QString& targetModule,
+                                           const QString& eventName,
+                                           const QVariantMap& payload)
+{
+    if (targetModule.trimmed().isEmpty() || eventName.trimmed().isEmpty()) {
+        return;
+    }
+
+    QVariantMap eventPayload = ModuleUiEvent::createActionPayload(eventName, payload);
+    eventPayload.insert(QStringLiteral("targetModule"), targetModule);
+    sendAction(UiAction::create(UiAction::CustomAction, m_sourceModule, eventPayload));
 }
 
 void UiActionDispatcher::requestModuleSwitch(const QString& targetModule)

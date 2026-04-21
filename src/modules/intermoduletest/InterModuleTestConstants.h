@@ -29,4 +29,9 @@ inline QString receiverTextUpdatedEvent()
     return QStringLiteral("intermodule_text_updated");
 }
 
+inline QString previewTextEvent()
+{
+    return QStringLiteral("intermodule_preview_text");
+}
+
 } // namespace InterModuleTest

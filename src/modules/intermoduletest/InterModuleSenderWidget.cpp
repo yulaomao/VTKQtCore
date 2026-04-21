@@ -67,14 +67,39 @@ InterModuleSenderWidget::InterModuleSenderWidget(UiActionDispatcher* dispatcher,
     m_input->setPlaceholderText(QStringLiteral("输入发送给模块 B 的文本"));
     layout->addWidget(m_input);
 
-    m_sendButton = new QPushButton(QStringLiteral("Logic 发送"), this);
+    m_previewButton = new QPushButton(QStringLiteral("UI 事件预览"), this);
+    m_previewButton->setObjectName(QStringLiteral("interModuleSenderButton"));
+    layout->addWidget(m_previewButton);
+
+    m_sendButton = new QPushButton(QStringLiteral("Logic 持久发送"), this);
     m_sendButton->setObjectName(QStringLiteral("interModuleSenderButton"));
     layout->addWidget(m_sendButton);
 
+    connect(m_previewButton, &QPushButton::clicked,
+            this, &InterModuleSenderWidget::previewText);
     connect(m_sendButton, &QPushButton::clicked,
             this, &InterModuleSenderWidget::submitText);
     connect(m_input, &QLineEdit::returnPressed,
             this, &InterModuleSenderWidget::submitText);
+}
+
+void InterModuleSenderWidget::previewText()
+{
+    if (!m_actionDispatcher || !m_input) {
+        return;
+    }
+
+    const QString text = m_input->text().trimmed();
+    if (text.isEmpty()) {
+        m_input->setFocus();
+        return;
+    }
+
+    m_actionDispatcher->sendModuleUiEvent(
+        InterModuleTest::receiverModuleId(),
+        InterModuleTest::previewTextEvent(),
+        {{QStringLiteral("text"), text}});
+    m_input->selectAll();
 }
 
 void InterModuleSenderWidget::submitText()

@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 #include "contracts/ModuleInvoke.h"
 #include "contracts/UiAction.h"
@@ -57,6 +58,14 @@ protected:
     ModuleInvokeResult invokeModule(const QString& targetModule,
                                     const QString& method,
                                     const QVariantMap& payload = {});
+    bool forwardModuleUiEventAction(const UiAction& action,
+                                    const QString& sourceModule = QString());
+    void emitModuleUiEvent(const QString& eventName,
+                           const QVariantMap& payload = {},
+                           const QString& sourceModule = QString(),
+                           const QString& sourceActionId = QString(),
+                           LogicNotification::TargetScope scope = LogicNotification::ModuleList,
+                           const QStringList& targetModules = {});
     void emitInvokeFailureNotification(const ModuleInvokeResult& result,
                                        const QString& targetModule,
                                        const QString& sourceActionId = QString());

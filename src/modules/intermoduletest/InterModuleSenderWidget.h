@@ -14,10 +14,12 @@ public:
     explicit InterModuleSenderWidget(UiActionDispatcher* dispatcher, QWidget* parent = nullptr);
 
 private slots:
+    void previewText();
     void submitText();
 
 private:
     UiActionDispatcher* m_actionDispatcher = nullptr;
     QLineEdit* m_input = nullptr;
+    QPushButton* m_previewButton = nullptr;
     QPushButton* m_sendButton = nullptr;
 };
