@@ -26,6 +26,12 @@ public:
     void setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess);
     void setModuleInvoker(IModuleInvoker* moduleInvoker);
 
+    // The connection (and therefore DB) this module should use by default for
+    // direct Redis reads/writes and publishes.  Set during initialisation from
+    // the dispatch config.  Returns an empty string when not configured.
+    void    setDefaultConnectionId(const QString& connectionId);
+    QString getDefaultConnectionId() const;
+
     virtual void handleAction(const UiAction& action) = 0;
     virtual ModuleInvokeResult handleModuleInvoke(const ModuleInvokeRequest& request)
     {
@@ -72,6 +78,7 @@ protected:
 
 private:
     const QString m_moduleId;
+    QString m_defaultConnectionId;
     SceneGraph* m_sceneGraph = nullptr;
     IRedisCommandAccess* m_redisCommandAccess = nullptr;
     IModuleInvoker* m_moduleInvoker = nullptr;

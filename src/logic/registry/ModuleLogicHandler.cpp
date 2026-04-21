@@ -35,6 +35,16 @@ void ModuleLogicHandler::setModuleInvoker(IModuleInvoker* moduleInvoker)
     m_moduleInvoker = moduleInvoker;
 }
 
+void ModuleLogicHandler::setDefaultConnectionId(const QString& connectionId)
+{
+    m_defaultConnectionId = connectionId;
+}
+
+QString ModuleLogicHandler::getDefaultConnectionId() const
+{
+    return m_defaultConnectionId;
+}
+
 bool ModuleLogicHandler::hasRedisCommandAccess() const
 {
     return m_redisCommandAccess && m_redisCommandAccess->isAvailable();

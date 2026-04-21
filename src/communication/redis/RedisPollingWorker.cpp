@@ -66,6 +66,26 @@ void RedisPollingWorker::setConnection(const QString& host, int port)
     closeContext();
 }
 
+void RedisPollingWorker::selectDb(int db)
+{
+    if (m_db == db) {
+        return;
+    }
+    m_db = db;
+    // If already connected, issue SELECT immediately; otherwise it will be
+    // applied inside ensureConnected() on the next readKeys() call.
+    if (m_context && m_context->err == REDIS_OK && m_db != 0) {
+        redisReply* reply = static_cast<redisReply*>(
+            redisCommand(m_context, "SELECT %d", m_db));
+        if (reply) {
+            freeReplyObject(reply);
+        } else {
+            // Connection lost; drop context so it is recreated next time.
+            closeContext();
+        }
+    }
+}
+
 void RedisPollingWorker::readKeys(const QStringList& keys)
 {
     if (keys.isEmpty()) {
@@ -146,6 +166,19 @@ bool RedisPollingWorker::ensureConnected()
 
     redisEnableKeepAlive(m_context);
     redisSetTimeout(m_context, timeout);
+
+    // Select the target database (default DB 0 requires no SELECT).
+    if (m_db != 0) {
+        redisReply* reply = static_cast<redisReply*>(
+            redisCommand(m_context, "SELECT %d", m_db));
+        if (reply) {
+            freeReplyObject(reply);
+        } else {
+            closeContext();
+            return false;
+        }
+    }
+
     return true;
 }
 

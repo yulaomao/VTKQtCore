@@ -9,11 +9,13 @@
 #include <QVector>
 
 #include "contracts/UiAction.h"
+#include "communication/config/RedisDispatchConfig.h"
 #include "communication/datasource/GlobalPollingPlan.h"
 #include "communication/datasource/StateSample.h"
 #include "communication/redis/RedisGateway.h"
 
 class MessageRouter;
+class PerConnectionPollingBundle;
 class PollingSource;
 class QThread;
 class QTimer;
@@ -42,6 +44,12 @@ public:
     void addRoutingChannel(const QString& channel);
     void addSubscriptionSource(SubscriptionSource* source);
     void setGlobalPollingPlan(const GlobalPollingPlan& plan);
+
+    // Add a per-connection polling bundle driven by a ConnectionEntry from
+    // RedisDispatchConfig.  Each connection polls its own DB independently.
+    // Multiple connections may be added before start() is called.
+    void addPollingConnection(const RedisDispatchConfig::ConnectionEntry& entry);
+
     void setOutboundChannels(const QString& controlPublishChannel,
                              const QString& ackChannel);
     void sendActionRequest(const UiAction& action, bool loopbackToLocal = true);
@@ -98,6 +106,8 @@ private:
     PollingSource* m_pollingSource = nullptr;
     RedisPollingWorker* m_pollingWorker = nullptr;
     QThread* m_pollingThread = nullptr;
+    // Per-connection polling bundles (config-driven, one per ConnectionEntry).
+    QVector<PerConnectionPollingBundle*> m_pollingBundles;
     QTimer* m_outboundRetryTimer = nullptr;
     QSet<QString> m_routingChannels;
     bool m_started = false;

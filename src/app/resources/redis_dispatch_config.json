@@ -1,0 +1,78 @@
+{
+  "connections": [
+    {
+      "connectionId": "conn_main",
+      "host": "127.0.0.1",
+      "port": 6379,
+      "db": 0,
+      "pollIntervalMs": 16,
+      "pollingKeys": [
+        "state.params.latest",
+        "state.pointpick.latest",
+        "state.planning.latest"
+      ],
+      "subscriptionChannels": [
+        { "channel": "state.params",     "module": "params"     },
+        { "channel": "state.pointpick",  "module": "pointpick"  },
+        { "channel": "state.planning",   "module": "planning"   }
+      ]
+    },
+    {
+      "connectionId": "conn_nav",
+      "host": "127.0.0.1",
+      "port": 6379,
+      "db": 0,
+      "pollIntervalMs": 16,
+      "pollingKeys": [
+        "state.navigation.latest",
+        "demo:navigation:transform:world",
+        "demo:navigation:transform:reference",
+        "demo:navigation:transform:patient",
+        "demo:navigation:transform:instrument",
+        "demo:navigation:transform:guide",
+        "demo:navigation:transform:tip"
+      ],
+      "subscriptionChannels": [
+        { "channel": "state.navigation", "module": "navigation" }
+      ]
+    }
+  ],
+  "modules": [
+    {
+      "moduleId": "params",
+      "defaultConnectionId": "conn_main",
+      "pollingKeyOwnership": [
+        { "connectionId": "conn_main", "keyPrefix": "state.params" }
+      ],
+      "nestedMapStructure": {}
+    },
+    {
+      "moduleId": "pointpick",
+      "defaultConnectionId": "conn_main",
+      "pollingKeyOwnership": [
+        { "connectionId": "conn_main", "keyPrefix": "state.pointpick" }
+      ],
+      "nestedMapStructure": {}
+    },
+    {
+      "moduleId": "planning",
+      "defaultConnectionId": "conn_main",
+      "pollingKeyOwnership": [
+        { "connectionId": "conn_main", "keyPrefix": "state.planning" }
+      ],
+      "nestedMapStructure": {}
+    },
+    {
+      "moduleId": "navigation",
+      "defaultConnectionId": "conn_nav",
+      "pollingKeyOwnership": [
+        { "connectionId": "conn_nav", "keyPrefix": "state.navigation" },
+        { "connectionId": "conn_nav", "keyPrefix": "demo:navigation:transform:" }
+      ],
+      "nestedMapStructure": {
+        "transforms": ["demo:navigation:transform:*"],
+        "state":      ["state.navigation.latest"]
+      }
+    }
+  ]
+}

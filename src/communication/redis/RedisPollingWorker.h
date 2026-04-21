@@ -24,6 +24,10 @@ public:
 
 public slots:
     void setConnection(const QString& host, int port);
+    // Switch to the given DB index.  The command is sent immediately if the
+    // worker is already connected; otherwise it is applied on the next
+    // successful reconnect.
+    void selectDb(int db);
     void readKeys(const QStringList& keys);
 
 signals:
@@ -35,6 +39,7 @@ private:
 
     QString m_host;
     int m_port = 0;
+    int m_db = 0;
     int m_connectTimeoutMs = 2000;
     redisContext* m_context = nullptr;
 };

@@ -32,11 +32,20 @@ public:
     ~RedisGateway() override;
 
     void connectToServer(const QString& host, int port);
+    // Select a Redis database on the command connection.  Must be called after
+    // connectToServer().  One connection stays on one DB for its lifetime.
+    bool selectDb(int db);
     void disconnect();
     ConnectionState getConnectionState() const;
     bool waitForConnected(int timeoutMs = 2000);
     QString getHost() const;
     int getPort() const;
+
+    // Selects the Redis database on the command connection.
+    // Returns false and emits errorOccurred() if the command fails.
+    // Note: the subscriber connection uses a separate context; subscriptions in
+    // Redis are server-scoped (not DB-scoped), so SELECT has no effect there.
+    bool selectDb(int db);
 
     void subscribe(const QString& channel);
     void unsubscribe(const QString& channel);

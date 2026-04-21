@@ -1,6 +1,8 @@
 #include "CommunicationHub.h"
 
+#include "communication/config/RedisDispatchConfig.h"
 #include "communication/datasource/GlobalPollingPlan.h"
+#include "communication/datasource/PerConnectionPollingBundle.h"
 #include "communication/datasource/PollingSource.h"
 #include "communication/datasource/SubscriptionSource.h"
 #include "communication/redis/RedisGateway.h"
@@ -8,6 +10,7 @@
 #include "communication/routing/MessageRouter.h"
 
 #include <QDateTime>
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
@@ -262,6 +265,82 @@ void CommunicationHub::setGlobalPollingPlan(const GlobalPollingPlan& plan)
     refreshHealthSnapshot();
 }
 
+void CommunicationHub::addPollingConnection(
+    const RedisDispatchConfig::ConnectionEntry& entry)
+{
+    if (entry.connectionId.isEmpty()) {
+        qWarning().noquote()
+            << QStringLiteral("[CommunicationHub] addPollingConnection: empty connectionId — skipped");
+        return;
+    }
+
+    if (entry.pollingKeys.isEmpty()) {
+        qWarning().noquote()
+            << QStringLiteral("[CommunicationHub] addPollingConnection: connection '%1'"
+                              " has no pollingKeys — skipped")
+                   .arg(entry.connectionId);
+        return;
+    }
+
+    auto* bundle = new PerConnectionPollingBundle(
+        entry.connectionId, entry.host, entry.port, entry.db, this);
+
+    GlobalPollingPlan plan(
+        entry.connectionId,
+        entry.pollingKeys,
+        entry.pollIntervalMs);
+    plan.setChangeDetection(true);
+    plan.setMaxDispatchRateHz(1000.0 / static_cast<double>(
+        entry.pollIntervalMs > 0 ? entry.pollIntervalMs : 16));
+    plan.setActive(true);
+    bundle->configurePlan(plan);
+
+    connect(bundle, &PerConnectionPollingBundle::pollResultReady,
+            this, [this](const QString& connectionId, const QVariantMap& values) {
+                if (values.isEmpty()) {
+                    return;
+                }
+
+                QVariantMap data;
+                data.insert(QStringLiteral("connectionId"), connectionId);
+                data.insert(QStringLiteral("keys"),
+                            QStringList(values.keys()));
+                data.insert(QStringLiteral("values"), values);
+
+                const StateSample sample = StateSample::create(
+                    connectionId,
+                    QString(),
+                    QStringLiteral("global_poll_batch"),
+                    data);
+
+                m_lastStateSampleMs = sample.timestampMs;
+                ++m_receivedSampleCount;
+                emit stateSampleReceived(sample);
+                refreshHealthSnapshot();
+            });
+
+    connect(bundle, &PerConnectionPollingBundle::pollingError,
+            this, [this](const QString& connectionId, const QString& errorMessage) {
+                ++m_datasourceErrorCount;
+                emitIssue(
+                    connectionId,
+                    QStringLiteral("warning"),
+                    QStringLiteral("DATASOURCE_POLLING_ERROR"),
+                    errorMessage,
+                    {{QStringLiteral("layer"), QStringLiteral("polling")},
+                     {QStringLiteral("connectionId"), connectionId}});
+            });
+
+    m_pollingBundles.append(bundle);
+
+    // If the hub is already started, begin polling immediately.
+    if (m_started) {
+        bundle->start();
+    }
+
+    refreshHealthSnapshot();
+}
+
 void CommunicationHub::setOutboundChannels(const QString& controlPublishChannel,
                                            const QString& ackChannel)
 {
@@ -323,10 +402,25 @@ void CommunicationHub::start()
     if (m_redisGateway && m_redisGateway->getConnectionState() == RedisGateway::Connected) {
         activateTransport();
     }
+
+    // Per-connection bundles have their own reconnection logic and do not depend
+    // on the primary gateway state — start them unconditionally.
+    for (PerConnectionPollingBundle* bundle : m_pollingBundles) {
+        if (!bundle->isRunning()) {
+            bundle->start();
+        }
+    }
 }
 
 void CommunicationHub::stop()
 {
+    // Stop per-connection bundles first.
+    for (PerConnectionPollingBundle* bundle : m_pollingBundles) {
+        if (bundle->isRunning()) {
+            bundle->stop();
+        }
+    }
+
     deactivateTransport();
     m_started = false;
 }
@@ -781,6 +875,7 @@ void CommunicationHub::refreshHealthSnapshot()
     snapshot.insert(QStringLiteral("subscriptionSourceCount"), m_subscriptionSources.size());
     snapshot.insert(QStringLiteral("activePollingPlanCount"), activePollingPlanCount());
     snapshot.insert(QStringLiteral("globalPollingKeyCount"), m_globalPollingKeyCount);
+    snapshot.insert(QStringLiteral("pollingConnectionCount"), m_pollingBundles.size());
     snapshot.insert(QStringLiteral("pendingAckCount"), m_inflightReliableMessages.size());
     snapshot.insert(QStringLiteral("confirmedWindowCount"), m_confirmedOutboundWindow.size());
     snapshot.insert(QStringLiteral("queuedOutboundControlCount"), m_outboundQueue.size());
@@ -795,7 +890,13 @@ void CommunicationHub::refreshHealthSnapshot()
 
 int CommunicationHub::activePollingPlanCount() const
 {
-    return m_hasActivePollingPlan ? 1 : 0;
+    int count = m_hasActivePollingPlan ? 1 : 0;
+    for (const PerConnectionPollingBundle* bundle : m_pollingBundles) {
+        if (bundle && bundle->isRunning()) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 bool CommunicationHub::hasSubscriptionSource(const QString& sourceId) const

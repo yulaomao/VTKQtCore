@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file>redis_dispatch_config.json</file>
+    </qresource>
+</RCC>

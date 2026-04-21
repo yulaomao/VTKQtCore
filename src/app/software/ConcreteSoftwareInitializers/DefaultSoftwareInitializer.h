@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BaseSoftwareInitializer.h"
+#include "communication/config/RedisDispatchConfig.h"
 
 class DefaultSoftwareInitializer : public BaseSoftwareInitializer
 {
@@ -22,4 +23,11 @@ public:
                               ILogicGateway* gateway) override;
     void configureAdditionalSettings(LogicRuntime* runtime) override;
     void registerCommunicationSources(CommunicationHub* commHub) override;
+
+private:
+    // Returns the dispatch config, loading it lazily on first access.
+    const RedisDispatchConfig& dispatchConfig() const;
+
+    mutable RedisDispatchConfig m_dispatchConfig;
+    mutable bool m_dispatchConfigLoaded = false;
 };

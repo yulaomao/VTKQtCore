@@ -1,5 +1,6 @@
 #include "DefaultSoftwareInitializer.h"
 
+#include "ConfigDrivenSampleParser.h"
 #include "DefaultGlobalPollingSampleParser.h"
 #include "ModuleUiAssemblers.h"
 #include "SoftwareInitializerFactory.h"
@@ -7,8 +8,13 @@
 #include "ILogicGateway.h"
 #include "LogicRuntime.h"
 #include "MainWindow.h"
+#include "communication/config/RedisDispatchConfig.h"
+#include "communication/config/RedisDispatchConfigLoader.h"
 #include "communication/datasource/GlobalPollingPlan.h"
+#include "communication/datasource/SubscriptionSource.h"
 #include "communication/hub/CommunicationHub.h"
+#include "logic/registry/ModuleLogicHandler.h"
+#include "logic/registry/ModuleLogicRegistry.h"
 #include "modules/intermoduletest/InterModuleReceiverLogicHandler.h"
 #include "modules/intermoduletest/InterModuleReceiverWidget.h"
 #include "modules/intermoduletest/InterModuleSenderLogicHandler.h"
@@ -25,6 +31,7 @@
 #include "PlanningModuleLogicHandler.h"
 #include "NavigationModuleLogicHandler.h"
 
+#include <QDebug>
 #include <QHBoxLayout>
 #include <QLayout>
 #include <QVector>
@@ -219,6 +226,21 @@ void DefaultSoftwareInitializer::registerModuleLogicHandlers(LogicRuntime* runti
     if (isModuleEnabled(QStringLiteral("navigation"))) {
         runtime->registerModuleHandler(new NavigationModuleLogicHandler(runtime));
     }
+
+    // Inject the default connectionId from the dispatch config into each handler
+    // so that modules know which connection to use for direct Redis access.
+    const RedisDispatchConfig& config = dispatchConfig();
+    if (config.isValid()) {
+        ModuleLogicRegistry* registry = runtime->getModuleLogicRegistry();
+        if (registry) {
+            for (const RedisDispatchConfig::ModuleEntry& entry : config.modules) {
+                ModuleLogicHandler* handler = registry->getHandler(entry.moduleId);
+                if (handler && !entry.defaultConnectionId.isEmpty()) {
+                    handler->setDefaultConnectionId(entry.defaultConnectionId);
+                }
+            }
+        }
+    }
 }
 
 void DefaultSoftwareInitializer::registerModuleUIs(MainWindow* mainWindow,
@@ -326,7 +348,16 @@ void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runti
         return;
     }
 
-    runtime->setGlobalPollingSampleParser(new DefaultGlobalPollingSampleParser(runtime));
+    const RedisDispatchConfig& config = dispatchConfig();
+    if (config.isValid()) {
+        // Use the config-driven parser so routing rules live in JSON, not C++.
+        runtime->setGlobalPollingSampleParser(
+            new ConfigDrivenSampleParser(config, runtime));
+    } else {
+        // Fall back to the hardcoded parser when no config file is present.
+        runtime->setGlobalPollingSampleParser(
+            new DefaultGlobalPollingSampleParser(runtime));
+    }
 }
 
 void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
@@ -343,6 +374,44 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
         commHub->addRoutingChannel(routingChannel);
     }
 
-    commHub->setGlobalPollingPlan(createDefaultGlobalPollingPlan());
+    const RedisDispatchConfig& config = dispatchConfig();
+    if (config.isValid()) {
+        // Config-driven path: register one polling bundle per connection and
+        // create subscription sources from the config.
+        for (const RedisDispatchConfig::ConnectionEntry& entry : config.connections) {
+            commHub->addPollingConnection(entry);
+
+            for (const RedisDispatchConfig::SubscriptionChannelEntry& sub :
+                 entry.subscriptionChannels)
+            {
+                if (sub.channel.isEmpty() || sub.module.isEmpty()) {
+                    continue;
+                }
+                const QString sourceId = QStringLiteral("%1_%2").arg(
+                    entry.connectionId, sub.channel);
+                commHub->addSubscriptionSource(
+                    new SubscriptionSource(sourceId, sub.channel, sub.module));
+            }
+        }
+    } else {
+        // Legacy fallback: use the single hard-coded global polling plan.
+        commHub->setGlobalPollingPlan(createDefaultGlobalPollingPlan());
+    }
+}
+
+const RedisDispatchConfig& DefaultSoftwareInitializer::dispatchConfig() const
+{
+    if (!m_dispatchConfigLoaded) {
+        m_dispatchConfigLoaded = true;
+        m_dispatchConfig =
+            RedisDispatchConfigLoader::loadFromFile(
+                QStringLiteral(":/redis_dispatch_config.json"));
+        if (!m_dispatchConfig.isValid()) {
+            qWarning().noquote()
+                << QStringLiteral("[DefaultSoftwareInitializer] redis_dispatch_config.json"
+                                  " not found or invalid — falling back to hardcoded defaults");
+        }
+    }
+    return m_dispatchConfig;
 }
 
