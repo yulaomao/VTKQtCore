@@ -374,5 +374,3 @@ QMap<QString, PollingKeyRoute> DefaultSoftwareInitializer::buildKeyRoutes() cons
 
     return routes;
 }
-
-
