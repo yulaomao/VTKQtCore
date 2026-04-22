@@ -1,9 +1,11 @@
 #include "PerConnectionPollingBundle.h"
 
+#include "communication/datasource/GlobalPollingPlan.h"
 #include "communication/datasource/PollingSource.h"
 #include "communication/redis/RedisPollingWorker.h"
 
 #include <QMetaObject>
+#include <QMetaType>
 #include <QThread>
 
 PerConnectionPollingBundle::PerConnectionPollingBundle(const QString& connectionId,
@@ -16,6 +18,9 @@ PerConnectionPollingBundle::PerConnectionPollingBundle(const QString& connection
     , m_pollingWorker(new RedisPollingWorker(host, port))
     , m_pollingThread(new QThread(this))
 {
+    // GlobalPollingPlan must be a registered metatype for cross-thread
+    // BlockingQueuedConnection Q_ARG usage in configurePlan().
+    qRegisterMetaType<GlobalPollingPlan>("GlobalPollingPlan");
     m_pollingThread->setObjectName(
         QStringLiteral("PollingThread_%1").arg(connectionId));
 

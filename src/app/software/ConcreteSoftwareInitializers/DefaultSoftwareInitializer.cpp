@@ -1,7 +1,6 @@
 #include "DefaultSoftwareInitializer.h"
 
 #include "ConfigDrivenSampleParser.h"
-#include "DefaultGlobalPollingSampleParser.h"
 #include "ModuleUiAssemblers.h"
 #include "SoftwareInitializerFactory.h"
 #include "ApplicationCoordinator.h"
@@ -10,7 +9,6 @@
 #include "MainWindow.h"
 #include "communication/config/RedisDispatchConfig.h"
 #include "communication/config/RedisDispatchConfigLoader.h"
-#include "communication/datasource/GlobalPollingPlan.h"
 #include "communication/datasource/SubscriptionSource.h"
 #include "communication/hub/CommunicationHub.h"
 #include "logic/registry/ModuleLogicHandler.h"
@@ -44,11 +42,6 @@ QString stringFromVariantOrDefault(const QVariant& value, const QString& fallbac
     return text.isEmpty() ? fallback : text;
 }
 
-QString defaultSubscriptionChannel(const QString& moduleId)
-{
-    return QStringLiteral("state.%1").arg(moduleId);
-}
-
 QString defaultControlRoutingChannel()
 {
     return QStringLiteral("control.downstream");
@@ -62,11 +55,6 @@ QString defaultControlPublishChannel()
 QString defaultAckChannel()
 {
     return QStringLiteral("control.ack");
-}
-
-QString defaultPollingKey(const QString& moduleId)
-{
-    return QStringLiteral("state.%1.latest").arg(moduleId);
 }
 
 QVariantMap communicationProfile(const QVariantMap& profile)
@@ -110,34 +98,6 @@ QString ackChannelFromProfile(const QVariantMap& profile)
     return stringFromVariantOrDefault(
         communicationProfile(profile).value(QStringLiteral("ackChannel")),
         defaultAckChannel());
-}
-
-QStringList defaultGlobalPollingKeys()
-{
-    return {
-        defaultPollingKey(QStringLiteral("params")),
-        defaultPollingKey(QStringLiteral("pointpick")),
-        defaultPollingKey(QStringLiteral("planning")),
-        defaultPollingKey(QStringLiteral("navigation")),
-        QStringLiteral("demo:navigation:transform:world"),
-        QStringLiteral("demo:navigation:transform:reference"),
-        QStringLiteral("demo:navigation:transform:patient"),
-        QStringLiteral("demo:navigation:transform:instrument"),
-        QStringLiteral("demo:navigation:transform:guide"),
-        QStringLiteral("demo:navigation:transform:tip"),
-    };
-}
-
-GlobalPollingPlan createDefaultGlobalPollingPlan()
-{
-    GlobalPollingPlan plan(
-        QStringLiteral("framework_global_poll"),
-        defaultGlobalPollingKeys(),
-        16);
-    plan.setChangeDetection(true);
-    plan.setMaxDispatchRateHz(60.0);
-    plan.setActive(true);
-    return plan;
 }
 
 QString gatewayStateName(ILogicGateway* gateway)
@@ -349,15 +309,11 @@ void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runti
     }
 
     const RedisDispatchConfig& config = dispatchConfig();
-    if (config.isValid()) {
-        // Use the config-driven parser so routing rules live in JSON, not C++.
-        runtime->setGlobalPollingSampleParser(
-            new ConfigDrivenSampleParser(config, runtime));
-    } else {
-        // Fall back to the hardcoded parser when no config file is present.
-        runtime->setGlobalPollingSampleParser(
-            new DefaultGlobalPollingSampleParser(runtime));
+    if (!config.isValid()) {
+        return;
     }
+
+    runtime->setGlobalPollingSampleParser(new ConfigDrivenSampleParser(config, runtime));
 }
 
 void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
@@ -375,27 +331,24 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
     }
 
     const RedisDispatchConfig& config = dispatchConfig();
-    if (config.isValid()) {
-        // Config-driven path: register one polling bundle per connection and
-        // create subscription sources from the config.
-        for (const RedisDispatchConfig::ConnectionEntry& entry : config.connections) {
-            commHub->addPollingConnection(entry);
+    if (!config.isValid()) {
+        return;
+    }
 
-            for (const RedisDispatchConfig::SubscriptionChannelEntry& sub :
-                 entry.subscriptionChannels)
-            {
-                if (sub.channel.isEmpty() || sub.module.isEmpty()) {
-                    continue;
-                }
-                const QString sourceId = QStringLiteral("%1_%2").arg(
-                    entry.connectionId, sub.channel);
-                commHub->addSubscriptionSource(
-                    new SubscriptionSource(sourceId, sub.channel, sub.module));
+    for (const RedisDispatchConfig::ConnectionEntry& entry : config.connections) {
+        commHub->addPollingConnection(entry);
+
+        for (const RedisDispatchConfig::SubscriptionChannelEntry& sub :
+             entry.subscriptionChannels)
+        {
+            if (sub.channel.isEmpty() || sub.module.isEmpty()) {
+                continue;
             }
+            const QString sourceId = QStringLiteral("%1_%2").arg(
+                entry.connectionId, sub.channel);
+            commHub->addSubscriptionSource(
+                new SubscriptionSource(sourceId, sub.channel, sub.module));
         }
-    } else {
-        // Legacy fallback: use the single hard-coded global polling plan.
-        commHub->setGlobalPollingPlan(createDefaultGlobalPollingPlan());
     }
 }
 

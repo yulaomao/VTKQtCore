@@ -3,10 +3,8 @@
 #include "communication/config/RedisDispatchConfig.h"
 #include "communication/datasource/GlobalPollingPlan.h"
 #include "communication/datasource/PerConnectionPollingBundle.h"
-#include "communication/datasource/PollingSource.h"
 #include "communication/datasource/SubscriptionSource.h"
 #include "communication/redis/RedisGateway.h"
-#include "communication/redis/RedisPollingWorker.h"
 #include "communication/routing/MessageRouter.h"
 
 #include <QDateTime>
@@ -14,7 +12,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
-#include <QThread>
 #include <QTimer>
 #include <QUuid>
 
@@ -39,29 +36,11 @@ CommunicationHub::CommunicationHub(RedisGateway* gateway, QObject* parent)
     : QObject(parent)
     , m_redisGateway(gateway)
     , m_messageRouter(new MessageRouter(this))
-    , m_pollingSource(new PollingSource(QStringLiteral("polling_source")))
-    , m_pollingThread(new QThread(this))
     , m_outboundRetryTimer(new QTimer(this))
     , m_lastConnectionState(gateway ? gateway->getConnectionState() : RedisGateway::Disconnected)
     , m_clientInstanceId(QUuid::createUuid().toString(QUuid::WithoutBraces))
 {
     qRegisterMetaType<StateSample>("StateSample");
-    qRegisterMetaType<GlobalPollingPlan>("GlobalPollingPlan");
-
-    m_pollingThread->setObjectName(QStringLiteral("CommunicationHubPollingThread"));
-    m_pollingSource->moveToThread(m_pollingThread);
-    connect(m_pollingThread, &QThread::finished,
-            m_pollingSource, &QObject::deleteLater);
-
-    // Create a persistent polling connection that lives on the polling thread.
-    // This replaces the old asyncReadKey approach (which spawned a new thread
-    // + TCP connection for every single GET call).
-    m_pollingWorker = new RedisPollingWorker(QString(), 0);
-    m_pollingWorker->moveToThread(m_pollingThread);
-    connect(m_pollingThread, &QThread::finished,
-            m_pollingWorker, &QObject::deleteLater);
-
-    m_pollingThread->start();
 
     m_outboundRetryTimer->setInterval(m_outboundRetryTickMs);
     connect(m_outboundRetryTimer, &QTimer::timeout,
@@ -75,12 +54,6 @@ CommunicationHub::~CommunicationHub()
 
     if (m_outboundRetryTimer) {
         m_outboundRetryTimer->stop();
-    }
-
-    if (m_pollingThread && m_pollingThread->isRunning()) {
-        stopPollingTransport(true);
-        m_pollingThread->quit();
-        m_pollingThread->wait();
     }
 }
 
@@ -166,34 +139,6 @@ void CommunicationHub::initialize()
                     errorMessage);
             });
 
-    connect(m_pollingSource, &PollingSource::sampleReady,
-            this, [this](const StateSample& sample) {
-                m_lastStateSampleMs = sample.timestampMs;
-                ++m_receivedSampleCount;
-                emit stateSampleReceived(sample);
-                refreshHealthSnapshot();
-            });
-    connect(m_pollingSource, &PollingSource::sourceError,
-            this, [this](const QString& sourceId, const QString& errorMessage) {
-                ++m_datasourceErrorCount;
-                emitIssue(
-                    sourceId,
-                    QStringLiteral("warning"),
-                    QStringLiteral("DATASOURCE_POLLING_ERROR"),
-                    errorMessage,
-                    {{QStringLiteral("layer"), QStringLiteral("polling")}});
-            });
-
-    if (m_redisGateway) {
-        // Route poll requests directly to the persistent polling worker that
-        // lives on the polling thread.  Both objects share the same thread, so
-        // this is a Qt::DirectConnection and no extra thread is ever spawned.
-        connect(m_pollingSource, &PollingSource::batchPollRequested,
-                m_pollingWorker, &RedisPollingWorker::readKeys);
-        connect(m_pollingWorker, &RedisPollingWorker::keyValuesReceived,
-                m_pollingSource, &PollingSource::onBatchPollResult);
-    }
-
     if (m_redisGateway) {
         connect(m_redisGateway, &RedisGateway::errorOccurred,
                 this, [this](const QString& errorMessage) {
@@ -239,30 +184,6 @@ void CommunicationHub::addSubscriptionSource(SubscriptionSource* source)
         }
         m_redisGateway->subscribe(source->getChannel());
     }
-}
-
-void CommunicationHub::setGlobalPollingPlan(const GlobalPollingPlan& plan)
-{
-    QMetaObject::invokeMethod(
-        m_pollingSource,
-        "configurePlan",
-        Qt::BlockingQueuedConnection,
-        Q_ARG(GlobalPollingPlan, plan));
-
-    m_hasActivePollingPlan = plan.isActive() && !plan.getRedisKeys().isEmpty();
-    m_globalPollingKeyCount = plan.getRedisKeys().size();
-
-    if (!m_hasActivePollingPlan) {
-        if (m_pollingTransportRunning) {
-            stopPollingTransport();
-        }
-    } else if (m_started && m_redisGateway &&
-               m_redisGateway->getConnectionState() == RedisGateway::Connected &&
-               !m_pollingTransportRunning) {
-        startPollingTransport();
-    }
-
-    refreshHealthSnapshot();
 }
 
 void CommunicationHub::addPollingConnection(
@@ -573,12 +494,6 @@ void CommunicationHub::activateTransport()
         return;
     }
 
-    // Keep the polling worker's connection parameters in sync with the gateway.
-    QMetaObject::invokeMethod(m_pollingWorker, "setConnection",
-                              Qt::QueuedConnection,
-                              Q_ARG(QString, m_redisGateway->getHost()),
-                              Q_ARG(int, m_redisGateway->getPort()));
-
     for (SubscriptionSource* source : m_subscriptionSources) {
         if (!source->isRunning()) {
             source->start();
@@ -589,14 +504,10 @@ void CommunicationHub::activateTransport()
     for (const QString& channel : m_routingChannels) {
         m_redisGateway->subscribe(channel);
     }
-
-    startPollingTransport();
 }
 
 void CommunicationHub::deactivateTransport()
 {
-    stopPollingTransport();
-
     if (!m_redisGateway) {
         return;
     }
@@ -611,41 +522,6 @@ void CommunicationHub::deactivateTransport()
     for (const QString& channel : m_routingChannels) {
         m_redisGateway->unsubscribe(channel);
     }
-}
-
-void CommunicationHub::startPollingTransport(bool blocking)
-{
-    if (!m_pollingSource || !m_pollingThread || !m_pollingThread->isRunning() ||
-        m_pollingTransportRunning || !m_hasActivePollingPlan) {
-        return;
-    }
-
-    if (QThread::currentThread() == m_pollingThread) {
-        m_pollingSource->start();
-    } else {
-        QMetaObject::invokeMethod(
-            m_pollingSource,
-            "start",
-            blocking ? Qt::BlockingQueuedConnection : Qt::QueuedConnection);
-    }
-    m_pollingTransportRunning = true;
-}
-
-void CommunicationHub::stopPollingTransport(bool blocking)
-{
-    if (!m_pollingSource || !m_pollingTransportRunning) {
-        return;
-    }
-
-    if (QThread::currentThread() == m_pollingThread) {
-        m_pollingSource->stop();
-    } else {
-        QMetaObject::invokeMethod(
-            m_pollingSource,
-            "stop",
-            blocking ? Qt::BlockingQueuedConnection : Qt::QueuedConnection);
-    }
-    m_pollingTransportRunning = false;
 }
 
 void CommunicationHub::publishAck(const QString& category, const QVariantMap& payload,
@@ -874,7 +750,6 @@ void CommunicationHub::refreshHealthSnapshot()
     snapshot.insert(QStringLiteral("routingChannelCount"), m_routingChannels.size());
     snapshot.insert(QStringLiteral("subscriptionSourceCount"), m_subscriptionSources.size());
     snapshot.insert(QStringLiteral("activePollingPlanCount"), activePollingPlanCount());
-    snapshot.insert(QStringLiteral("globalPollingKeyCount"), m_globalPollingKeyCount);
     snapshot.insert(QStringLiteral("pollingConnectionCount"), m_pollingBundles.size());
     snapshot.insert(QStringLiteral("pendingAckCount"), m_inflightReliableMessages.size());
     snapshot.insert(QStringLiteral("confirmedWindowCount"), m_confirmedOutboundWindow.size());
@@ -890,7 +765,7 @@ void CommunicationHub::refreshHealthSnapshot()
 
 int CommunicationHub::activePollingPlanCount() const
 {
-    int count = m_hasActivePollingPlan ? 1 : 0;
+    int count = 0;
     for (const PerConnectionPollingBundle* bundle : m_pollingBundles) {
         if (bundle && bundle->isRunning()) {
             ++count;
