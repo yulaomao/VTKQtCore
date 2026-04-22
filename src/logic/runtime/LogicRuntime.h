@@ -56,9 +56,9 @@ public slots:
     // ---------------------------------------------------------------------------
     // Data dispatch from RedisDataCenter
     // ---------------------------------------------------------------------------
-    // Called once per Redis key per poll cycle.  'module' may be "global" to
-    // broadcast the key/value to ALL registered module handlers.
-    void onModulePollKey(const QString& module, const QString& key, const QVariant& value);
+    // Called once per module per poll cycle. 'module' may be "global" to
+    // broadcast the same aggregated values map to ALL registered module handlers.
+    void onModulePollBatch(const QString& module, const QVariantMap& values);
 
     // Called when a pub/sub message arrives for a module.  'module' may be
     // "global" to broadcast to ALL registered module handlers.

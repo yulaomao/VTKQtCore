@@ -46,21 +46,18 @@ public:
     // ---------------------------------------------------------------------------
     // Data dispatch — called by RedisDataCenter via LogicRuntime.
     //
-    // handlePollData():  called once per Redis key per poll cycle.
-    //   key   — the Redis key (e.g. "state.navigation.latest")
-    //   value — the normalised value (JSON-decoded map/list/scalar, or raw string)
+    // Polling data is delivered as one aggregated StateSample per module per poll
+    // round via handleStateSample(). The sample data always carries a
+    // QVariantMap under "values".
     //
     // handleSubscription(): called when a pub/sub message arrives on 'channel'.
-    //
-    // Default implementations wrap the arguments into a StateSample and forward
-    // to handleStateSample() so that existing subclasses continue to work without
-    // any changes.
+    // Default implementation wraps the payload into a StateSample and forwards
+    // to handleStateSample() so that existing subclasses continue to work
+    // without any changes.
     // ---------------------------------------------------------------------------
-    virtual void handlePollData(const QString& key, const QVariant& value);
     virtual void handleSubscription(const QString& channel, const QVariantMap& payload);
 
-    // Legacy – kept for backward compatibility.  Subclasses that have not yet
-    // migrated to handlePollData() / handleSubscription() override this instead.
+    // Polling data and subscription data ultimately converge here.
     virtual void handleStateSample(const StateSample& sample)
     {
         Q_UNUSED(sample);

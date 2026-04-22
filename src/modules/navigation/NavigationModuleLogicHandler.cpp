@@ -45,8 +45,51 @@ const NavigationTransformDescriptor* findDescriptor(const QString& remoteId)
 
 QVariantMap normalizedSampleData(const StateSample& sample)
 {
-    QVariantMap payload = sample.data.value(QStringLiteral("value")).toMap();
-    return payload.isEmpty() ? sample.data : payload;
+    return sample.data;
+}
+
+bool extractPosition(const QVariantMap& payload, double& x, double& y, double& z);
+
+bool applyNavigationStatePayload(const QVariantMap& payloadData,
+                                 bool& navigating,
+                                 QString& navigationStatus,
+                                 double& currentPositionX,
+                                 double& currentPositionY,
+                                 double& currentPositionZ)
+{
+    bool changed = false;
+
+    if (payloadData.contains(QStringLiteral("navigating"))) {
+        const bool nextNavigating = payloadData.value(QStringLiteral("navigating")).toBool();
+        if (navigating != nextNavigating) {
+            navigating = nextNavigating;
+            changed = true;
+        }
+    }
+
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    const bool hasPosition = extractPosition(payloadData, x, y, z);
+    if (hasPosition) {
+        currentPositionX = x;
+        currentPositionY = y;
+        currentPositionZ = z;
+    }
+
+    const QString status = payloadData.value(QStringLiteral("status")).toString();
+    if (!status.isEmpty()) {
+        if (navigationStatus != status) {
+            navigationStatus = status;
+            changed = true;
+        }
+    } else if (changed || navigationStatus.isEmpty()) {
+        navigationStatus = navigating
+            ? QStringLiteral("Navigating")
+            : QStringLiteral("Idle");
+    }
+
+    return changed || hasPosition;
 }
 
 bool extractPosition(const QVariantMap& payload, double& x, double& y, double& z)
@@ -206,6 +249,43 @@ void NavigationModuleLogicHandler::handleAction(const UiAction& action)
 
 void NavigationModuleLogicHandler::handleStateSample(const StateSample& sample)
 {
+    const QVariantMap batchValues = sample.data.value(QStringLiteral("values")).toMap();
+    if (!batchValues.isEmpty()) {
+        bool navigationChanged = false;
+        bool transformChanged = false;
+
+        for (auto it = batchValues.cbegin(); it != batchValues.cend(); ++it) {
+            const QVariantMap payloadData = it.value().toMap();
+            if (payloadData.isEmpty()) {
+                continue;
+            }
+
+            if (payloadData.contains(QStringLiteral("nodeId")) &&
+                payloadData.contains(QStringLiteral("matrixToParent"))) {
+                applyTransformSample(payloadData);
+                transformChanged = true;
+                continue;
+            }
+
+            if (applyNavigationStatePayload(payloadData,
+                                            m_navigating,
+                                            m_navigationStatus,
+                                            m_currentPositionX,
+                                            m_currentPositionY,
+                                            m_currentPositionZ)) {
+                navigationChanged = true;
+            }
+        }
+
+        if (navigationChanged) {
+            emitNavigationState(QString(), sample.sampleId);
+        }
+        if (transformChanged) {
+            emitTransformHealth(false, sample.sampleId);
+        }
+        return;
+    }
+
     const QVariantMap payloadData = normalizedSampleData(sample);
 
     if (payloadData.contains(QStringLiteral("nodeId")) &&
@@ -215,40 +295,12 @@ void NavigationModuleLogicHandler::handleStateSample(const StateSample& sample)
         return;
     }
 
-    bool changed = false;
-
-    if (payloadData.contains(QStringLiteral("navigating"))) {
-        const bool navigating = payloadData.value(QStringLiteral("navigating")).toBool();
-        if (m_navigating != navigating) {
-            m_navigating = navigating;
-            changed = true;
-        }
-    }
-
-    double x = 0.0;
-    double y = 0.0;
-    double z = 0.0;
-    const bool hasPosition = extractPosition(payloadData, x, y, z);
-
-    if (hasPosition) {
-        m_currentPositionX = x;
-        m_currentPositionY = y;
-        m_currentPositionZ = z;
-    }
-
-    const QString status = payloadData.value(QStringLiteral("status")).toString();
-    if (!status.isEmpty()) {
-        if (m_navigationStatus != status) {
-            m_navigationStatus = status;
-            changed = true;
-        }
-    } else if (changed || m_navigationStatus.isEmpty()) {
-        m_navigationStatus = m_navigating
-            ? QStringLiteral("Navigating")
-            : QStringLiteral("Idle");
-    }
-
-    if (changed || hasPosition) {
+    if (applyNavigationStatePayload(payloadData,
+                                    m_navigating,
+                                    m_navigationStatus,
+                                    m_currentPositionX,
+                                    m_currentPositionY,
+                                    m_currentPositionZ)) {
         emitNavigationState(QString(), sample.sampleId);
     }
 }

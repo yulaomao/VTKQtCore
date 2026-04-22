@@ -490,24 +490,38 @@ void LogicRuntime::onStateSampleReceived(const StateSample& sample)
 // Data dispatch from RedisDataCenter
 // ---------------------------------------------------------------------------
 
-void LogicRuntime::onModulePollKey(const QString& module, const QString& key,
-                                    const QVariant& value)
+void LogicRuntime::onModulePollBatch(const QString& module,
+                                     const QVariantMap& values)
 {
+    if (values.isEmpty()) {
+        return;
+    }
+
+    auto dispatchBatch = [this, &values](const QString& targetModule) {
+        ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(targetModule);
+        if (!handler) {
+            return;
+        }
+
+        QVariantMap data;
+        data.insert(QStringLiteral("values"), values);
+
+        handler->handleStateSample(StateSample::create(
+            QStringLiteral("poll_batch"),
+            targetModule,
+            QStringLiteral("poll_batch"),
+            data));
+    };
+
     if (module == QLatin1String(RedisConnectionConfig::kGlobalModule)) {
-        // Broadcast to every registered module handler.
         const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
         for (const QString& moduleId : modules) {
-            if (ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(moduleId)) {
-                handler->handlePollData(key, value);
-            }
+            dispatchBatch(moduleId);
         }
         return;
     }
 
-    ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(module);
-    if (handler) {
-        handler->handlePollData(key, value);
-    }
+    dispatchBatch(module);
 }
 
 void LogicRuntime::onModuleSubscription(const QString& module,

@@ -22,8 +22,9 @@ class LogicRuntime;
 //   onPollBatch()     — called when a MGET round completes for a connection.
 //                       Splits the raw key→value map by module (using the
 //                       pollingKeyGroups declared in the config), normalises
-//                       each value (JSON decode), and calls
-//                       LogicRuntime::onModulePollKey() once per key.
+//                       each value (JSON decode), aggregates per-module maps,
+//                       and calls LogicRuntime::onModulePollBatch() once per
+//                       module.
 //
 //   onSubscription()  — called when a pub/sub message arrives.
 //                       Calls LogicRuntime::onModuleSubscription() with the

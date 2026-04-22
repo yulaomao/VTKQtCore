@@ -48,8 +48,22 @@ QVector<std::array<double, 3>> createPlanPath()
 
 QVariantMap normalizedSampleData(const StateSample& sample)
 {
-    QVariantMap payload = sample.data.value(QStringLiteral("value")).toMap();
-    return payload.isEmpty() ? sample.data : payload;
+    const QVariantMap values = sample.data.value(QStringLiteral("values")).toMap();
+    if (!values.isEmpty()) {
+        QVariantMap aggregatedPayload;
+        for (auto it = values.cbegin(); it != values.cend(); ++it) {
+            const QVariantMap entryPayload = it.value().toMap();
+            if (entryPayload.isEmpty()) {
+                continue;
+            }
+            for (auto entryIt = entryPayload.cbegin(); entryIt != entryPayload.cend(); ++entryIt) {
+                aggregatedPayload.insert(entryIt.key(), entryIt.value());
+            }
+        }
+        return aggregatedPayload;
+    }
+
+    return sample.data;
 }
 
 bool extractVec3(const QVariant& value, std::array<double, 3>& result)

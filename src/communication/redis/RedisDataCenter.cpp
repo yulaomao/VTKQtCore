@@ -7,6 +7,7 @@
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QMap>
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,7 +122,9 @@ void RedisDataCenter::onPollBatch(const QString& connectionId,
         return;
     }
 
-    // Dispatch each key to its module.
+    // Aggregate values by module, then dispatch one batch per module.
+    QMap<QString, QVariantMap> moduleBatches;
+
     for (auto it = rawValues.cbegin(); it != rawValues.cend(); ++it) {
         const QString&  key   = it.key();
         const QVariant  value = normalizeValue(it.value());
@@ -132,12 +135,11 @@ void RedisDataCenter::onPollBatch(const QString& connectionId,
             continue;
         }
 
-        if (module == QLatin1String(RedisConnectionConfig::kGlobalModule)) {
-            // Broadcast to all registered module handlers.
-            m_runtime->onModulePollKey(QString::fromLatin1(RedisConnectionConfig::kGlobalModule), key, value);
-        } else {
-            m_runtime->onModulePollKey(module, key, value);
-        }
+        moduleBatches[module].insert(key, value);
+    }
+
+    for (auto it = moduleBatches.cbegin(); it != moduleBatches.cend(); ++it) {
+        m_runtime->onModulePollBatch(it.key(), it.value());
     }
 }
 

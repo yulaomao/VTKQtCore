@@ -89,32 +89,12 @@ bool ModuleLogicHandler::publishRedisJsonMessage(const QString& channel, const Q
 }
 
 // ---------------------------------------------------------------------------
-// Data dispatch — default implementations (backward-compat shims)
+// Data dispatch — default subscription shim
 // ---------------------------------------------------------------------------
-// Subclasses can override handlePollData() / handleSubscription() directly.
-// If they don't, the defaults below call handleStateSample() with a StateSample
-// that matches the format produced by the legacy DefaultGlobalPollingSampleParser:
-//   data = { "key": <redis_key>, "value": <normalized_value> }
-// This lets existing module implementations continue to work unchanged.
-
-void ModuleLogicHandler::handlePollData(const QString& key, const QVariant& value)
-{
-    QVariantMap data;
-    data.insert(QStringLiteral("key"), key);
-    data.insert(QStringLiteral("value"), value);
-
-    StateSample sample;
-    // sampleId is intentionally left empty for the backward-compat shim:
-    // existing module code does not rely on it, and generating UUIDs at
-    // 60 Hz would be wasteful.
-    sample.sourceId     = QStringLiteral("poll");
-    sample.module       = m_moduleId;
-    sample.sampleType   = key;
-    sample.timestampMs  = QDateTime::currentMSecsSinceEpoch();
-    sample.data         = data;
-
-    handleStateSample(sample);
-}
+// Polling data now arrives as one aggregated StateSample per module directly
+// from LogicRuntime. Subscription data still uses the compatibility wrapper
+// below so existing module implementations can continue to consume
+// handleStateSample().
 
 void ModuleLogicHandler::handleSubscription(const QString& channel, const QVariantMap& payload)
 {
