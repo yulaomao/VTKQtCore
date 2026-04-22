@@ -224,8 +224,7 @@ void CommunicationHub::addPollingConnection(
 
                 QVariantMap data;
                 data.insert(QStringLiteral("connectionId"), connectionId);
-                data.insert(QStringLiteral("keys"),
-                            QStringList(values.keys()));
+                data.insert(QStringLiteral("keys"), values.keys());
                 data.insert(QStringLiteral("values"), values);
 
                 const StateSample sample = StateSample::create(

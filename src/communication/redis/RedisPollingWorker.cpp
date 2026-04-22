@@ -74,7 +74,7 @@ void RedisPollingWorker::selectDb(int db)
     m_db = db;
     // If already connected, issue SELECT immediately; otherwise it will be
     // applied inside ensureConnected() on the next readKeys() call.
-    if (m_context && m_context->err == REDIS_OK && m_db != 0) {
+    if (m_context && m_context->err == REDIS_OK) {
         redisReply* reply = static_cast<redisReply*>(
             redisCommand(m_context, "SELECT %d", m_db));
         if (reply) {

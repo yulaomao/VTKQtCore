@@ -184,7 +184,9 @@ bool ConfigDrivenSampleParser::matchesPattern(const QString& key,
                                                const QString& pattern)
 {
     if (pattern.endsWith(QLatin1Char('*'))) {
-        return key.startsWith(pattern.left(pattern.size() - 1));
+        const QString prefix = pattern.left(pattern.size() - 1);
+        // An empty prefix (pattern == "*") matches everything.
+        return prefix.isEmpty() || key.startsWith(prefix);
     }
     return key == pattern;
 }

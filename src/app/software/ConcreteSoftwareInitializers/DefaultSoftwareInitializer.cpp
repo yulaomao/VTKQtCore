@@ -362,7 +362,8 @@ const RedisDispatchConfig& DefaultSoftwareInitializer::dispatchConfig() const
         if (!m_dispatchConfig.isValid()) {
             qWarning().noquote()
                 << QStringLiteral("[DefaultSoftwareInitializer] redis_dispatch_config.json"
-                                  " not found or invalid — falling back to hardcoded defaults");
+                                  " not found or invalid — polling and sample parsing"
+                                  " will not be active");
         }
     }
     return m_dispatchConfig;
