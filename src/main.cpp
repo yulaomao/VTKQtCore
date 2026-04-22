@@ -101,7 +101,7 @@ int main(int argc, char* argv[])
     if (useRedisMode) {
         qInfo().noquote() << QStringLiteral("[Redis] connecting to 127.0.0.1:6379 ...");
         redisGateway.connectToServer(QStringLiteral("127.0.0.1"), 6379);
-        logicRedisCommandAccess.connectToServer(QStringLiteral("127.0.0.1"), 6379);
+        logicRedisCommandAccess.connectToServer(QStringLiteral("127.0.0.1"), 6379, 1);
         redisReady = redisGateway.waitForConnected(2000);
         if (redisReady) {
             qInfo().noquote() << QStringLiteral("[Redis] connected to 127.0.0.1:6379");

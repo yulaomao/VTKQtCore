@@ -19,7 +19,7 @@ public:
     explicit RedisLogicCommandAccess(QObject* parent = nullptr);
     ~RedisLogicCommandAccess() override;
 
-    void connectToServer(const QString& host, int port);
+    void connectToServer(const QString& host, int port, int db = 0);
     void disconnect();
 
     bool isAvailable() const override;
@@ -41,6 +41,7 @@ private:
 
     QString m_host;
     int m_port = 0;
+    int m_db = 0;
     int m_connectTimeoutMs = 2000;
     mutable std::mutex m_mutex;
     redisContext* m_context = nullptr;

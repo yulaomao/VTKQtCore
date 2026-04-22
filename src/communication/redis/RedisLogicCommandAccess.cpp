@@ -113,13 +113,14 @@ RedisLogicCommandAccess::~RedisLogicCommandAccess()
     disconnect();
 }
 
-void RedisLogicCommandAccess::connectToServer(const QString& host, int port)
+void RedisLogicCommandAccess::connectToServer(const QString& host, int port, int db)
 {
     QString errorMessage;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_host = host;
         m_port = port;
+        m_db = db;
         closeContextLocked();
         ensureConnectedLocked(&errorMessage);
     }
@@ -327,6 +328,33 @@ redisContext* RedisLogicCommandAccess::createContext(QString* errorMessage) cons
         }
         redisFree(context);
         return nullptr;
+    }
+
+    if (m_db != 0) {
+        redisReply* reply = static_cast<redisReply*>(redisCommand(context, "SELECT %d", m_db));
+        if (!reply) {
+            if (errorMessage) {
+                *errorMessage = redisErrorMessage(
+                    context,
+                    QStringLiteral("Failed to select Redis db %1 at %2:%3")
+                        .arg(m_db)
+                        .arg(m_host)
+                        .arg(m_port));
+            }
+            redisFree(context);
+            return nullptr;
+        }
+
+        std::unique_ptr<redisReply, decltype(&freeReplyObject)> guard(reply, &freeReplyObject);
+        if (reply->type == REDIS_REPLY_ERROR) {
+            if (errorMessage) {
+                *errorMessage = QStringLiteral("Redis SELECT %1 error: %2")
+                                    .arg(m_db)
+                                    .arg(replyString(reply));
+            }
+            redisFree(context);
+            return nullptr;
+        }
     }
 
     redisEnableKeepAlive(context);
