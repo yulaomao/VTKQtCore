@@ -26,11 +26,8 @@
       "pollingKeyGroups": [
         {
           "module": "navigation",
-          "keys": ["state.navigation.latest"]
-        },
-        {
-          "module": "global",
           "keys": [
+            "state.navigation.latest",
             "demo:navigation:transform:world",
             "demo:navigation:transform:reference",
             "demo:navigation:transform:patient",
@@ -43,37 +40,6 @@
       "subscriptionChannels": [
         { "channel": "state.navigation", "module": "navigation" }
       ]
-    }
-  ],
-  "globalDispatchRules": [
-    {
-      "keyPattern":   "demo:navigation:transform:*",
-      "targetModule": "navigation",
-      "groupName":    "transforms"
-    }
-  ],
-  "modules": [
-    {
-      "moduleId": "params",
-      "defaultConnectionId": "conn_main",
-      "nestedMapStructure": {}
-    },
-    {
-      "moduleId": "pointpick",
-      "defaultConnectionId": "conn_main",
-      "nestedMapStructure": {}
-    },
-    {
-      "moduleId": "planning",
-      "defaultConnectionId": "conn_main",
-      "nestedMapStructure": {}
-    },
-    {
-      "moduleId": "navigation",
-      "defaultConnectionId": "conn_nav",
-      "nestedMapStructure": {
-        "state": ["state.navigation.latest"]
-      }
     }
   ]
 }

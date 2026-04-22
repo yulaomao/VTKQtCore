@@ -1,6 +1,7 @@
 #include "LogicRuntime.h"
 
 #include "communication/hub/IRedisCommandAccess.h"
+#include "communication/redis/RedisConnectionConfig.h"
 #include "logic/runtime/GlobalPollingSampleParser.h"
 #include "scene/SceneGraph.h"
 #include "workflow/ActiveModuleState.h"
@@ -483,6 +484,51 @@ void LogicRuntime::onStateSampleReceived(const StateSample& sample)
     }
 
     handler->handleStateSample(sample);
+}
+
+// ---------------------------------------------------------------------------
+// Data dispatch from RedisDataCenter
+// ---------------------------------------------------------------------------
+
+void LogicRuntime::onModulePollKey(const QString& module, const QString& key,
+                                    const QVariant& value)
+{
+    if (module == QLatin1String(RedisConnectionConfig::kGlobalModule)) {
+        // Broadcast to every registered module handler.
+        const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
+        for (const QString& moduleId : modules) {
+            if (ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(moduleId)) {
+                handler->handlePollData(key, value);
+            }
+        }
+        return;
+    }
+
+    ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(module);
+    if (handler) {
+        handler->handlePollData(key, value);
+    }
+}
+
+void LogicRuntime::onModuleSubscription(const QString& module,
+                                         const QString& channel,
+                                         const QVariantMap& payload)
+{
+    if (module == QLatin1String(RedisConnectionConfig::kGlobalModule)) {
+        // Broadcast to every registered module handler.
+        const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
+        for (const QString& moduleId : modules) {
+            if (ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(moduleId)) {
+                handler->handleSubscription(channel, payload);
+            }
+        }
+        return;
+    }
+
+    ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(module);
+    if (handler) {
+        handler->handleSubscription(channel, payload);
+    }
 }
 
 void LogicRuntime::onCommunicationError(const QString& source, const QString& errorMessage)

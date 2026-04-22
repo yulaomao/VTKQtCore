@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariant>
+#include <QVariantMap>
 
 #include "contracts/ModuleInvoke.h"
 #include "contracts/UiAction.h"
@@ -40,6 +42,25 @@ public:
             QStringLiteral("invoke_not_supported"),
             QStringLiteral("Module '%1' does not support internal invocation").arg(m_moduleId));
     }
+
+    // ---------------------------------------------------------------------------
+    // Data dispatch — called by RedisDataCenter via LogicRuntime.
+    //
+    // handlePollData():  called once per Redis key per poll cycle.
+    //   key   — the Redis key (e.g. "state.navigation.latest")
+    //   value — the normalised value (JSON-decoded map/list/scalar, or raw string)
+    //
+    // handleSubscription(): called when a pub/sub message arrives on 'channel'.
+    //
+    // Default implementations wrap the arguments into a StateSample and forward
+    // to handleStateSample() so that existing subclasses continue to work without
+    // any changes.
+    // ---------------------------------------------------------------------------
+    virtual void handlePollData(const QString& key, const QVariant& value);
+    virtual void handleSubscription(const QString& channel, const QVariantMap& payload);
+
+    // Legacy – kept for backward compatibility.  Subclasses that have not yet
+    // migrated to handlePollData() / handleSubscription() override this instead.
     virtual void handleStateSample(const StateSample& sample)
     {
         Q_UNUSED(sample);

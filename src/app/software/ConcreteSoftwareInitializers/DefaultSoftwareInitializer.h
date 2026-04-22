@@ -1,7 +1,7 @@
 #pragma once
 
 #include "BaseSoftwareInitializer.h"
-#include "communication/config/RedisDispatchConfig.h"
+#include "communication/redis/RedisConnectionConfig.h"
 
 class DefaultSoftwareInitializer : public BaseSoftwareInitializer
 {
@@ -25,9 +25,9 @@ public:
     void registerCommunicationSources(CommunicationHub* commHub) override;
 
 private:
-    // Returns the dispatch config, loading it lazily on first access.
-    const RedisDispatchConfig& dispatchConfig() const;
+    // Returns the connection configs, loading from JSON lazily on first access.
+    const QVector<RedisConnectionConfig>& connectionConfigs() const;
 
-    mutable RedisDispatchConfig m_dispatchConfig;
-    mutable bool m_dispatchConfigLoaded = false;
+    mutable QVector<RedisConnectionConfig> m_connectionConfigs;
+    mutable bool m_configLoaded = false;
 };

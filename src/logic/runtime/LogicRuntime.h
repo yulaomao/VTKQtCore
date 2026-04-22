@@ -53,6 +53,18 @@ public slots:
     void onConnectionStateChanged(const QString& state);
     void requestResync(const QString& reason);
 
+    // ---------------------------------------------------------------------------
+    // Data dispatch from RedisDataCenter
+    // ---------------------------------------------------------------------------
+    // Called once per Redis key per poll cycle.  'module' may be "global" to
+    // broadcast the key/value to ALL registered module handlers.
+    void onModulePollKey(const QString& module, const QString& key, const QVariant& value);
+
+    // Called when a pub/sub message arrives for a module.  'module' may be
+    // "global" to broadcast to ALL registered module handlers.
+    void onModuleSubscription(const QString& module, const QString& channel,
+                               const QVariantMap& payload);
+
 signals:
     void logicNotification(const LogicNotification& notification);
 

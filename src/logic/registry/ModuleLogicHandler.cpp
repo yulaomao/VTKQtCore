@@ -1,8 +1,11 @@
 #include "ModuleLogicHandler.h"
 
 #include "communication/hub/IRedisCommandAccess.h"
+#include "communication/datasource/StateSample.h"
 #include "ModuleUiEvent.h"
 #include "logic/runtime/IModuleInvoker.h"
+
+#include <QDateTime>
 
 ModuleLogicHandler::ModuleLogicHandler(const QString& moduleId, QObject* parent)
     : QObject(parent)
@@ -83,6 +86,49 @@ bool ModuleLogicHandler::publishRedisMessage(const QString& channel, const QByte
 bool ModuleLogicHandler::publishRedisJsonMessage(const QString& channel, const QVariantMap& payload)
 {
     return m_redisCommandAccess && m_redisCommandAccess->publishJsonMessage(channel, payload);
+}
+
+// ---------------------------------------------------------------------------
+// Data dispatch — default implementations (backward-compat shims)
+// ---------------------------------------------------------------------------
+// Subclasses can override handlePollData() / handleSubscription() directly.
+// If they don't, the defaults below call handleStateSample() with a StateSample
+// that matches the format produced by the legacy DefaultGlobalPollingSampleParser:
+//   data = { "key": <redis_key>, "value": <normalized_value> }
+// This lets existing module implementations continue to work unchanged.
+
+void ModuleLogicHandler::handlePollData(const QString& key, const QVariant& value)
+{
+    QVariantMap data;
+    data.insert(QStringLiteral("key"), key);
+    data.insert(QStringLiteral("value"), value);
+
+    StateSample sample;
+    // sampleId is intentionally left empty for the backward-compat shim:
+    // existing module code does not rely on it, and generating UUIDs at
+    // 60 Hz would be wasteful.
+    sample.sourceId     = QStringLiteral("poll");
+    sample.module       = m_moduleId;
+    sample.sampleType   = key;
+    sample.timestampMs  = QDateTime::currentMSecsSinceEpoch();
+    sample.data         = data;
+
+    handleStateSample(sample);
+}
+
+void ModuleLogicHandler::handleSubscription(const QString& channel, const QVariantMap& payload)
+{
+    QVariantMap data = payload;
+    data.insert(QStringLiteral("channel"), channel);
+
+    StateSample sample;
+    sample.sourceId     = QStringLiteral("subscription");
+    sample.module       = m_moduleId;
+    sample.sampleType   = QStringLiteral("subscription");
+    sample.timestampMs  = QDateTime::currentMSecsSinceEpoch();
+    sample.data         = data;
+
+    handleStateSample(sample);
 }
 
 ModuleInvokeResult ModuleLogicHandler::invokeModule(const QString& targetModule,

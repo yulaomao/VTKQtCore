@@ -1,16 +1,14 @@
 #include "DefaultSoftwareInitializer.h"
 
-#include "ConfigDrivenSampleParser.h"
 #include "ModuleUiAssemblers.h"
 #include "SoftwareInitializerFactory.h"
 #include "ApplicationCoordinator.h"
 #include "ILogicGateway.h"
 #include "LogicRuntime.h"
 #include "MainWindow.h"
-#include "communication/config/RedisDispatchConfig.h"
-#include "communication/config/RedisDispatchConfigLoader.h"
-#include "communication/datasource/SubscriptionSource.h"
 #include "communication/hub/CommunicationHub.h"
+#include "communication/redis/RedisConnectionConfig.h"
+#include "communication/redis/RedisDataCenter.h"
 #include "logic/registry/ModuleLogicHandler.h"
 #include "logic/registry/ModuleLogicRegistry.h"
 #include "modules/intermoduletest/InterModuleReceiverLogicHandler.h"
@@ -186,21 +184,6 @@ void DefaultSoftwareInitializer::registerModuleLogicHandlers(LogicRuntime* runti
     if (isModuleEnabled(QStringLiteral("navigation"))) {
         runtime->registerModuleHandler(new NavigationModuleLogicHandler(runtime));
     }
-
-    // Inject the default connectionId from the dispatch config into each handler
-    // so that modules know which connection to use for direct Redis access.
-    const RedisDispatchConfig& config = dispatchConfig();
-    if (config.isValid()) {
-        ModuleLogicRegistry* registry = runtime->getModuleLogicRegistry();
-        if (registry) {
-            for (const RedisDispatchConfig::ModuleEntry& entry : config.modules) {
-                ModuleLogicHandler* handler = registry->getHandler(entry.moduleId);
-                if (handler && !entry.defaultConnectionId.isEmpty()) {
-                    handler->setDefaultConnectionId(entry.defaultConnectionId);
-                }
-            }
-        }
-    }
 }
 
 void DefaultSoftwareInitializer::registerModuleUIs(MainWindow* mainWindow,
@@ -308,12 +291,19 @@ void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runti
         return;
     }
 
-    const RedisDispatchConfig& config = dispatchConfig();
-    if (!config.isValid()) {
+    // Load connection configs from the embedded JSON resource.
+    const QVector<RedisConnectionConfig>& configs = connectionConfigs();
+    if (configs.isEmpty()) {
+        qWarning().noquote()
+            << QStringLiteral("[DefaultSoftwareInitializer] redis_dispatch_config.json "
+                              "has no connections — Redis polling and subscriptions will be inactive");
         return;
     }
 
-    runtime->setGlobalPollingSampleParser(new ConfigDrivenSampleParser(config, runtime));
+    // Create the simple dispatch center.  It owns the worker threads.
+    // Parented to runtime so it is cleaned up on shutdown.
+    auto* dataCenter = new RedisDataCenter(configs, runtime, /*parent=*/runtime);
+    dataCenter->start();
 }
 
 void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
@@ -322,50 +312,28 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
         return;
     }
 
+    // Configure outbound control channels (unchanged — used for external control
+    // messages, ACK, and resync; unrelated to the data polling/subscription path).
     const QVariantMap profile = getSoftwareProfile();
     commHub->setOutboundChannels(
         outboundControlChannelFromProfile(profile),
         ackChannelFromProfile(profile));
+
     for (const QString& routingChannel : routingChannelsFromProfile(profile)) {
         commHub->addRoutingChannel(routingChannel);
     }
 
-    const RedisDispatchConfig& config = dispatchConfig();
-    if (!config.isValid()) {
-        return;
-    }
-
-    for (const RedisDispatchConfig::ConnectionEntry& entry : config.connections) {
-        commHub->addPollingConnection(entry);
-
-        for (const RedisDispatchConfig::SubscriptionChannelEntry& sub :
-             entry.subscriptionChannels)
-        {
-            if (sub.channel.isEmpty() || sub.module.isEmpty()) {
-                continue;
-            }
-            const QString sourceId = QStringLiteral("%1_%2").arg(
-                entry.connectionId, sub.channel);
-            commHub->addSubscriptionSource(
-                new SubscriptionSource(sourceId, sub.channel, sub.module));
-        }
-    }
+    // NOTE: Data polling and subscriptions are now managed by RedisDataCenter,
+    // which is created in configureAdditionalSettings().  Nothing more to do here.
 }
 
-const RedisDispatchConfig& DefaultSoftwareInitializer::dispatchConfig() const
+const QVector<RedisConnectionConfig>& DefaultSoftwareInitializer::connectionConfigs() const
 {
-    if (!m_dispatchConfigLoaded) {
-        m_dispatchConfigLoaded = true;
-        m_dispatchConfig =
-            RedisDispatchConfigLoader::loadFromFile(
-                QStringLiteral(":/redis_dispatch_config.json"));
-        if (!m_dispatchConfig.isValid()) {
-            qWarning().noquote()
-                << QStringLiteral("[DefaultSoftwareInitializer] redis_dispatch_config.json"
-                                  " not found or invalid — polling and sample parsing"
-                                  " will not be active");
-        }
+    if (!m_configLoaded) {
+        m_configLoaded = true;
+        m_connectionConfigs = RedisConnectionConfig::loadFromFile(
+            QStringLiteral(":/redis_dispatch_config.json"));
     }
-    return m_dispatchConfig;
+    return m_connectionConfigs;
 }
 
