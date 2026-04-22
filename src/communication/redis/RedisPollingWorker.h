@@ -24,6 +24,7 @@ public:
 
 public slots:
     void setConnection(const QString& host, int port);
+    void setDb(int db);
     void readKeys(const QStringList& keys);
 
 signals:
@@ -36,5 +37,7 @@ private:
     QString m_host;
     int m_port = 0;
     int m_connectTimeoutMs = 2000;
+    int m_db = 0;
+    bool m_dbSelected = false;
     redisContext* m_context = nullptr;
 };

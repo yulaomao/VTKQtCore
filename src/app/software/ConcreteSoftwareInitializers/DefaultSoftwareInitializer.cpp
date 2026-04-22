@@ -27,6 +27,7 @@
 
 #include <QHBoxLayout>
 #include <QLayout>
+#include <QMap>
 #include <QVector>
 
 namespace {
@@ -105,31 +106,21 @@ QString ackChannelFromProfile(const QVariantMap& profile)
         defaultAckChannel());
 }
 
-QStringList defaultGlobalPollingKeys()
+// Build a GlobalPollingPlan from a route table, so the key list is always
+// in sync with the routes and no key is accidentally omitted.
+GlobalPollingPlan createPollingPlanFromRoutes(const QMap<QString, PollingKeyRoute>& routes)
 {
-    return {
-        defaultPollingKey(QStringLiteral("params")),
-        defaultPollingKey(QStringLiteral("pointpick")),
-        defaultPollingKey(QStringLiteral("planning")),
-        defaultPollingKey(QStringLiteral("navigation")),
-        QStringLiteral("demo:navigation:transform:world"),
-        QStringLiteral("demo:navigation:transform:reference"),
-        QStringLiteral("demo:navigation:transform:patient"),
-        QStringLiteral("demo:navigation:transform:instrument"),
-        QStringLiteral("demo:navigation:transform:guide"),
-        QStringLiteral("demo:navigation:transform:tip"),
-    };
-}
+    QStringList keys;
+    keys.reserve(routes.size());
+    for (auto it = routes.cbegin(); it != routes.cend(); ++it) {
+        keys.append(it.key());
+    }
 
-GlobalPollingPlan createDefaultGlobalPollingPlan()
-{
-    GlobalPollingPlan plan(
-        QStringLiteral("framework_global_poll"),
-        defaultGlobalPollingKeys(),
-        16);
+    GlobalPollingPlan plan(QStringLiteral("framework_global_poll"), keys, 16);
     plan.setChangeDetection(true);
     plan.setMaxDispatchRateHz(60.0);
     plan.setActive(true);
+    plan.setKeyRoutes(routes);
     return plan;
 }
 
@@ -326,7 +317,9 @@ void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runti
         return;
     }
 
-    runtime->setGlobalPollingSampleParser(new DefaultGlobalPollingSampleParser(runtime));
+    auto* parser = new DefaultGlobalPollingSampleParser(runtime);
+    parser->setKeyRoutes(buildKeyRoutes());
+    runtime->setGlobalPollingSampleParser(parser);
 }
 
 void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
@@ -343,6 +336,41 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
         commHub->addRoutingChannel(routingChannel);
     }
 
-    commHub->setGlobalPollingPlan(createDefaultGlobalPollingPlan());
+    commHub->setGlobalPollingPlan(createPollingPlanFromRoutes(buildKeyRoutes()));
 }
 
+QMap<QString, PollingKeyRoute> DefaultSoftwareInitializer::buildKeyRoutes() const
+{
+    QMap<QString, PollingKeyRoute> routes;
+
+    // ── params ───────────────────────────────────────────────────────────────
+    routes.insert(defaultPollingKey(QStringLiteral("params")),
+                  {QStringLiteral("params"), QStringLiteral("state")});
+
+    // ── pointpick ─────────────────────────────────────────────────────────────
+    routes.insert(defaultPollingKey(QStringLiteral("pointpick")),
+                  {QStringLiteral("pointpick"), QStringLiteral("state")});
+
+    // ── planning ──────────────────────────────────────────────────────────────
+    routes.insert(defaultPollingKey(QStringLiteral("planning")),
+                  {QStringLiteral("planning"), QStringLiteral("state")});
+
+    // ── navigation ────────────────────────────────────────────────────────────
+    routes.insert(defaultPollingKey(QStringLiteral("navigation")),
+                  {QStringLiteral("navigation"), QStringLiteral("state")});
+
+    routes.insert(QStringLiteral("demo:navigation:transform:world"),
+                  {QStringLiteral("navigation"), QStringLiteral("transform:world")});
+    routes.insert(QStringLiteral("demo:navigation:transform:reference"),
+                  {QStringLiteral("navigation"), QStringLiteral("transform:reference")});
+    routes.insert(QStringLiteral("demo:navigation:transform:patient"),
+                  {QStringLiteral("navigation"), QStringLiteral("transform:patient")});
+    routes.insert(QStringLiteral("demo:navigation:transform:instrument"),
+                  {QStringLiteral("navigation"), QStringLiteral("transform:instrument")});
+    routes.insert(QStringLiteral("demo:navigation:transform:guide"),
+                  {QStringLiteral("navigation"), QStringLiteral("transform:guide")});
+    routes.insert(QStringLiteral("demo:navigation:transform:tip"),
+                  {QStringLiteral("navigation"), QStringLiteral("transform:tip")});
+
+    return routes;
+}

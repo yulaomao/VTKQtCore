@@ -27,6 +27,8 @@ private:
     TransformNode* findTrackedTransformNode(SceneGraph* scene,
                                             const QString& remoteNodeId) const;
     void applyTransformSample(const QVariantMap& payload);
+    void applyNavigationStateSample(const QVariantMap& payload,
+                                    const QString& sourceSampleId = QString());
     void emitNavigationState(const QString& sourceActionId = QString(),
                              const QString& sourceSampleId = QString());
     void emitTransformHealth(bool force = false,

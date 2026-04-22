@@ -168,7 +168,19 @@ void PointPickModuleLogicHandler::handleStateSample(const StateSample& sample)
         return;
     }
 
-    const QVariantMap payloadData = normalizedSampleData(sample);
+    // New batch format: data["values"]["state"] = pointpick payload map.
+    // Subscription / legacy format falls through to normalizedSampleData().
+    QVariantMap payloadData;
+    const QVariantMap values = sample.data.value(QStringLiteral("values")).toMap();
+    if (!values.isEmpty()) {
+        payloadData = values.value(QStringLiteral("state")).toMap();
+        if (payloadData.isEmpty()) {
+            payloadData = values.begin().value().toMap();
+        }
+    } else {
+        payloadData = normalizedSampleData(sample);
+    }
+
     bool changed = false;
 
     if (payloadData.contains(QStringLiteral("points"))) {

@@ -1,6 +1,9 @@
 #pragma once
 
 #include "BaseSoftwareInitializer.h"
+#include "communication/datasource/GlobalPollingPlan.h"
+
+#include <QMap>
 
 class DefaultSoftwareInitializer : public BaseSoftwareInitializer
 {
@@ -22,4 +25,9 @@ public:
                               ILogicGateway* gateway) override;
     void configureAdditionalSettings(LogicRuntime* runtime) override;
     void registerCommunicationSources(CommunicationHub* commHub) override;
+
+protected:
+    // Returns the full key-route table that drives the parser and polling plan.
+    // Subclasses can override to extend or replace the default routes.
+    virtual QMap<QString, PollingKeyRoute> buildKeyRoutes() const;
 };

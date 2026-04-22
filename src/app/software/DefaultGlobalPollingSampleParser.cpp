@@ -36,81 +36,16 @@ QVariant normalizeRedisValue(const QVariant& value)
     }
 }
 
-QString resolveModuleFromKey(const QString& redisKey)
-{
-    if (redisKey == QStringLiteral("state.params.latest")) {
-        return QStringLiteral("params");
-    }
-    if (redisKey == QStringLiteral("state.pointpick.latest")) {
-        return QStringLiteral("pointpick");
-    }
-    if (redisKey == QStringLiteral("state.planning.latest")) {
-        return QStringLiteral("planning");
-    }
-    if (redisKey == QStringLiteral("state.navigation.latest") ||
-        redisKey.startsWith(QStringLiteral("demo:navigation:transform:"))) {
-        return QStringLiteral("navigation");
-    }
-
-    return QString();
-}
-
-QString resolveModuleFromPayload(const QVariantMap& payload)
-{
-    if (payload.contains(QStringLiteral("parameters")) ||
-        payload.contains(QStringLiteral("parameterCount"))) {
-        return QStringLiteral("params");
-    }
-
-    if (payload.contains(QStringLiteral("points")) ||
-        payload.contains(QStringLiteral("confirmed")) ||
-        payload.contains(QStringLiteral("selectedIndex"))) {
-        return QStringLiteral("pointpick");
-    }
-
-    if (payload.contains(QStringLiteral("vertices")) ||
-        payload.contains(QStringLiteral("triangles")) ||
-        payload.contains(QStringLiteral("path")) ||
-        payload.contains(QStringLiteral("accepted"))) {
-        return QStringLiteral("planning");
-    }
-
-    if (payload.contains(QStringLiteral("matrixToParent")) ||
-        payload.contains(QStringLiteral("nodeId")) ||
-        payload.contains(QStringLiteral("navigating")) ||
-        payload.contains(QStringLiteral("worldMatrix")) ||
-        payload.contains(QStringLiteral("tipMatrix"))) {
-        return QStringLiteral("navigation");
-    }
-
-    return QString();
-}
-
-QVariantMap createSampleData(const QString& targetModule,
-                            const QString& redisKey,
-                            const QVariant& normalizedValue,
-                            const QString& sourceBatchSampleId)
-{
-    QVariantMap data;
-    data.insert(QStringLiteral("key"), redisKey);
-    data.insert(QStringLiteral("value"), normalizedValue);
-    data.insert(QStringLiteral("sourceBatchSampleId"), sourceBatchSampleId);
-
-    if (targetModule == QStringLiteral("params")) {
-        const QVariantMap parameters = normalizedValue.toMap();
-        if (!parameters.isEmpty()) {
-            data.insert(QStringLiteral("parameters"), parameters);
-        }
-    }
-
-    return data;
-}
-
-}
+} // namespace
 
 DefaultGlobalPollingSampleParser::DefaultGlobalPollingSampleParser(QObject* parent)
     : GlobalPollingSampleParser(parent)
 {
+}
+
+void DefaultGlobalPollingSampleParser::setKeyRoutes(const QMap<QString, PollingKeyRoute>& routes)
+{
+    m_keyRoutes = routes;
 }
 
 QVector<StateSample> DefaultGlobalPollingSampleParser::parse(const StateSample& batchSample) const
@@ -120,26 +55,49 @@ QVector<StateSample> DefaultGlobalPollingSampleParser::parse(const StateSample& 
         return {};
     }
 
-    QVector<StateSample> samples;
-    samples.reserve(rawValues.size());
+    // Phase 1: bucket normalised values by module using the route table.
+    // moduleValues[module][subKey] = decodedValue
+    QMap<QString, QVariantMap> moduleValues;
 
     for (auto it = rawValues.cbegin(); it != rawValues.cend(); ++it) {
+        const QString& redisKey = it.key();
         const QVariant normalizedValue = normalizeRedisValue(it.value());
-        const QVariantMap normalizedMap = normalizedValue.toMap();
 
-        QString targetModule = resolveModuleFromKey(it.key());
-        if (targetModule.isEmpty() && !normalizedMap.isEmpty()) {
-            targetModule = resolveModuleFromPayload(normalizedMap);
-        }
-        if (targetModule.isEmpty()) {
+        const auto routeIt = m_keyRoutes.constFind(redisKey);
+        if (routeIt == m_keyRoutes.constEnd()) {
             continue;
         }
 
+        const PollingKeyRoute& route = routeIt.value();
+        if (route.module.isEmpty()) {
+            continue;
+        }
+
+        const QString subKey = route.subKey.isEmpty() ? redisKey : route.subKey;
+        moduleValues[route.module].insert(subKey, normalizedValue);
+    }
+
+    if (moduleValues.isEmpty()) {
+        return {};
+    }
+
+    // Phase 2: produce exactly one StateSample per module.
+    QVector<StateSample> samples;
+    samples.reserve(moduleValues.size());
+
+    for (auto mit = moduleValues.cbegin(); mit != moduleValues.cend(); ++mit) {
+        const QString& module = mit.key();
+        const QVariantMap& values = mit.value();
+
+        QVariantMap sampleData;
+        sampleData.insert(QStringLiteral("values"), values);
+        sampleData.insert(QStringLiteral("sourceBatchSampleId"), batchSample.sampleId);
+
         StateSample sample = StateSample::create(
             batchSample.sourceId,
-            targetModule,
-            it.key(),
-            createSampleData(targetModule, it.key(), normalizedValue, batchSample.sampleId));
+            module,
+            QStringLiteral("%1_batch").arg(module),
+            sampleData);
         sample.timestampMs = batchSample.timestampMs;
         samples.append(sample);
     }
