@@ -20,12 +20,14 @@ public:
     explicit PlanningModuleLogicHandler(QObject* parent = nullptr);
 
     void handleAction(const UiAction& action) override;
-    void handleStateSample(const StateSample& sample) override;
+    void handlePollData(const QString& key, const QVariant& value) override;
+    void handleSubscribeData(const QString& channel, const QVariantMap& data) override;
     void onModuleActivated() override;
     void onModuleDeactivated() override;
     void onResync() override;
 
 private:
+    void handleIncomingData(const QVariantMap& payloadData);
     ModelNode* ensurePlanModelNode(SceneGraph* scene);
     BillboardArrowNode* ensurePlanPathArrowNode(SceneGraph* scene);
     QVector<BillboardLineNode*> ensurePlanPathSegmentNodes(SceneGraph* scene, int segmentCount);

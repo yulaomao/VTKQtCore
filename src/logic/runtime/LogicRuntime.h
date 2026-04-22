@@ -3,7 +3,6 @@
 #include <QObject>
 #include <QMap>
 
-#include "communication/datasource/StateSample.h"
 #include "contracts/ModuleInvoke.h"
 #include "contracts/UiAction.h"
 #include "contracts/LogicNotification.h"
@@ -13,7 +12,6 @@ class SceneGraph;
 class ActiveModuleState;
 class ModuleLogicRegistry;
 class ModuleLogicHandler;
-class GlobalPollingSampleParser;
 class IRedisCommandAccess;
 
 class LogicRuntime : public QObject, public IModuleInvoker
@@ -26,7 +24,8 @@ public:
     SceneGraph* getSceneGraph() const;
     ActiveModuleState* getActiveModuleState() const;
     ModuleLogicRegistry* getModuleLogicRegistry() const;
-    void setGlobalPollingSampleParser(GlobalPollingSampleParser* parser);
+
+    // Optional Redis command access used by module handlers for direct GET/SET/PUBLISH.
     void setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess);
     bool hasRedisCommandAccess() const;
     QVariant readRedisValue(const QString& key);
@@ -36,22 +35,12 @@ public:
     bool writeRedisJsonValue(const QString& key, const QVariantMap& value);
     bool publishRedisMessage(const QString& channel, const QByteArray& message);
     bool publishRedisJsonMessage(const QString& channel, const QVariantMap& payload);
-    ModuleInvokeResult invokeModule(const ModuleInvokeRequest& request) override;
 
+    ModuleInvokeResult invokeModule(const ModuleInvokeRequest& request) override;
     void registerModuleHandler(ModuleLogicHandler* handler);
 
 public slots:
     void onActionReceived(const UiAction& action);
-    void onControlMessageReceived(const QString& module, const QVariantMap& payload);
-    void onServerCommandReceived(const QString& commandType, const QVariantMap& payload);
-    void onStateSampleReceived(const StateSample& sample);
-    void onCommunicationError(const QString& source, const QString& errorMessage);
-    void onCommunicationIssue(const QString& source, const QString& severity,
-                              const QString& errorCode, const QString& errorMessage,
-                              const QVariantMap& context);
-    void onCommunicationHealthChanged(const QVariantMap& healthSnapshot);
-    void onConnectionStateChanged(const QString& state);
-    void requestResync(const QString& reason);
 
 signals:
     void logicNotification(const LogicNotification& notification);
@@ -65,7 +54,6 @@ private:
     SceneGraph* m_sceneGraph;
     ActiveModuleState* m_activeModuleState;
     ModuleLogicRegistry* m_moduleLogicRegistry;
-    GlobalPollingSampleParser* m_globalPollingSampleParser = nullptr;
     IRedisCommandAccess* m_redisCommandAccess = nullptr;
     QMap<QString, qint64> m_lastInboundSeqByStream;
 };

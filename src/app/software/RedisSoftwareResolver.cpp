@@ -1,31 +1,27 @@
 #include "RedisSoftwareResolver.h"
-#include "RedisGateway.h"
+#include "communication/hub/IRedisCommandAccess.h"
 
-RedisSoftwareResolver::RedisSoftwareResolver(RedisGateway* gateway, QObject* parent)
+RedisSoftwareResolver::RedisSoftwareResolver(IRedisCommandAccess* commandAccess, QObject* parent)
     : QObject(parent)
-    , gateway(gateway)
+    , m_commandAccess(commandAccess)
 {
 }
 
 QString RedisSoftwareResolver::resolveSoftwareType()
 {
-    if (!gateway) {
+    if (!m_commandAccess) {
         return QStringLiteral("default");
     }
 
-    QString type = gateway->readString(QStringLiteral("current_software_type"));
-    if (type.isEmpty()) {
-        return QStringLiteral("default");
-    }
-    return type;
+    const QString type = m_commandAccess->readStringValue(QStringLiteral("current_software_type"));
+    return type.isEmpty() ? QStringLiteral("default") : type;
 }
 
 QVariantMap RedisSoftwareResolver::resolveSoftwareProfile()
 {
-    if (!gateway) {
+    if (!m_commandAccess) {
         return {};
     }
 
-    QVariantMap profile = gateway->readJson(QStringLiteral("software_profile"));
-    return profile;
+    return m_commandAccess->readJsonValue(QStringLiteral("software_profile"));
 }

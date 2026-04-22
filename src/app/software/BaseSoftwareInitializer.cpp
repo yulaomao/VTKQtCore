@@ -2,7 +2,7 @@
 #include "MainWindow.h"
 #include "LogicRuntime.h"
 #include "ILogicGateway.h"
-#include "CommunicationHub.h"
+#include "communication/MessageDispatchCenter.h"
 #include "ApplicationCoordinator.h"
 #include "PageManager.h"
 #include "GlobalUiManager.h"
@@ -49,7 +49,8 @@ QVariantMap BaseSoftwareInitializer::getSoftwareProfile() const
 }
 
 void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* logicRuntime,
-                                         ILogicGateway* gateway, CommunicationHub* commHub)
+                                         ILogicGateway* gateway,
+                                         MessageDispatchCenter* dispatchCenter)
 {
     const QStringList moduleDisplayOrder = configuredModuleDisplayOrder();
     const QString initialModule = configuredInitialModule();
@@ -88,33 +89,14 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
     // 8. Configure additional settings
     configureAdditionalSettings(logicRuntime);
 
-    // 8.1 Register communication sources once module selection has been resolved
-    registerCommunicationSources(commHub);
+    // 9. Configure the dispatch center (connections and module routing)
+    configureDispatchCenter(dispatchCenter);
 
-    // 9. Connect gateway notifications back into the UI coordination layer
+    // 10. Connect gateway notifications back into the UI coordination layer
     QObject::connect(gateway, &ILogicGateway::notificationReceived,
                      m_appCoordinator, &ApplicationCoordinator::onShellNotification);
 
-    if (commHub && getRunMode() == RunMode::Redis) {
-        QObject::connect(commHub, &CommunicationHub::controlMessageReceived,
-                         logicRuntime, &LogicRuntime::onControlMessageReceived);
-        QObject::connect(commHub, &CommunicationHub::serverCommandReceived,
-                         logicRuntime, &LogicRuntime::onServerCommandReceived);
-        QObject::connect(commHub, &CommunicationHub::stateSampleReceived,
-                         logicRuntime, &LogicRuntime::onStateSampleReceived);
-        QObject::connect(commHub, &CommunicationHub::communicationError,
-                         logicRuntime, &LogicRuntime::onCommunicationError);
-        QObject::connect(commHub, &CommunicationHub::communicationIssue,
-                 logicRuntime, &LogicRuntime::onCommunicationIssue);
-        QObject::connect(commHub, &CommunicationHub::healthSnapshotChanged,
-                 logicRuntime, &LogicRuntime::onCommunicationHealthChanged);
-        QObject::connect(commHub, &CommunicationHub::connectionStateChanged,
-                         logicRuntime, &LogicRuntime::onConnectionStateChanged);
-
-        logicRuntime->onConnectionStateChanged(commHub->getConnectionStateName());
-    }
-
-    // 10. Enter the initial module through the standard action path
+    // 11. Enter the initial module through the standard action path
     if (m_appCoordinator && m_appCoordinator->getActionDispatcher()) {
         m_appCoordinator->getActionDispatcher()->requestModuleSwitch(initialModule);
     }
@@ -131,9 +113,9 @@ void BaseSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
     Q_UNUSED(gateway);
 }
 
-void BaseSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
+void BaseSoftwareInitializer::configureDispatchCenter(MessageDispatchCenter* center)
 {
-    Q_UNUSED(commHub);
+    Q_UNUSED(center);
 }
 
 void BaseSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runtime)

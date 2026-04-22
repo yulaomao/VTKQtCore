@@ -1,7 +1,6 @@
 #include "LogicRuntime.h"
 
 #include "communication/hub/IRedisCommandAccess.h"
-#include "logic/runtime/GlobalPollingSampleParser.h"
 #include "scene/SceneGraph.h"
 #include "workflow/ActiveModuleState.h"
 #include "registry/ModuleLogicRegistry.h"
@@ -27,40 +26,6 @@ bool isSwitchModuleCommand(const QString& command)
 {
     return command == QStringLiteral("switch_module") ||
         command == QStringLiteral("request_switch_module");
-}
-
-QVariantMap extractPayloadMap(const QVariantMap& input)
-{
-    QVariantMap payload = input.value(QStringLiteral("payload")).toMap();
-    if (payload.isEmpty()) {
-        payload = input;
-    }
-
-    payload.remove(QStringLiteral("category"));
-    payload.remove(QStringLiteral("msgId"));
-    payload.remove(QStringLiteral("module"));
-    payload.remove(QStringLiteral("actionId"));
-    payload.remove(QStringLiteral("actionType"));
-    payload.remove(QStringLiteral("commandType"));
-    payload.remove(QStringLiteral("timestampMs"));
-    return payload;
-}
-
-QStringList toStringList(const QVariant& value)
-{
-    if (value.canConvert<QStringList>()) {
-        return value.toStringList();
-    }
-
-    QStringList result;
-    const QVariantList list = value.toList();
-    for (const QVariant& item : list) {
-        const QString text = item.toString();
-        if (!text.isEmpty()) {
-            result.append(text);
-        }
-    }
-    return result;
 }
 
 LogicNotification createShellError(const QString& errorCode,
@@ -104,11 +69,6 @@ QString describeAction(const UiAction& action)
     return command.isEmpty() ? UiAction::toString(action.actionType) : command;
 }
 
-bool isGlobalPollingBatchSample(const StateSample& sample)
-{
-    return sample.module.isEmpty() && sample.sampleType == QStringLiteral("global_poll_batch");
-}
-
 } // namespace
 
 LogicRuntime::LogicRuntime(QObject* parent)
@@ -132,22 +92,6 @@ ActiveModuleState* LogicRuntime::getActiveModuleState() const
 ModuleLogicRegistry* LogicRuntime::getModuleLogicRegistry() const
 {
     return m_moduleLogicRegistry;
-}
-
-void LogicRuntime::setGlobalPollingSampleParser(GlobalPollingSampleParser* parser)
-{
-    if (m_globalPollingSampleParser == parser) {
-        return;
-    }
-
-    if (m_globalPollingSampleParser) {
-        m_globalPollingSampleParser->deleteLater();
-    }
-
-    m_globalPollingSampleParser = parser;
-    if (m_globalPollingSampleParser && !m_globalPollingSampleParser->parent()) {
-        m_globalPollingSampleParser->setParent(this);
-    }
 }
 
 void LogicRuntime::setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess)
@@ -271,300 +215,6 @@ void LogicRuntime::onActionReceived(const UiAction& action)
     routeToModuleHandler(action);
 }
 
-void LogicRuntime::onControlMessageReceived(const QString& module, const QVariantMap& payload)
-{
-    const QString streamKey = QStringLiteral("control:%1").arg(
-        module.isEmpty() ? QStringLiteral("shell") : module);
-    if (!acceptIncomingSequence(streamKey, payload, QStringLiteral("control message"))) {
-        return;
-    }
-
-    QVariantMap actionPayload = extractPayloadMap(payload);
-    const QString rawActionType = normalizeKey(payload.value(QStringLiteral("actionType")).toString());
-    if (!rawActionType.isEmpty() &&
-        rawActionType != UiAction::toString(UiAction::CustomAction) &&
-        actionCommand(actionPayload).isEmpty()) {
-        actionPayload.insert(QStringLiteral("command"), rawActionType);
-    }
-
-    QString targetModule = module;
-    if (targetModule.isEmpty()) {
-        targetModule = payload.value(QStringLiteral("module")).toString();
-    }
-    if (targetModule.isEmpty()) {
-        targetModule = payload.value(QStringLiteral("targetModule")).toString();
-    }
-    if (targetModule.isEmpty()) {
-        targetModule = isSwitchModuleCommand(actionCommand(actionPayload))
-            ? QStringLiteral("shell")
-            : m_activeModuleState->getCurrentModule();
-    }
-
-    UiAction action = UiAction::create(UiAction::CustomAction, targetModule, actionPayload);
-    const QString externalActionId = payload.value(QStringLiteral("actionId")).toString().isEmpty()
-        ? payload.value(QStringLiteral("msgId")).toString()
-        : payload.value(QStringLiteral("actionId")).toString();
-    if (!externalActionId.isEmpty()) {
-        action.actionId = externalActionId;
-    }
-    if (payload.contains(QStringLiteral("timestampMs"))) {
-        action.timestampMs = payload.value(QStringLiteral("timestampMs")).toLongLong();
-    }
-
-    onActionReceived(action);
-}
-
-void LogicRuntime::onServerCommandReceived(const QString& commandType, const QVariantMap& payload)
-{
-    const QString streamKey = QStringLiteral("command:%1").arg(normalizeKey(commandType));
-    if (!acceptIncomingSequence(streamKey, payload, QStringLiteral("server command"))) {
-        return;
-    }
-
-    const QString normalizedCommand = normalizeKey(commandType);
-    const QVariantMap commandPayload = extractPayloadMap(payload);
-
-    if (normalizedCommand == QStringLiteral("switch_module") ||
-        normalizedCommand == QStringLiteral("request_switch_module")) {
-        const QString targetModule = commandPayload.value(QStringLiteral("targetModule")).toString();
-        if (targetModule.isEmpty()) {
-            emit logicNotification(createShellError(
-                QStringLiteral("COMM_INVALID_COMMAND"),
-                QStringLiteral("switch_module command missing targetModule"),
-                true,
-                QStringLiteral("Resend the server command with a target module.")));
-            return;
-        }
-
-        UiAction action = UiAction::create(
-            UiAction::CustomAction,
-            QStringLiteral("shell"),
-            {{QStringLiteral("command"), normalizedCommand},
-             {QStringLiteral("targetModule"), targetModule}});
-        const QString sourceActionId = payload.value(QStringLiteral("msgId")).toString();
-        if (!sourceActionId.isEmpty()) {
-            action.actionId = sourceActionId;
-        }
-        onActionReceived(action);
-        return;
-    }
-
-    if (normalizedCommand == QStringLiteral("next_step") ||
-        normalizedCommand == QStringLiteral("prev_step")) {
-        QString targetModule = commandPayload.value(QStringLiteral("targetModule")).toString();
-        if (targetModule.isEmpty()) {
-            targetModule = commandPayload.value(QStringLiteral("module")).toString();
-        }
-        if (targetModule.isEmpty()) {
-            targetModule = m_activeModuleState->getCurrentModule();
-        }
-
-        QVariantMap actionPayload = commandPayload;
-        actionPayload.insert(QStringLiteral("command"), normalizedCommand);
-
-        UiAction action = UiAction::create(
-            UiAction::CustomAction,
-            targetModule,
-            actionPayload);
-        const QString sourceActionId = payload.value(QStringLiteral("msgId")).toString();
-        if (!sourceActionId.isEmpty()) {
-            action.actionId = sourceActionId;
-        }
-        onActionReceived(action);
-        return;
-    }
-
-    if (normalizedCommand == QStringLiteral("resync") ||
-        normalizedCommand == QStringLiteral("request_resync") ||
-        normalizedCommand == QStringLiteral("resync_request")) {
-        requestResync(commandPayload.value(QStringLiteral("reason")).toString());
-        return;
-    }
-
-    if (normalizedCommand == QStringLiteral("datagen_test_action") ||
-        normalizedCommand == QStringLiteral("datagen_custom_action")) {
-        ModuleInvokeRequest request = ModuleInvokeRequest::create(
-            QStringLiteral("server"),
-            QStringLiteral("datagen"),
-            commandPayload.value(QStringLiteral("command")).toString(),
-            commandPayload);
-        const ModuleInvokeResult result = invokeModule(request);
-        if (!result.ok) {
-            emit logicNotification(createShellError(
-                QStringLiteral("SERVER_COMMAND_INVOKE_FAILED"),
-                result.message,
-                true,
-                QStringLiteral("Verify datagen invoke routing and payload."),
-                {{QStringLiteral("targetModule"), QStringLiteral("datagen")},
-                 {QStringLiteral("method"), request.method},
-                 {QStringLiteral("errorCode"), result.errorCode}}));
-        }
-        return;
-    }
-
-    if (normalizedCommand == QStringLiteral("active_module_sync")) {
-        const QString currentModule = commandPayload.value(QStringLiteral("currentModule")).toString();
-        const QString sourceActionId = payload.value(QStringLiteral("msgId")).toString();
-        if (!currentModule.isEmpty()) {
-            if (m_moduleLogicRegistry->getHandler(currentModule) &&
-                currentModule != m_activeModuleState->getCurrentModule()) {
-                switchToModule(currentModule, sourceActionId);
-            } else if (!m_moduleLogicRegistry->getHandler(currentModule)) {
-                LogicNotification notification = createShellError(
-                    QStringLiteral("ACTIVE_MODULE_SYNC_TARGET_UNREGISTERED"),
-                    QStringLiteral("Active module sync references unregistered module '%1'").arg(currentModule),
-                    true,
-                    QStringLiteral("Verify the server active_module_sync payload and module registration."),
-                    {{QStringLiteral("targetModule"), currentModule}});
-                notification.setSourceActionId(sourceActionId);
-                notification.setLevel(LogicNotification::Warning);
-                emit logicNotification(notification);
-            } else {
-                LogicNotification notification = LogicNotification::create(
-                    LogicNotification::ActiveModuleChanged,
-                    LogicNotification::Shell,
-                    m_activeModuleState->createSnapshot());
-                notification.setSourceActionId(sourceActionId);
-                emit logicNotification(notification);
-            }
-        } else {
-            LogicNotification notification = LogicNotification::create(
-                LogicNotification::ActiveModuleChanged,
-                LogicNotification::Shell,
-                m_activeModuleState->createSnapshot());
-            notification.setSourceActionId(sourceActionId);
-            emit logicNotification(notification);
-        }
-        return;
-    }
-
-    emit logicNotification(createShellError(
-        QStringLiteral("COMM_UNSUPPORTED_COMMAND"),
-        QStringLiteral("Unsupported server command '%1'").arg(commandType),
-        true,
-        QStringLiteral("Verify server command routing.")));
-}
-
-void LogicRuntime::onStateSampleReceived(const StateSample& sample)
-{
-    if (isGlobalPollingBatchSample(sample)) {
-        if (!m_globalPollingSampleParser) {
-            emit logicNotification(createShellError(
-                QStringLiteral("DATA_GLOBAL_POLLING_PARSER_MISSING"),
-                QStringLiteral("Global polling batch received without a configured parser"),
-                true,
-                QStringLiteral("Configure a GlobalPollingSampleParser before starting Redis mode."),
-                {{QStringLiteral("sampleId"), sample.sampleId}}));
-            return;
-        }
-
-        const QVector<StateSample> routedSamples = m_globalPollingSampleParser->parse(sample);
-        for (const StateSample& routedSample : routedSamples) {
-            onStateSampleReceived(routedSample);
-        }
-        return;
-    }
-
-    QString targetModule = sample.module;
-    if (targetModule.isEmpty()) {
-        targetModule = m_activeModuleState->getCurrentModule();
-    }
-
-    ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(targetModule);
-    if (!handler) {
-        emit logicNotification(createShellError(
-            QStringLiteral("DATA_UNROUTED_SAMPLE"),
-            QStringLiteral("No module handler registered for state sample target '%1'").arg(targetModule),
-            true,
-            QStringLiteral("Check sample.module and module registration."),
-            {{QStringLiteral("sampleId"), sample.sampleId},
-             {QStringLiteral("sampleType"), sample.sampleType}}));
-        return;
-    }
-
-    handler->handleStateSample(sample);
-}
-
-void LogicRuntime::onCommunicationError(const QString& source, const QString& errorMessage)
-{
-    emit logicNotification(createShellError(
-        QStringLiteral("COMM_CHANNEL_ERROR"),
-        errorMessage,
-        true,
-        QStringLiteral("Check Redis connectivity and request resync if needed."),
-        {{QStringLiteral("source"), source}}));
-}
-
-void LogicRuntime::onCommunicationIssue(const QString& source,
-                                        const QString& severity,
-                                        const QString& errorCode,
-                                        const QString& errorMessage,
-                                        const QVariantMap& context)
-{
-    QVariantMap payload = context;
-    payload.insert(QStringLiteral("source"), source);
-    payload.insert(QStringLiteral("severity"), severity);
-
-    LogicNotification notification = createShellError(
-        errorCode,
-        errorMessage,
-        severity != QStringLiteral("critical"),
-        QStringLiteral("Inspect communication health metrics and upstream transport state."),
-        payload);
-
-    if (severity == QStringLiteral("critical") || severity == QStringLiteral("error")) {
-        notification.setLevel(LogicNotification::Error);
-    } else {
-        notification.setLevel(LogicNotification::Warning);
-    }
-
-    emit logicNotification(notification);
-}
-
-void LogicRuntime::onCommunicationHealthChanged(const QVariantMap& healthSnapshot)
-{
-    LogicNotification notification = LogicNotification::create(
-        LogicNotification::CustomEvent,
-        LogicNotification::Shell,
-        healthSnapshot);
-    notification.payload.insert(QStringLiteral("eventName"), QStringLiteral("communication_health"));
-    emit logicNotification(notification);
-}
-
-void LogicRuntime::onConnectionStateChanged(const QString& state)
-{
-    QString shellState = state;
-    if (state == QStringLiteral("Reconnecting")) {
-        shellState = QStringLiteral("Degraded");
-    }
-
-    LogicNotification notification = LogicNotification::create(
-        LogicNotification::ConnectionStateChanged,
-        LogicNotification::Shell,
-        {{QStringLiteral("state"), shellState},
-         {QStringLiteral("rawState"), state}});
-    emit logicNotification(notification);
-}
-
-void LogicRuntime::requestResync(const QString& reason)
-{
-    const QStringList registeredModules = m_moduleLogicRegistry->getRegisteredModules();
-    for (const QString& moduleId : registeredModules) {
-        ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(moduleId);
-        if (handler) {
-            handler->onResync();
-        }
-    }
-
-    LogicNotification notification = LogicNotification::create(
-        LogicNotification::ActiveModuleChanged,
-        LogicNotification::Shell,
-        m_activeModuleState->createSnapshot());
-    notification.payload.insert(QStringLiteral("resyncRequested"), true);
-    notification.payload.insert(QStringLiteral("reason"), reason);
-    emit logicNotification(notification);
-}
-
 void LogicRuntime::switchToModule(const QString& targetModule, const QString& sourceActionId)
 {
     const QString oldModule = m_activeModuleState->getCurrentModule();
@@ -573,7 +223,6 @@ void LogicRuntime::switchToModule(const QString& targetModule, const QString& so
         return;
     }
 
-    // Deactivate old module handler
     if (!oldModule.isEmpty()) {
         ModuleLogicHandler* oldHandler = m_moduleLogicRegistry->getHandler(oldModule);
         if (oldHandler) {
@@ -581,16 +230,13 @@ void LogicRuntime::switchToModule(const QString& targetModule, const QString& so
         }
     }
 
-    // Update active module state
     m_activeModuleState->setCurrentModule(targetModule);
 
-    // Activate new module handler
     ModuleLogicHandler* newHandler = m_moduleLogicRegistry->getHandler(targetModule);
     if (newHandler) {
         newHandler->onModuleActivated();
     }
 
-    // Emit ModuleChanged notification with Shell scope
     LogicNotification notification = LogicNotification::create(
         LogicNotification::ModuleChanged,
         LogicNotification::Shell,

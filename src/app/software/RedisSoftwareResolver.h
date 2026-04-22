@@ -4,18 +4,18 @@
 #include <QString>
 #include <QVariantMap>
 
-class RedisGateway;
+class IRedisCommandAccess;
 
 class RedisSoftwareResolver : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit RedisSoftwareResolver(RedisGateway* gateway, QObject* parent = nullptr);
+    explicit RedisSoftwareResolver(IRedisCommandAccess* commandAccess, QObject* parent = nullptr);
 
     QString resolveSoftwareType();
     QVariantMap resolveSoftwareProfile();
 
 private:
-    RedisGateway* gateway;
+    IRedisCommandAccess* m_commandAccess;
 };

@@ -5,14 +5,22 @@
 #include "logic/scene/nodes/PointNode.h"
 
 #include <array>
+#include <QByteArray>
+#include <QJsonDocument>
 #include <QStringList>
 
 namespace {
 
-QVariantMap normalizedSampleData(const StateSample& sample)
+QVariantMap decodeJsonValue(const QVariant& value)
 {
-    QVariantMap payload = sample.data.value(QStringLiteral("value")).toMap();
-    return payload.isEmpty() ? sample.data : payload;
+    const QByteArray bytes = value.toByteArray();
+    if (!bytes.isEmpty()) {
+        const QJsonDocument doc = QJsonDocument::fromJson(bytes);
+        if (doc.isObject()) {
+            return doc.object().toVariantMap();
+        }
+    }
+    return value.toMap();
 }
 
 bool extractPointPosition(const QVariant& value, std::array<double, 3>& position)
@@ -160,7 +168,20 @@ void PointPickModuleLogicHandler::handleAction(const UiAction& action)
     emitSelectionState(action.actionId);
 }
 
-void PointPickModuleLogicHandler::handleStateSample(const StateSample& sample)
+void PointPickModuleLogicHandler::handlePollData(const QString& key, const QVariant& value)
+{
+    Q_UNUSED(key)
+    handleIncomingData(decodeJsonValue(value));
+}
+
+void PointPickModuleLogicHandler::handleSubscribeData(const QString& channel,
+                                                      const QVariantMap& data)
+{
+    Q_UNUSED(channel)
+    handleIncomingData(data);
+}
+
+void PointPickModuleLogicHandler::handleIncomingData(const QVariantMap& payloadData)
 {
     SceneGraph* scene = getSceneGraph();
     auto* pointNode = ensureSelectionNode(scene);
@@ -168,7 +189,6 @@ void PointPickModuleLogicHandler::handleStateSample(const StateSample& sample)
         return;
     }
 
-    const QVariantMap payloadData = normalizedSampleData(sample);
     bool changed = false;
 
     if (payloadData.contains(QStringLiteral("points"))) {
@@ -200,12 +220,13 @@ void PointPickModuleLogicHandler::handleStateSample(const StateSample& sample)
     }
 
     if (payloadData.contains(QStringLiteral("selectedIndex"))) {
-        pointNode->setSelectedPointIndex(payloadData.value(QStringLiteral("selectedIndex")).toInt());
+        pointNode->setSelectedPointIndex(
+            payloadData.value(QStringLiteral("selectedIndex")).toInt());
         changed = true;
     }
 
     if (changed) {
-        emitSelectionState(sample.sampleId);
+        emitSelectionState();
     }
 }
 

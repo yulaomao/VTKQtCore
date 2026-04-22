@@ -6,6 +6,7 @@
 #include "logic/scene/nodes/TransformNode.h"
 
 #include <QDateTime>
+#include <QJsonDocument>
 #include <QVariantList>
 
 namespace {
@@ -43,10 +44,16 @@ const NavigationTransformDescriptor* findDescriptor(const QString& remoteId)
     return nullptr;
 }
 
-QVariantMap normalizedSampleData(const StateSample& sample)
+QVariantMap decodeJsonValue(const QVariant& value)
 {
-    QVariantMap payload = sample.data.value(QStringLiteral("value")).toMap();
-    return payload.isEmpty() ? sample.data : payload;
+    const QByteArray bytes = value.toByteArray();
+    if (!bytes.isEmpty()) {
+        const QJsonDocument doc = QJsonDocument::fromJson(bytes);
+        if (doc.isObject()) {
+            return doc.object().toVariantMap();
+        }
+    }
+    return value.toMap();
 }
 
 bool extractPosition(const QVariantMap& payload, double& x, double& y, double& z)
@@ -204,14 +211,29 @@ void NavigationModuleLogicHandler::handleAction(const UiAction& action)
     }
 }
 
-void NavigationModuleLogicHandler::handleStateSample(const StateSample& sample)
+void NavigationModuleLogicHandler::handlePollData(const QString& key, const QVariant& value)
 {
-    const QVariantMap payloadData = normalizedSampleData(sample);
+    Q_UNUSED(key)
+    handleIncomingData(decodeJsonValue(value));
+}
+
+void NavigationModuleLogicHandler::handleSubscribeData(const QString& channel,
+                                                       const QVariantMap& data)
+{
+    Q_UNUSED(channel)
+    handleIncomingData(data);
+}
+
+void NavigationModuleLogicHandler::handleIncomingData(const QVariantMap& payloadData)
+{
+    if (payloadData.isEmpty()) {
+        return;
+    }
 
     if (payloadData.contains(QStringLiteral("nodeId")) &&
         payloadData.contains(QStringLiteral("matrixToParent"))) {
         applyTransformSample(payloadData);
-        emitTransformHealth(false, sample.sampleId);
+        emitTransformHealth(false);
         return;
     }
 
@@ -249,7 +271,7 @@ void NavigationModuleLogicHandler::handleStateSample(const StateSample& sample)
     }
 
     if (changed || hasPosition) {
-        emitNavigationState(QString(), sample.sampleId);
+        emitNavigationState();
     }
 }
 

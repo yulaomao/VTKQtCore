@@ -1,14 +1,13 @@
 #include "DefaultSoftwareInitializer.h"
 
-#include "DefaultGlobalPollingSampleParser.h"
 #include "ModuleUiAssemblers.h"
 #include "SoftwareInitializerFactory.h"
 #include "ApplicationCoordinator.h"
 #include "ILogicGateway.h"
 #include "LogicRuntime.h"
 #include "MainWindow.h"
-#include "communication/datasource/GlobalPollingPlan.h"
-#include "communication/hub/CommunicationHub.h"
+#include "communication/MessageDispatchCenter.h"
+#include "communication/RedisConnectionConfig.h"
 #include "modules/intermoduletest/InterModuleReceiverLogicHandler.h"
 #include "modules/intermoduletest/InterModuleReceiverWidget.h"
 #include "modules/intermoduletest/InterModuleSenderLogicHandler.h"
@@ -31,123 +30,51 @@
 
 namespace {
 
-QString stringFromVariantOrDefault(const QVariant& value, const QString& fallback)
+// Build the two Redis connections used by the default software profile.
+//
+//  conn_main  – DB 0, carries params / pointpick / planning state.
+//  conn_nav   – DB 1, carries navigation state and transform frames.
+QVector<RedisConnectionConfig> buildDefaultConnections()
 {
-    const QString text = value.toString().trimmed();
-    return text.isEmpty() ? fallback : text;
-}
-
-QString defaultSubscriptionChannel(const QString& moduleId)
-{
-    return QStringLiteral("state.%1").arg(moduleId);
-}
-
-QString defaultControlRoutingChannel()
-{
-    return QStringLiteral("control.downstream");
-}
-
-QString defaultControlPublishChannel()
-{
-    return QStringLiteral("control.upstream");
-}
-
-QString defaultAckChannel()
-{
-    return QStringLiteral("control.ack");
-}
-
-QString defaultPollingKey(const QString& moduleId)
-{
-    return QStringLiteral("state.%1.latest").arg(moduleId);
-}
-
-QVariantMap communicationProfile(const QVariantMap& profile)
-{
-    return profile.value(QStringLiteral("communication")).toMap();
-}
-
-QStringList stringListFromVariant(const QVariant& value)
-{
-    if (value.canConvert<QStringList>()) {
-        return value.toStringList();
-    }
-
-    QStringList result;
-    const QVariantList list = value.toList();
-    for (const QVariant& item : list) {
-        const QString text = item.toString().trimmed();
-        if (!text.isEmpty()) {
-            result.append(text);
-        }
-    }
-    return result;
-}
-
-QStringList routingChannelsFromProfile(const QVariantMap& profile)
-{
-    const QStringList channels = stringListFromVariant(
-        communicationProfile(profile).value(QStringLiteral("routingChannels")));
-    return channels.isEmpty() ? QStringList{defaultControlRoutingChannel()} : channels;
-}
-
-QString outboundControlChannelFromProfile(const QVariantMap& profile)
-{
-    return stringFromVariantOrDefault(
-        communicationProfile(profile).value(QStringLiteral("controlPublishChannel")),
-        defaultControlPublishChannel());
-}
-
-QString ackChannelFromProfile(const QVariantMap& profile)
-{
-    return stringFromVariantOrDefault(
-        communicationProfile(profile).value(QStringLiteral("ackChannel")),
-        defaultAckChannel());
-}
-
-QStringList defaultGlobalPollingKeys()
-{
-    return {
-        defaultPollingKey(QStringLiteral("params")),
-        defaultPollingKey(QStringLiteral("pointpick")),
-        defaultPollingKey(QStringLiteral("planning")),
-        defaultPollingKey(QStringLiteral("navigation")),
-        QStringLiteral("demo:navigation:transform:world"),
-        QStringLiteral("demo:navigation:transform:reference"),
-        QStringLiteral("demo:navigation:transform:patient"),
-        QStringLiteral("demo:navigation:transform:instrument"),
-        QStringLiteral("demo:navigation:transform:guide"),
-        QStringLiteral("demo:navigation:transform:tip"),
+    RedisConnectionConfig connMain;
+    connMain.connectionId   = QStringLiteral("conn_main");
+    connMain.host           = QStringLiteral("127.0.0.1");
+    connMain.port           = 6379;
+    connMain.db             = 0;
+    connMain.pollIntervalMs = 16;
+    connMain.pollingKeyGroups = {
+        { QStringLiteral("params"),    { QStringLiteral("state.params.latest") } },
+        { QStringLiteral("pointpick"), { QStringLiteral("state.pointpick.latest") } },
+        { QStringLiteral("planning"),  { QStringLiteral("state.planning.latest") } },
     };
-}
+    connMain.subscriptionChannels = {
+        { QStringLiteral("state.params"),    QStringLiteral("params") },
+        { QStringLiteral("state.pointpick"), QStringLiteral("pointpick") },
+        { QStringLiteral("state.planning"),  QStringLiteral("planning") },
+    };
 
-GlobalPollingPlan createDefaultGlobalPollingPlan()
-{
-    GlobalPollingPlan plan(
-        QStringLiteral("framework_global_poll"),
-        defaultGlobalPollingKeys(),
-        16);
-    plan.setChangeDetection(true);
-    plan.setMaxDispatchRateHz(60.0);
-    plan.setActive(true);
-    return plan;
-}
+    RedisConnectionConfig connNav;
+    connNav.connectionId   = QStringLiteral("conn_nav");
+    connNav.host           = QStringLiteral("127.0.0.1");
+    connNav.port           = 6379;
+    connNav.db             = 1;
+    connNav.pollIntervalMs = 16;
+    connNav.pollingKeyGroups = {
+        { QStringLiteral("navigation"), { QStringLiteral("state.navigation.latest") } },
+        { QStringLiteral("navigation"), {
+              QStringLiteral("demo:navigation:transform:world"),
+              QStringLiteral("demo:navigation:transform:reference"),
+              QStringLiteral("demo:navigation:transform:patient"),
+              QStringLiteral("demo:navigation:transform:instrument"),
+              QStringLiteral("demo:navigation:transform:guide"),
+              QStringLiteral("demo:navigation:transform:tip"),
+          }},
+    };
+    connNav.subscriptionChannels = {
+        { QStringLiteral("state.navigation"), QStringLiteral("navigation") },
+    };
 
-QString gatewayStateName(ILogicGateway* gateway)
-{
-    if (!gateway) {
-        return QStringLiteral("Disconnected");
-    }
-
-    switch (gateway->getConnectionState()) {
-    case ILogicGateway::Connected:
-        return QStringLiteral("Connected");
-    case ILogicGateway::Degraded:
-        return QStringLiteral("Degraded");
-    case ILogicGateway::Disconnected:
-    default:
-        return QStringLiteral("Disconnected");
-    }
+    return { connMain, connNav };
 }
 
 const bool s_registered = [] {
@@ -320,29 +247,12 @@ void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
                      workflowMenu, &ModuleNavigationModule::onGatewayNotification);
 }
 
-void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runtime)
+void DefaultSoftwareInitializer::configureDispatchCenter(MessageDispatchCenter* center)
 {
-    if (!runtime) {
+    if (!center) {
         return;
     }
 
-    runtime->setGlobalPollingSampleParser(new DefaultGlobalPollingSampleParser(runtime));
-}
-
-void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
-{
-    if (!commHub) {
-        return;
-    }
-
-    const QVariantMap profile = getSoftwareProfile();
-    commHub->setOutboundChannels(
-        outboundControlChannelFromProfile(profile),
-        ackChannelFromProfile(profile));
-    for (const QString& routingChannel : routingChannelsFromProfile(profile)) {
-        commHub->addRoutingChannel(routingChannel);
-    }
-
-    commHub->setGlobalPollingPlan(createDefaultGlobalPollingPlan());
+    center->configure(buildDefaultConnections());
 }
 

@@ -8,7 +8,7 @@
 class MainWindow;
 class LogicRuntime;
 class ILogicGateway;
-class CommunicationHub;
+class MessageDispatchCenter;
 class ApplicationCoordinator;
 class PageManager;
 class GlobalUiManager;
@@ -24,7 +24,7 @@ public:
     explicit BaseSoftwareInitializer(const QString& softwareType, RunMode mode, QObject* parent = nullptr);
 
     void initialize(MainWindow* mainWindow, LogicRuntime* logicRuntime,
-                    ILogicGateway* gateway, CommunicationHub* commHub);
+                    ILogicGateway* gateway, MessageDispatchCenter* dispatchCenter);
     void setSoftwareProfile(const QVariantMap& softwareProfile);
     QVariantMap getSoftwareProfile() const;
 
@@ -39,7 +39,7 @@ public:
     virtual void registerShellModules(MainWindow* mainWindow, LogicRuntime* runtime,
                                       ApplicationCoordinator* appCoord,
                                       ILogicGateway* gateway);
-    virtual void registerCommunicationSources(CommunicationHub* commHub);
+    virtual void configureDispatchCenter(MessageDispatchCenter* center);
     virtual void configureAdditionalSettings(LogicRuntime* runtime);
 
     QString getSoftwareType() const;

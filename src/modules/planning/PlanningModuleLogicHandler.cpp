@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <array>
+#include <QByteArray>
+#include <QJsonDocument>
 
 namespace {
 
@@ -46,10 +48,16 @@ QVector<std::array<double, 3>> createPlanPath()
     };
 }
 
-QVariantMap normalizedSampleData(const StateSample& sample)
+QVariantMap decodeJsonValue(const QVariant& value)
 {
-    QVariantMap payload = sample.data.value(QStringLiteral("value")).toMap();
-    return payload.isEmpty() ? sample.data : payload;
+    const QByteArray bytes = value.toByteArray();
+    if (!bytes.isEmpty()) {
+        const QJsonDocument doc = QJsonDocument::fromJson(bytes);
+        if (doc.isObject()) {
+            return doc.object().toVariantMap();
+        }
+    }
+    return value.toMap();
 }
 
 bool extractVec3(const QVariant& value, std::array<double, 3>& result)
@@ -285,7 +293,20 @@ void PlanningModuleLogicHandler::handleAction(const UiAction& action)
     }
 }
 
-void PlanningModuleLogicHandler::handleStateSample(const StateSample& sample)
+void PlanningModuleLogicHandler::handlePollData(const QString& key, const QVariant& value)
+{
+    Q_UNUSED(key)
+    handleIncomingData(decodeJsonValue(value));
+}
+
+void PlanningModuleLogicHandler::handleSubscribeData(const QString& channel,
+                                                     const QVariantMap& data)
+{
+    Q_UNUSED(channel)
+    handleIncomingData(data);
+}
+
+void PlanningModuleLogicHandler::handleIncomingData(const QVariantMap& payloadData)
 {
     SceneGraph* scene = getSceneGraph();
     auto* modelNode = ensurePlanModelNode(scene);
@@ -295,7 +316,6 @@ void PlanningModuleLogicHandler::handleStateSample(const StateSample& sample)
 
     restorePlanPathVisualizationNodes(scene);
 
-    const QVariantMap payloadData = normalizedSampleData(sample);
     bool changed = false;
 
     if (payloadData.contains(QStringLiteral("vertices")) &&
@@ -331,7 +351,7 @@ void PlanningModuleLogicHandler::handleStateSample(const StateSample& sample)
     }
 
     if (changed) {
-        emitPlanningState(LogicNotification::SceneNodesUpdated, QString(), sample.sampleId);
+        emitPlanningState(LogicNotification::SceneNodesUpdated);
     }
 }
 

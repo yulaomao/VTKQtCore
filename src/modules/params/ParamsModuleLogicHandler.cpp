@@ -2,11 +2,26 @@
 
 #include "ParamsUiCommands.h"
 
+#include <QByteArray>
+#include <QJsonDocument>
+
 namespace {
 
 QString paramsStateRedisKey()
 {
     return QStringLiteral("state.params.latest");
+}
+
+QVariantMap decodeJsonValue(const QVariant& value)
+{
+    const QByteArray bytes = value.toByteArray();
+    if (!bytes.isEmpty()) {
+        const QJsonDocument doc = QJsonDocument::fromJson(bytes);
+        if (doc.isObject()) {
+            return doc.object().toVariantMap();
+        }
+    }
+    return value.toMap();
 }
 
 }
@@ -78,21 +93,11 @@ void ParamsModuleLogicHandler::handleAction(const UiAction& action)
     emit logicNotification(notification);
 }
 
-void ParamsModuleLogicHandler::handleStateSample(const StateSample& sample)
+void ParamsModuleLogicHandler::handlePollData(const QString& key, const QVariant& value)
 {
-    QVariantMap incomingParameters = sample.data.value(QStringLiteral("parameters")).toMap();
-    if (incomingParameters.isEmpty()) {
-        incomingParameters = sample.data.value(QStringLiteral("value")).toMap();
-    }
+    Q_UNUSED(key)
 
-    if (incomingParameters.isEmpty()) {
-        const QString key = sample.data.value(QStringLiteral("key")).toString();
-        const QVariant value = sample.data.value(QStringLiteral("value"));
-        if (!key.isEmpty() && value.isValid()) {
-            incomingParameters.insert(key, value);
-        }
-    }
-
+    const QVariantMap incomingParameters = decodeJsonValue(value);
     if (incomingParameters.isEmpty()) {
         return;
     }
@@ -105,8 +110,27 @@ void ParamsModuleLogicHandler::handleStateSample(const StateSample& sample)
         LogicNotification::ButtonStateChanged,
         LogicNotification::CurrentModule,
         {{QStringLiteral("parametersValid"), !m_parameters.isEmpty()},
-         {QStringLiteral("parameterCount"), m_parameters.size()},
-         {QStringLiteral("sourceSampleId"), sample.sampleId}}));
+         {QStringLiteral("parameterCount"), m_parameters.size()}}));
+}
+
+void ParamsModuleLogicHandler::handleSubscribeData(const QString& channel,
+                                                   const QVariantMap& data)
+{
+    Q_UNUSED(channel)
+
+    if (data.isEmpty()) {
+        return;
+    }
+
+    for (auto it = data.cbegin(); it != data.cend(); ++it) {
+        m_parameters.insert(it.key(), it.value());
+    }
+
+    emit logicNotification(LogicNotification::create(
+        LogicNotification::ButtonStateChanged,
+        LogicNotification::CurrentModule,
+        {{QStringLiteral("parametersValid"), !m_parameters.isEmpty()},
+         {QStringLiteral("parameterCount"), m_parameters.size()}}));
 }
 
 void ParamsModuleLogicHandler::onModuleActivated()

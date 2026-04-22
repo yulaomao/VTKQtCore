@@ -1,8 +1,6 @@
 #include "LocalLogicGateway.h"
 
-#include "communication/hub/CommunicationHub.h"
 #include "logic/runtime/LogicRuntime.h"
-#include "communication/redis/RedisGateway.h"
 
 namespace {
 
@@ -25,45 +23,18 @@ LogicNotification createGatewayWarning(const QString& errorCode,
 
 }
 
-LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime,
-                                     CommunicationHub* communicationHub,
-                                     RedisGateway* redisGateway,
-                                     QObject* parent)
+LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime, QObject* parent)
     : ILogicGateway(parent)
     , m_runtime(runtime)
-    , m_communicationHub(communicationHub)
-    , m_redisGateway(redisGateway)
 {
     if (m_runtime) {
         connect(m_runtime, &LogicRuntime::logicNotification,
                 this, &LocalLogicGateway::onRuntimeNotification);
     }
-
-    if (m_redisGateway) {
-        connect(m_redisGateway, &RedisGateway::connectionStateChanged,
-                this, [this](RedisGateway::ConnectionState state) {
-                    onRedisConnectionStateChanged(static_cast<int>(state));
-                });
-        onRedisConnectionStateChanged(static_cast<int>(m_redisGateway->getConnectionState()));
-    }
 }
 
 void LocalLogicGateway::sendAction(const UiAction& action)
 {
-    if (m_connectionState == Disconnected) {
-        onRuntimeNotification(createGatewayWarning(
-            QStringLiteral("GATEWAY_DISCONNECTED"),
-            QStringLiteral("当前连接已断开，无法发送操作请求。"),
-            QStringLiteral("等待连接恢复后重试，或执行重新同步。"),
-            action.actionId));
-        return;
-    }
-
-    if (m_communicationHub) {
-        m_communicationHub->sendActionRequest(action, true);
-        return;
-    }
-
     if (!m_runtime) {
         onRuntimeNotification(createGatewayWarning(
             QStringLiteral("GATEWAY_RUNTIME_UNAVAILABLE"),
@@ -76,7 +47,8 @@ void LocalLogicGateway::sendAction(const UiAction& action)
     m_runtime->onActionReceived(action);
 }
 
-int LocalLogicGateway::subscribeNotification(std::function<void(const LogicNotification&)> handler)
+int LocalLogicGateway::subscribeNotification(
+    std::function<void(const LogicNotification&)> handler)
 {
     if (!handler) {
         return -1;
@@ -99,49 +71,12 @@ ILogicGateway::ConnectionState LocalLogicGateway::getConnectionState() const
 
 void LocalLogicGateway::requestResync(const QString& reason)
 {
-    if (m_communicationHub) {
-        m_communicationHub->sendResyncRequest(reason, true);
-        return;
-    }
-
-    if (!m_runtime) {
-        return;
-    }
-
-    m_runtime->requestResync(reason);
+    Q_UNUSED(reason)
 }
 
 void LocalLogicGateway::onRuntimeNotification(const LogicNotification& notification)
 {
-    emit notificationReceived(notification);
-
     for (auto it = m_subscribers.cbegin(); it != m_subscribers.cend(); ++it) {
         it.value()(notification);
     }
-}
-
-void LocalLogicGateway::onRedisConnectionStateChanged(int state)
-{
-    if (!m_redisGateway) {
-        updateConnectionState(Connected);
-        return;
-    }
-
-    switch (static_cast<RedisGateway::ConnectionState>(state)) {
-    case RedisGateway::Connected:
-        updateConnectionState(Connected);
-        break;
-    case RedisGateway::Reconnecting:
-        updateConnectionState(Degraded);
-        break;
-    case RedisGateway::Disconnected:
-    default:
-        updateConnectionState(Disconnected);
-        break;
-    }
-}
-
-void LocalLogicGateway::updateConnectionState(ConnectionState state)
-{
-    m_connectionState = state;
 }

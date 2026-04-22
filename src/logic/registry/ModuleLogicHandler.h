@@ -7,7 +7,9 @@
 #include "contracts/ModuleInvoke.h"
 #include "contracts/UiAction.h"
 #include "contracts/LogicNotification.h"
-#include "communication/datasource/StateSample.h"
+
+#include <QVariant>
+#include <QVariantMap>
 
 class IRedisCommandAccess;
 class IModuleInvoker;
@@ -34,9 +36,24 @@ public:
             QStringLiteral("invoke_not_supported"),
             QStringLiteral("Module '%1' does not support internal invocation").arg(m_moduleId));
     }
-    virtual void handleStateSample(const StateSample& sample)
+
+    // Called by MessageDispatchCenter when a polled Redis key has a new value.
+    // key   – the Redis key that was polled.
+    // value – the raw value returned by Redis (usually a QByteArray containing JSON).
+    virtual void handlePollData(const QString& key, const QVariant& value)
     {
-        Q_UNUSED(sample);
+        Q_UNUSED(key);
+        Q_UNUSED(value);
+    }
+
+    // Called by MessageDispatchCenter when a Pub/Sub message arrives on a
+    // subscribed channel.
+    // channel – the Redis channel name.
+    // data    – the message body decoded as a QVariantMap (JSON object).
+    virtual void handleSubscribeData(const QString& channel, const QVariantMap& data)
+    {
+        Q_UNUSED(channel);
+        Q_UNUSED(data);
     }
 
     virtual void onModuleActivated() {}
