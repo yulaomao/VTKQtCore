@@ -17,12 +17,19 @@ parseSubscriptionChannel(const QJsonObject& obj)
     return entry;
 }
 
-RedisDispatchConfig::KeyOwnershipEntry parseKeyOwnership(const QJsonObject& obj)
+RedisDispatchConfig::PollingKeyGroup parsePollingKeyGroup(const QJsonObject& obj)
 {
-    RedisDispatchConfig::KeyOwnershipEntry entry;
-    entry.connectionId = obj.value(QStringLiteral("connectionId")).toString().trimmed();
-    entry.keyPrefix    = obj.value(QStringLiteral("keyPrefix")).toString().trimmed();
-    return entry;
+    RedisDispatchConfig::PollingKeyGroup group;
+    group.module = obj.value(QStringLiteral("module")).toString().trimmed();
+
+    const QJsonArray keysArray = obj.value(QStringLiteral("keys")).toArray();
+    for (const QJsonValue& v : keysArray) {
+        const QString k = v.toString().trimmed();
+        if (!k.isEmpty()) {
+            group.keys.append(k);
+        }
+    }
+    return group;
 }
 
 RedisDispatchConfig::ConnectionEntry parseConnection(const QJsonObject& obj)
@@ -34,11 +41,14 @@ RedisDispatchConfig::ConnectionEntry parseConnection(const QJsonObject& obj)
     entry.db            = obj.value(QStringLiteral("db")).toInt(0);
     entry.pollIntervalMs = obj.value(QStringLiteral("pollIntervalMs")).toInt(16);
 
-    const QJsonArray keys = obj.value(QStringLiteral("pollingKeys")).toArray();
-    for (const QJsonValue& key : keys) {
-        const QString k = key.toString().trimmed();
-        if (!k.isEmpty()) {
-            entry.pollingKeys.append(k);
+    const QJsonArray groups = obj.value(QStringLiteral("pollingKeyGroups")).toArray();
+    for (const QJsonValue& gv : groups) {
+        if (!gv.isObject()) {
+            continue;
+        }
+        const auto group = parsePollingKeyGroup(gv.toObject());
+        if (!group.module.isEmpty() && !group.keys.isEmpty()) {
+            entry.pollingKeyGroups.append(group);
         }
     }
 
@@ -62,17 +72,6 @@ RedisDispatchConfig::ModuleEntry parseModule(const QJsonObject& obj)
     entry.moduleId           = obj.value(QStringLiteral("moduleId")).toString().trimmed();
     entry.defaultConnectionId = obj.value(QStringLiteral("defaultConnectionId")).toString().trimmed();
 
-    const QJsonArray ownership = obj.value(QStringLiteral("pollingKeyOwnership")).toArray();
-    for (const QJsonValue& own : ownership) {
-        if (!own.isObject()) {
-            continue;
-        }
-        const auto ownershipEntry = parseKeyOwnership(own.toObject());
-        if (!ownershipEntry.connectionId.isEmpty() && !ownershipEntry.keyPrefix.isEmpty()) {
-            entry.pollingKeyOwnership.append(ownershipEntry);
-        }
-    }
-
     const QJsonObject nestedMap = obj.value(QStringLiteral("nestedMapStructure")).toObject();
     for (auto it = nestedMap.constBegin(); it != nestedMap.constEnd(); ++it) {
         QStringList patterns;
@@ -89,6 +88,15 @@ RedisDispatchConfig::ModuleEntry parseModule(const QJsonObject& obj)
     }
 
     return entry;
+}
+
+RedisDispatchConfig::GlobalDispatchRule parseGlobalDispatchRule(const QJsonObject& obj)
+{
+    RedisDispatchConfig::GlobalDispatchRule rule;
+    rule.keyPattern   = obj.value(QStringLiteral("keyPattern")).toString().trimmed();
+    rule.targetModule = obj.value(QStringLiteral("targetModule")).toString().trimmed();
+    rule.groupName    = obj.value(QStringLiteral("groupName")).toString().trimmed();
+    return rule;
 }
 
 } // namespace
@@ -162,6 +170,23 @@ RedisDispatchConfig RedisDispatchConfigLoader::loadFromJson(const QByteArray& js
                        .arg(modEntry.moduleId);
         }
         config.modules.append(modEntry);
+    }
+
+    const QJsonArray rules = root.value(QStringLiteral("globalDispatchRules")).toArray();
+    for (const QJsonValue& ruleVal : rules) {
+        if (!ruleVal.isObject()) {
+            qWarning().noquote()
+                << QStringLiteral("[RedisDispatchConfigLoader] Skipping non-object in globalDispatchRules array");
+            continue;
+        }
+        const auto rule = parseGlobalDispatchRule(ruleVal.toObject());
+        if (rule.keyPattern.isEmpty() || rule.targetModule.isEmpty()) {
+            qWarning().noquote()
+                << QStringLiteral("[RedisDispatchConfigLoader] Skipping globalDispatchRule with"
+                                  " empty keyPattern or targetModule");
+            continue;
+        }
+        config.globalDispatchRules.append(rule);
     }
 
     if (!config.isValid()) {

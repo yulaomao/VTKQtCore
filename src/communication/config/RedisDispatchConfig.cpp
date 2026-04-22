@@ -27,21 +27,39 @@ RedisDispatchConfig::getModuleById(const QString& moduleId) const
     return nullptr;
 }
 
-QString RedisDispatchConfig::findModuleForKey(const QString& connectionId,
-                                              const QString& key) const
+QStringList RedisDispatchConfig::pollingKeysFor(const QString& connectionId) const
 {
-    for (const ModuleEntry& module : modules) {
-        for (const KeyOwnershipEntry& ownership : module.pollingKeyOwnership) {
-            if (ownership.connectionId != connectionId) {
-                continue;
-            }
-            // Exact match first, then prefix match.
-            if (key == ownership.keyPrefix || key.startsWith(ownership.keyPrefix)) {
-                return module.moduleId;
+    const ConnectionEntry* conn = getConnectionById(connectionId);
+    if (!conn) {
+        return QStringList();
+    }
+
+    QStringList keys;
+    for (const PollingKeyGroup& group : conn->pollingKeyGroups) {
+        for (const QString& key : group.keys) {
+            if (!key.isEmpty()) {
+                keys.append(key);
             }
         }
     }
-    return QString();
+    return keys;
+}
+
+const RedisDispatchConfig::GlobalDispatchRule*
+RedisDispatchConfig::findGlobalDispatchRule(const QString& key) const
+{
+    for (const GlobalDispatchRule& rule : globalDispatchRules) {
+        const QString& pattern = rule.keyPattern;
+        if (pattern.endsWith(QLatin1Char('*'))) {
+            const QString prefix = pattern.left(pattern.size() - 1);
+            if (prefix.isEmpty() || key.startsWith(prefix)) {
+                return &rule;
+            }
+        } else if (key == pattern) {
+            return &rule;
+        }
+    }
+    return nullptr;
 }
 
 QString RedisDispatchConfig::findModuleForChannel(const QString& connectionId,

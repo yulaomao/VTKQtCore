@@ -13,21 +13,26 @@
 //   - "connectionId" (QString)     – which connection produced the batch
 //
 // The parser:
-//   1. For every key in "values", calls config.findModuleForKey() to determine
-//      the owning module.
-//   2. Groups keys into per-module buckets.
-//   3. For each bucket, builds a nested QVariantMap according to the module's
-//      nestedMapStructure (keys matching a wildcard pattern end up in a named
-//      sub-map; unmatched keys are placed at the top level).
+//   1. For every key in "values", finds its owning module by scanning the
+//      connection's pollingKeyGroups.
+//   2. Module-owned keys (module != "global") are placed directly into a
+//      per-module bucket.
+//   3. Keys belonging to the "global" group are routed through
+//      globalDispatchRules: each rule specifies a targetModule and an
+//      optional groupName. The resolved values are merged into the target
+//      module's bucket under the named sub-map (or at the top level if
+//      groupName is empty). Global data may be combined with data from other
+//      module buckets before emitting the final sample.
 //   4. Emits one StateSample per non-empty module bucket.
 //
 // Subscription path
 // =================
 // parseSubscription() converts a single subscription message into a
-// StateSample routed to the owning module.  The result can be fed directly
-// into LogicRuntime::onStateSampleReceived().
+// StateSample routed to the owning module.  If the channel's module is
+// "global", the dispatcher applies globalDispatchRules to find the target.
+// The result can be fed directly into LogicRuntime::onStateSampleReceived().
 //
-// Keys with no matching module rule are silently skipped (a warning is logged).
+// Keys with no matching group or rule are skipped (a warning is logged).
 class ConfigDrivenSampleParser : public GlobalPollingSampleParser
 {
 public:
@@ -47,11 +52,13 @@ private:
     // Decode a raw Redis value (QByteArray / QString) to a proper QVariant.
     static QVariant normalizeRedisValue(const QVariant& raw);
 
-    // Build a nested QVariantMap for 'moduleId' from a flat key→value map.
-    // Keys that match a pattern in nestedMapStructure are placed under the
-    // corresponding group name; remaining keys are placed at the top level.
+    // Build a nested QVariantMap for 'moduleId' from a flat key→value map,
+    // additionally merging in pre-grouped global data (groupName → key→value).
+    // Keys matching nestedMapStructure patterns are placed under the group
+    // name; remaining keys go at the top level.
     QVariantMap buildNestedPayload(const QString& moduleId,
-                                   const QVariantMap& flatKeys) const;
+                                   const QVariantMap& flatKeys,
+                                   const QMap<QString, QVariantMap>& preGrouped) const;
 
     // Returns true if 'key' matches 'pattern'.
     // Patterns ending with '*' are treated as prefix wildcards.

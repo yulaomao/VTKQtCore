@@ -195,10 +195,20 @@ void CommunicationHub::addPollingConnection(
         return;
     }
 
-    if (entry.pollingKeys.isEmpty()) {
+    // Flatten all keys from all pollingKeyGroups (module-owned and global alike).
+    QStringList allKeys;
+    for (const RedisDispatchConfig::PollingKeyGroup& group : entry.pollingKeyGroups) {
+        for (const QString& k : group.keys) {
+            if (!k.isEmpty()) {
+                allKeys.append(k);
+            }
+        }
+    }
+
+    if (allKeys.isEmpty()) {
         qWarning().noquote()
             << QStringLiteral("[CommunicationHub] addPollingConnection: connection '%1'"
-                              " has no pollingKeys — skipped")
+                              " has no pollingKeys in any group — skipped")
                    .arg(entry.connectionId);
         return;
     }
@@ -208,7 +218,7 @@ void CommunicationHub::addPollingConnection(
 
     GlobalPollingPlan plan(
         entry.connectionId,
-        entry.pollingKeys,
+        allKeys,
         entry.pollIntervalMs);
     plan.setChangeDetection(true);
     plan.setMaxDispatchRateHz(1000.0 / static_cast<double>(
