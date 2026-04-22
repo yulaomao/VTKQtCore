@@ -1,6 +1,8 @@
 #include "LocalLogicGateway.h"
 
 #include "logic/runtime/LogicRuntime.h"
+#include "logic/registry/ModuleLogicRegistry.h"
+#include "logic/registry/ModuleLogicHandler.h"
 
 namespace {
 
@@ -71,11 +73,35 @@ ILogicGateway::ConnectionState LocalLogicGateway::getConnectionState() const
 
 void LocalLogicGateway::requestResync(const QString& reason)
 {
-    Q_UNUSED(reason)
+    if (!m_runtime) {
+        return;
+    }
+
+    ModuleLogicRegistry* registry = m_runtime->getModuleLogicRegistry();
+    if (!registry) {
+        return;
+    }
+
+    for (const QString& moduleId : registry->getRegisteredModules()) {
+        ModuleLogicHandler* handler = registry->getHandler(moduleId);
+        if (handler) {
+            handler->onResync();
+        }
+    }
+
+    // Emit a notification so the UI knows a resync occurred.
+    LogicNotification notification = LogicNotification::create(
+        LogicNotification::ActiveModuleChanged,
+        LogicNotification::Shell,
+        {{QStringLiteral("resyncRequested"), true},
+         {QStringLiteral("reason"), reason}});
+    emit notificationReceived(notification);
 }
 
 void LocalLogicGateway::onRuntimeNotification(const LogicNotification& notification)
 {
+    emit notificationReceived(notification);
+
     for (auto it = m_subscribers.cbegin(); it != m_subscribers.cend(); ++it) {
         it.value()(notification);
     }
