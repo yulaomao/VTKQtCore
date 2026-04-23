@@ -77,6 +77,11 @@ private:
     QDoubleSpinBox* m_secondarySizeSpin = nullptr;
     QDoubleSpinBox* m_depthSizeSpin = nullptr;
     QSpinBox* m_resolutionSpin = nullptr;
+    QDoubleSpinBox* m_createModelAmbientSpin = nullptr;
+    QDoubleSpinBox* m_createModelDiffuseSpin = nullptr;
+    QDoubleSpinBox* m_createModelSpecularSpin = nullptr;
+    QDoubleSpinBox* m_createModelSpecularPowerSpin = nullptr;
+    QDoubleSpinBox* m_createModelRoughnessSpin = nullptr;
     QSpinBox* m_initialCountSpin = nullptr;
     QDoubleSpinBox* m_spacingSpin = nullptr;
     QCheckBox* m_closedLineCheck = nullptr;
@@ -92,6 +97,11 @@ private:
     QDoubleSpinBox* m_opacitySpin = nullptr;
     QComboBox* m_renderModeCombo = nullptr;
     QDoubleSpinBox* m_sizeSpin = nullptr;
+    QDoubleSpinBox* m_materialAmbientSpin = nullptr;
+    QDoubleSpinBox* m_materialDiffuseSpin = nullptr;
+    QDoubleSpinBox* m_materialSpecularSpin = nullptr;
+    QDoubleSpinBox* m_materialSpecularPowerSpin = nullptr;
+    QDoubleSpinBox* m_materialRoughnessSpin = nullptr;
     QCheckBox* m_showLabelsCheck = nullptr;
     QCheckBox* m_showEdgesCheck = nullptr;
     QCheckBox* m_dashedCheck = nullptr;

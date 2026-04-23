@@ -163,11 +163,26 @@ DataGenPage::DataGenPage(QWidget* parent)
     m_resolutionSpin = new QSpinBox(modelPage);
     m_resolutionSpin->setRange(6, 128);
     m_resolutionSpin->setValue(32);
+    m_createModelAmbientSpin = createAxisSpinBox(modelPage, 0.0, 1.0, 0.2);
+    m_createModelAmbientSpin->setSingleStep(0.05);
+    m_createModelDiffuseSpin = createAxisSpinBox(modelPage, 0.0, 1.0, 0.8);
+    m_createModelDiffuseSpin->setSingleStep(0.05);
+    m_createModelSpecularSpin = createAxisSpinBox(modelPage, 0.0, 1.0, 0.15);
+    m_createModelSpecularSpin->setSingleStep(0.05);
+    m_createModelSpecularPowerSpin = createAxisSpinBox(modelPage, 0.0, 128.0, 20.0);
+    m_createModelSpecularPowerSpin->setSingleStep(1.0);
+    m_createModelRoughnessSpin = createAxisSpinBox(modelPage, 0.0, 1.0, 0.4);
+    m_createModelRoughnessSpin->setSingleStep(0.05);
     modelForm->addRow(QStringLiteral("基础形体"), m_modelShapeCombo);
     modelForm->addRow(QStringLiteral("主尺寸"), m_primarySizeSpin);
     modelForm->addRow(QStringLiteral("次尺寸"), m_secondarySizeSpin);
     modelForm->addRow(QStringLiteral("深度/高度"), m_depthSizeSpin);
     modelForm->addRow(QStringLiteral("分辨率"), m_resolutionSpin);
+    modelForm->addRow(QStringLiteral("Ambient"), m_createModelAmbientSpin);
+    modelForm->addRow(QStringLiteral("Diffuse"), m_createModelDiffuseSpin);
+    modelForm->addRow(QStringLiteral("Specular"), m_createModelSpecularSpin);
+    modelForm->addRow(QStringLiteral("Power"), m_createModelSpecularPowerSpin);
+    modelForm->addRow(QStringLiteral("Roughness"), m_createModelRoughnessSpin);
     m_createStack->addWidget(modelPage);
 
     auto* transformPage = new QWidget(m_createStack);
@@ -219,6 +234,16 @@ DataGenPage::DataGenPage(QWidget* parent)
     m_renderModeCombo->addItem(QStringLiteral("wireframe"), QStringLiteral("wireframe"));
     m_renderModeCombo->addItem(QStringLiteral("points"), QStringLiteral("points"));
     m_sizeSpin = createAxisSpinBox(m_displayGroup, 1.0, 50.0, 6.0);
+    m_materialAmbientSpin = createAxisSpinBox(m_displayGroup, 0.0, 1.0, 0.2);
+    m_materialAmbientSpin->setSingleStep(0.05);
+    m_materialDiffuseSpin = createAxisSpinBox(m_displayGroup, 0.0, 1.0, 0.8);
+    m_materialDiffuseSpin->setSingleStep(0.05);
+    m_materialSpecularSpin = createAxisSpinBox(m_displayGroup, 0.0, 1.0, 0.15);
+    m_materialSpecularSpin->setSingleStep(0.05);
+    m_materialSpecularPowerSpin = createAxisSpinBox(m_displayGroup, 0.0, 128.0, 20.0);
+    m_materialSpecularPowerSpin->setSingleStep(1.0);
+    m_materialRoughnessSpin = createAxisSpinBox(m_displayGroup, 0.0, 1.0, 0.4);
+    m_materialRoughnessSpin->setSingleStep(0.05);
     m_showLabelsCheck = new QCheckBox(QStringLiteral("显示点标签"), m_displayGroup);
     m_showEdgesCheck = new QCheckBox(QStringLiteral("显示模型边线"), m_displayGroup);
     m_dashedCheck = new QCheckBox(QStringLiteral("虚线"), m_displayGroup);
@@ -231,6 +256,11 @@ DataGenPage::DataGenPage(QWidget* parent)
     m_displayForm->addRow(QStringLiteral("透明度"), m_opacitySpin);
     m_displayForm->addRow(QStringLiteral("渲染模式"), m_renderModeCombo);
     m_displayForm->addRow(QStringLiteral("点径/线宽"), m_sizeSpin);
+    m_displayForm->addRow(QStringLiteral("Ambient"), m_materialAmbientSpin);
+    m_displayForm->addRow(QStringLiteral("Diffuse"), m_materialDiffuseSpin);
+    m_displayForm->addRow(QStringLiteral("Specular"), m_materialSpecularSpin);
+    m_displayForm->addRow(QStringLiteral("Power"), m_materialSpecularPowerSpin);
+    m_displayForm->addRow(QStringLiteral("Roughness"), m_materialRoughnessSpin);
     m_displayForm->addRow(QString(), m_showLabelsCheck);
     m_displayForm->addRow(QString(), m_showEdgesCheck);
     m_displayForm->addRow(QString(), m_dashedCheck);
@@ -563,6 +593,11 @@ QVariantMap DataGenPage::createDisplayPayload() const
         {QStringLiteral("opacity"), m_opacitySpin->value()},
         {QStringLiteral("renderMode"), m_renderModeCombo->currentData().toString()},
         {QStringLiteral("sizeValue"), m_sizeSpin->value()},
+        {QStringLiteral("ambient"), m_materialAmbientSpin->value()},
+        {QStringLiteral("diffuse"), m_materialDiffuseSpin->value()},
+        {QStringLiteral("specular"), m_materialSpecularSpin->value()},
+        {QStringLiteral("specularPower"), m_materialSpecularPowerSpin->value()},
+        {QStringLiteral("roughness"), m_materialRoughnessSpin->value()},
         {QStringLiteral("showLabels"), m_showLabelsCheck->isChecked()},
         {QStringLiteral("showEdges"), m_showEdgesCheck->isChecked()},
         {QStringLiteral("dashed"), m_dashedCheck->isChecked()},
@@ -594,6 +629,11 @@ QVariantMap DataGenPage::createCreatePayload() const
         payload.insert(QStringLiteral("sizeB"), m_secondarySizeSpin->value());
         payload.insert(QStringLiteral("sizeC"), m_depthSizeSpin->value());
         payload.insert(QStringLiteral("resolution"), m_resolutionSpin->value());
+        payload.insert(QStringLiteral("ambient"), m_createModelAmbientSpin->value());
+        payload.insert(QStringLiteral("diffuse"), m_createModelDiffuseSpin->value());
+        payload.insert(QStringLiteral("specular"), m_createModelSpecularSpin->value());
+        payload.insert(QStringLiteral("specularPower"), m_createModelSpecularPowerSpin->value());
+        payload.insert(QStringLiteral("roughness"), m_createModelRoughnessSpin->value());
     } else if (nodeType == QStringLiteral("transform")) {
         payload.insert(QStringLiteral("showAxes"), m_showAxesCheck->isChecked());
         payload.insert(QStringLiteral("axesLength"), m_axesLengthSpin->value());
@@ -682,6 +722,11 @@ void DataGenPage::applySelectedNodeDetails(const QVariantMap& details)
         details.value(QStringLiteral("renderMode"), QStringLiteral("surface")).toString()));
     m_renderModeCombo->setCurrentIndex(renderModeIndex);
     m_sizeSpin->setValue(details.value(QStringLiteral("sizeValue"), 6.0).toDouble());
+    m_materialAmbientSpin->setValue(details.value(QStringLiteral("ambient"), 0.2).toDouble());
+    m_materialDiffuseSpin->setValue(details.value(QStringLiteral("diffuse"), 0.8).toDouble());
+    m_materialSpecularSpin->setValue(details.value(QStringLiteral("specular"), 0.15).toDouble());
+    m_materialSpecularPowerSpin->setValue(details.value(QStringLiteral("specularPower"), 20.0).toDouble());
+    m_materialRoughnessSpin->setValue(details.value(QStringLiteral("roughness"), 0.4).toDouble());
     m_showLabelsCheck->setChecked(details.value(QStringLiteral("showLabels"), false).toBool());
     m_showEdgesCheck->setChecked(details.value(QStringLiteral("showEdges"), false).toBool());
     m_dashedCheck->setChecked(details.value(QStringLiteral("dashed"), false).toBool());
@@ -708,9 +753,14 @@ void DataGenPage::applySelectedNodeDetails(const QVariantMap& details)
             .arg(details.value(QStringLiteral("vertexCount")).toInt())
             .arg(details.value(QStringLiteral("length")).toDouble(), 0, 'f', 2));
     } else if (nodeType == QStringLiteral("model")) {
-        detailText.append(QStringLiteral("\n模型形体: %1\n面片数量: %2")
+        detailText.append(QStringLiteral("\n模型形体: %1\n面片数量: %2\nAmbient: %3\nDiffuse: %4\nSpecular: %5\nPower: %6\nRoughness: %7")
             .arg(details.value(QStringLiteral("shape"), QStringLiteral("mesh")).toString())
-            .arg(details.value(QStringLiteral("triangleCount")).toInt()));
+            .arg(details.value(QStringLiteral("triangleCount")).toInt())
+            .arg(details.value(QStringLiteral("ambient"), 0.2).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("diffuse"), 0.8).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("specular"), 0.15).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("specularPower"), 20.0).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("roughness"), 0.4).toDouble(), 0, 'f', 2));
     } else if (nodeType == QStringLiteral("transform")) {
         detailText.append(QStringLiteral("\n源坐标系: %1\n目标坐标系: %2")
             .arg(details.value(QStringLiteral("sourceSpace"), QStringLiteral("local")).toString())
@@ -751,6 +801,11 @@ void DataGenPage::updateOperationPanelVisibility(const QString& nodeType)
 
     setFormRowVisible(m_displayForm, m_renderModeCombo, isLine || isModel);
     setFormRowVisible(m_displayForm, m_sizeSpin, isPoint || isLine || isTransform);
+    setFormRowVisible(m_displayForm, m_materialAmbientSpin, isModel);
+    setFormRowVisible(m_displayForm, m_materialDiffuseSpin, isModel);
+    setFormRowVisible(m_displayForm, m_materialSpecularSpin, isModel);
+    setFormRowVisible(m_displayForm, m_materialSpecularPowerSpin, isModel);
+    setFormRowVisible(m_displayForm, m_materialRoughnessSpin, isModel);
     setFormRowVisible(m_displayForm, m_showLabelsCheck, isPoint);
     setFormRowVisible(m_displayForm, m_showEdgesCheck, isModel);
     setFormRowVisible(m_displayForm, m_dashedCheck, isLine);

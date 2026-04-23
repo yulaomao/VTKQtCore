@@ -40,6 +40,11 @@ private:
         bool hasColor = false;
         bool hasOpacity = false;
         bool hasBackfaceCulling = false;
+        bool hasMaterialAmbient = false;
+        bool hasMaterialDiffuse = false;
+        bool hasMaterialSpecular = false;
+        bool hasMaterialSpecularPower = false;
+        bool hasMaterialRoughness = false;
         bool hasShowEdges = false;
         bool hasEdgeColor = false;
         bool hasEdgeWidth = false;
@@ -49,6 +54,11 @@ private:
         double cachedColor[4] = {0.0, 0.0, 0.0, 0.0};
         double cachedOpacity = 1.0;
         bool cachedBackfaceCulling = false;
+        double cachedMaterialAmbient = 0.2;
+        double cachedMaterialDiffuse = 0.8;
+        double cachedMaterialSpecular = 0.15;
+        double cachedMaterialSpecularPower = 20.0;
+        double cachedMaterialRoughness = 0.4;
         bool cachedShowEdges = false;
         double cachedEdgeColor[4] = {0.0, 0.0, 0.0, 0.0};
         double cachedEdgeWidth = 1.0;

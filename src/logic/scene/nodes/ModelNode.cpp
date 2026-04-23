@@ -2,6 +2,8 @@
 
 #include "../SceneGraph.h"
 
+#include <QtGlobal>
+
 #include <vtkNew.h>
 #include <vtkTriangle.h>
 
@@ -239,6 +241,76 @@ void ModelNode::setBackfaceCulling(bool enable)
 bool ModelNode::isBackfaceCulling() const
 {
     return m_backfaceCullingFlag;
+}
+
+void ModelNode::setMaterialAmbient(double ambient)
+{
+    const double normalized = qBound(0.0, ambient, 1.0);
+    if (m_materialAmbientValue != normalized) {
+        m_materialAmbientValue = normalized;
+        emitEvent(NodeEventType::DisplayChanged);
+    }
+}
+
+double ModelNode::getMaterialAmbient() const
+{
+    return m_materialAmbientValue;
+}
+
+void ModelNode::setMaterialDiffuse(double diffuse)
+{
+    const double normalized = qBound(0.0, diffuse, 1.0);
+    if (m_materialDiffuseValue != normalized) {
+        m_materialDiffuseValue = normalized;
+        emitEvent(NodeEventType::DisplayChanged);
+    }
+}
+
+double ModelNode::getMaterialDiffuse() const
+{
+    return m_materialDiffuseValue;
+}
+
+void ModelNode::setMaterialSpecular(double specular)
+{
+    const double normalized = qBound(0.0, specular, 1.0);
+    if (m_materialSpecularValue != normalized) {
+        m_materialSpecularValue = normalized;
+        emitEvent(NodeEventType::DisplayChanged);
+    }
+}
+
+double ModelNode::getMaterialSpecular() const
+{
+    return m_materialSpecularValue;
+}
+
+void ModelNode::setMaterialSpecularPower(double power)
+{
+    const double normalized = qMax(0.0, power);
+    if (m_materialSpecularPowerValue != normalized) {
+        m_materialSpecularPowerValue = normalized;
+        emitEvent(NodeEventType::DisplayChanged);
+    }
+}
+
+double ModelNode::getMaterialSpecularPower() const
+{
+    return m_materialSpecularPowerValue;
+}
+
+void ModelNode::setMaterialRoughness(double roughness)
+{
+    const double normalized = qBound(0.0, roughness, 1.0);
+    if (m_materialRoughnessValue != normalized) {
+        m_materialRoughnessValue = normalized;
+        emitEvent(NodeEventType::DisplayChanged);
+    }
+}
+
+double ModelNode::getMaterialRoughness() const
+{
+    return m_materialRoughnessValue;
 }
 
 void ModelNode::setUseScalarColor(bool use)

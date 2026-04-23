@@ -76,6 +76,27 @@ void configureColor(double out[4], double r, double g, double b, double a)
     out[3] = a;
 }
 
+void applyModelMaterialPayload(ModelNode* modelNode, const QVariantMap& payload)
+{
+    if (!modelNode) {
+        return;
+    }
+
+    modelNode->setMaterialAmbient(
+        qBound(0.0, payload.value(QStringLiteral("ambient"), 0.2).toDouble(), 1.0));
+    modelNode->setMaterialDiffuse(
+        qBound(0.0, payload.value(QStringLiteral("diffuse"), 0.8).toDouble(), 1.0));
+    modelNode->setMaterialSpecular(
+        qBound(0.0, payload.value(QStringLiteral("specular"), 0.15).toDouble(), 1.0));
+    modelNode->setMaterialSpecularPower(
+        qMax(0.0,
+             payload.value(
+                 QStringLiteral("specularPower"),
+                 payload.value(QStringLiteral("power"), 20.0)).toDouble()));
+    modelNode->setMaterialRoughness(
+        qBound(0.0, payload.value(QStringLiteral("roughness"), 0.4).toDouble(), 1.0));
+}
+
 vtkSmartPointer<vtkPolyData> buildShapePolyData(const QString& shape,
                                                 double sizeA,
                                                 double sizeB,
@@ -707,6 +728,11 @@ QVariantMap DataGenModuleLogicHandler::buildNodeDetails(NodeBase* node) const
         details.insert(QStringLiteral("opacity"), modelNode->getOpacity());
         details.insert(QStringLiteral("renderMode"), modelNode->getRenderMode());
         details.insert(QStringLiteral("showEdges"), modelNode->isShowEdges());
+        details.insert(QStringLiteral("ambient"), modelNode->getMaterialAmbient());
+        details.insert(QStringLiteral("diffuse"), modelNode->getMaterialDiffuse());
+        details.insert(QStringLiteral("specular"), modelNode->getMaterialSpecular());
+        details.insert(QStringLiteral("specularPower"), modelNode->getMaterialSpecularPower());
+        details.insert(QStringLiteral("roughness"), modelNode->getMaterialRoughness());
         details.insert(QStringLiteral("triangleCount"), modelNode->getIndices().size());
         details.insert(QStringLiteral("shape"), modelNode->getAttribute(
             QStringLiteral("geometryPreset"), QStringLiteral("mesh")).toString());
@@ -796,6 +822,11 @@ QVariantMap DataGenModuleLogicHandler::serializeNodeForRedis(NodeBase* node) con
         payload.insert(QStringLiteral("renderMode"), modelNode->getRenderMode());
         payload.insert(QStringLiteral("opacity"), modelNode->getOpacity());
         payload.insert(QStringLiteral("showEdges"), modelNode->isShowEdges());
+        payload.insert(QStringLiteral("ambient"), modelNode->getMaterialAmbient());
+        payload.insert(QStringLiteral("diffuse"), modelNode->getMaterialDiffuse());
+        payload.insert(QStringLiteral("specular"), modelNode->getMaterialSpecular());
+        payload.insert(QStringLiteral("specularPower"), modelNode->getMaterialSpecularPower());
+        payload.insert(QStringLiteral("roughness"), modelNode->getMaterialRoughness());
         payload.insert(QStringLiteral("edgeWidth"), modelNode->getEdgeWidth());
         payload.insert(QStringLiteral("backfaceCulling"), modelNode->isBackfaceCulling());
         payload.insert(QStringLiteral("useScalarColor"), modelNode->isUseScalarColor());
@@ -955,6 +986,7 @@ bool DataGenModuleLogicHandler::restoreFromRedisSnapshot(const QVariantMap& snap
             modelNode->setOpacity(nodeMap.value(QStringLiteral("opacity"), 1.0).toDouble());
             modelNode->setRenderMode(nodeMap.value(QStringLiteral("renderMode"), QStringLiteral("surface")).toString());
             modelNode->setShowEdges(nodeMap.value(QStringLiteral("showEdges"), false).toBool());
+            applyModelMaterialPayload(modelNode, nodeMap);
             modelNode->setEdgeWidth(nodeMap.value(QStringLiteral("edgeWidth"), 1.0).toDouble());
             modelNode->setBackfaceCulling(nodeMap.value(QStringLiteral("backfaceCulling"), false).toBool());
             modelNode->setUseScalarColor(nodeMap.value(QStringLiteral("useScalarColor"), false).toBool());
@@ -1242,6 +1274,7 @@ ModelNode* DataGenModuleLogicHandler::createModelNode(const QVariantMap& payload
     node->setOpacity(0.85);
     node->setRenderMode(QStringLiteral("surface"));
     node->setShowEdges(true);
+    applyModelMaterialPayload(node, payload);
     const double edgeColor[4] = {0.04, 0.1, 0.22, 1.0};
     node->setEdgeColor(edgeColor);
     node->setEdgeWidth(1.2);
@@ -1309,6 +1342,7 @@ void DataGenModuleLogicHandler::updateDisplay(NodeBase* node, const QVariantMap&
         modelNode->setOpacity(opacity);
         modelNode->setRenderMode(payload.value(QStringLiteral("renderMode"), QStringLiteral("surface")).toString());
         modelNode->setShowEdges(payload.value(QStringLiteral("showEdges"), false).toBool());
+        applyModelMaterialPayload(modelNode, payload);
     } else if (auto* transformNode = dynamic_cast<TransformNode*>(node)) {
         const double axisColor[4] = {red, green, blue, opacity};
         transformNode->setAxesColorX(axisColor);

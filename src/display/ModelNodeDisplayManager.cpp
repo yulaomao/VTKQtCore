@@ -353,6 +353,41 @@ void ModelNodeDisplayManager::applyVisualProperties(ModelDisplayEntry& entry, Mo
         entry.hasBackfaceCulling = true;
     }
 
+    const double materialAmbient = node->getMaterialAmbient();
+    if (!entry.hasMaterialAmbient || !areScalarsEqual(entry.cachedMaterialAmbient, materialAmbient)) {
+        prop->SetAmbient(materialAmbient);
+        entry.cachedMaterialAmbient = materialAmbient;
+        entry.hasMaterialAmbient = true;
+    }
+
+    const double materialDiffuse = node->getMaterialDiffuse();
+    if (!entry.hasMaterialDiffuse || !areScalarsEqual(entry.cachedMaterialDiffuse, materialDiffuse)) {
+        prop->SetDiffuse(materialDiffuse);
+        entry.cachedMaterialDiffuse = materialDiffuse;
+        entry.hasMaterialDiffuse = true;
+    }
+
+    const double materialSpecular = node->getMaterialSpecular();
+    if (!entry.hasMaterialSpecular || !areScalarsEqual(entry.cachedMaterialSpecular, materialSpecular)) {
+        prop->SetSpecular(materialSpecular);
+        entry.cachedMaterialSpecular = materialSpecular;
+        entry.hasMaterialSpecular = true;
+    }
+
+    const double materialSpecularPower = node->getMaterialSpecularPower();
+    if (!entry.hasMaterialSpecularPower || !areScalarsEqual(entry.cachedMaterialSpecularPower, materialSpecularPower)) {
+        prop->SetSpecularPower(materialSpecularPower);
+        entry.cachedMaterialSpecularPower = materialSpecularPower;
+        entry.hasMaterialSpecularPower = true;
+    }
+
+    const double materialRoughness = node->getMaterialRoughness();
+    if (!entry.hasMaterialRoughness || !areScalarsEqual(entry.cachedMaterialRoughness, materialRoughness)) {
+        prop->SetRoughness(materialRoughness);
+        entry.cachedMaterialRoughness = materialRoughness;
+        entry.hasMaterialRoughness = true;
+    }
+
     bool previousShowEdges = entry.hasShowEdges ? entry.cachedShowEdges : false;
     bool showEdges = node->isShowEdges();
     if (!entry.hasShowEdges || previousShowEdges != showEdges) {
