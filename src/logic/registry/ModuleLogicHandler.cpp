@@ -68,6 +68,38 @@ QVariantMap ModuleLogicHandler::readRedisJsonValue(const QString& key)
     return m_redisCommandAccess ? m_redisCommandAccess->readJsonValue(key) : QVariantMap();
 }
 
+QVariant ModuleLogicHandler::readRedisHashValue(const QString& hashKey, const QString& field)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashValue(hashKey, field) : QVariant();
+}
+
+QString ModuleLogicHandler::readRedisHashStringValue(const QString& hashKey, const QString& field)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashStringValue(hashKey, field)
+                                : QString();
+}
+
+QVariantMap ModuleLogicHandler::readRedisHashJsonValue(const QString& hashKey, const QString& field)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashJsonValue(hashKey, field)
+                                : QVariantMap();
+}
+
+QVariant ModuleLogicHandler::readRedisHashValue(const QStringList& path)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashValue(path) : QVariant();
+}
+
+QString ModuleLogicHandler::readRedisHashStringValue(const QStringList& path)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashStringValue(path) : QString();
+}
+
+QVariantMap ModuleLogicHandler::readRedisHashJsonValue(const QStringList& path)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashJsonValue(path) : QVariantMap();
+}
+
 bool ModuleLogicHandler::writeRedisValue(const QString& key, const QVariant& value)
 {
     return m_redisCommandAccess && m_redisCommandAccess->writeValue(key, value);
@@ -76,6 +108,16 @@ bool ModuleLogicHandler::writeRedisValue(const QString& key, const QVariant& val
 bool ModuleLogicHandler::writeRedisJsonValue(const QString& key, const QVariantMap& value)
 {
     return m_redisCommandAccess && m_redisCommandAccess->writeJsonValue(key, value);
+}
+
+bool ModuleLogicHandler::writeRedisHashValue(const QStringList& path, const QVariant& value)
+{
+    return m_redisCommandAccess && m_redisCommandAccess->writeHashValue(path, value);
+}
+
+bool ModuleLogicHandler::writeRedisHashJsonValue(const QStringList& path, const QVariantMap& value)
+{
+    return m_redisCommandAccess && m_redisCommandAccess->writeHashJsonValue(path, value);
 }
 
 bool ModuleLogicHandler::publishRedisMessage(const QString& channel, const QByteArray& message)

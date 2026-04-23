@@ -36,6 +36,147 @@ QString replyString(const redisReply* reply)
     return QString::fromUtf8(replyBytes(reply));
 }
 
+QVariant replyToVariant(const redisReply* reply);
+
+QVariant decodeStructuredVariant(const QVariant& raw)
+{
+    if (!raw.isValid() || raw.isNull()) {
+        return QVariant();
+    }
+
+    QByteArray jsonBytes;
+    if (raw.userType() == QMetaType::QByteArray) {
+        jsonBytes = raw.toByteArray();
+    } else if (raw.userType() == QMetaType::QString) {
+        jsonBytes = raw.toString().toUtf8();
+    } else {
+        return raw;
+    }
+
+    if (jsonBytes.isEmpty()) {
+        return raw.userType() == QMetaType::QByteArray ? QVariant(QString()) : raw;
+    }
+
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(jsonBytes, &err);
+    if (err.error == QJsonParseError::NoError && !doc.isNull()) {
+        return doc.toVariant();
+    }
+
+    return raw.userType() == QMetaType::QByteArray ? QVariant(QString::fromUtf8(jsonBytes)) : raw;
+}
+
+bool tryListIndex(const QString& segment, int* index)
+{
+    bool ok = false;
+    const int parsed = segment.toInt(&ok);
+    if (!ok || parsed < 0) {
+        return false;
+    }
+
+    if (index) {
+        *index = parsed;
+    }
+    return true;
+}
+
+QVariant extractNestedValue(QVariant current, const QStringList& path)
+{
+    for (const QString& segment : path) {
+        current = decodeStructuredVariant(current);
+        if (current.userType() == QMetaType::QVariantMap) {
+            const QVariantMap map = current.toMap();
+            if (!map.contains(segment)) {
+                return QVariant();
+            }
+            current = map.value(segment);
+            continue;
+        }
+
+        if (current.userType() == QMetaType::QVariantList) {
+            int listIndex = -1;
+            if (!tryListIndex(segment, &listIndex)) {
+                return QVariant();
+            }
+
+            const QVariantList list = current.toList();
+            if (listIndex < 0 || listIndex >= list.size()) {
+                return QVariant();
+            }
+            current = list.at(listIndex);
+            continue;
+        }
+
+        return QVariant();
+    }
+
+    return decodeStructuredVariant(current);
+}
+
+bool assignNestedValue(QVariant& current, const QStringList& path, const QVariant& value)
+{
+    if (path.isEmpty()) {
+        current = value;
+        return true;
+    }
+
+    current = decodeStructuredVariant(current);
+
+    int listIndex = -1;
+    const bool wantsList = tryListIndex(path.first(), &listIndex);
+    if (!current.isValid() || current.isNull()) {
+        current = wantsList ? QVariant(QVariantList()) : QVariant(QVariantMap());
+    }
+
+    if (current.userType() == QMetaType::QVariantMap) {
+        QVariantMap map = current.toMap();
+        QVariant child = map.value(path.first());
+        if (!assignNestedValue(child, path.mid(1), value)) {
+            return false;
+        }
+        map.insert(path.first(), child);
+        current = map;
+        return true;
+    }
+
+    if (current.userType() == QMetaType::QVariantList) {
+        if (!wantsList) {
+            return false;
+        }
+
+        QVariantList list = current.toList();
+        while (list.size() <= listIndex) {
+            list.append(QVariant());
+        }
+
+        QVariant child = list.at(listIndex);
+        if (!assignNestedValue(child, path.mid(1), value)) {
+            return false;
+        }
+        list[listIndex] = child;
+        current = list;
+        return true;
+    }
+
+    return false;
+}
+
+QVariantMap replyToHashMap(const redisReply* reply)
+{
+    QVariantMap result;
+    if (!reply || reply->type != REDIS_REPLY_ARRAY) {
+        return result;
+    }
+
+    for (size_t index = 0; index + 1 < reply->elements; index += 2) {
+        const QString fieldName = replyString(reply->element[index]);
+        const QVariant fieldValue = decodeStructuredVariant(replyToVariant(reply->element[index + 1]));
+        result.insert(fieldName, fieldValue);
+    }
+
+    return result;
+}
+
 QVariant replyToVariant(const redisReply* reply)
 {
     if (!reply) {
@@ -201,6 +342,105 @@ QVariantMap RedisLogicCommandAccess::readJsonValue(const QString& key)
     return value.toMap();
 }
 
+QVariant RedisLogicCommandAccess::readHashValue(const QString& hashKey, const QString& field)
+{
+    return readHashValue(QStringList{hashKey, field});
+}
+
+QString RedisLogicCommandAccess::readHashStringValue(const QString& hashKey, const QString& field)
+{
+    return readHashValue(hashKey, field).toString();
+}
+
+QVariantMap RedisLogicCommandAccess::readHashJsonValue(const QString& hashKey, const QString& field)
+{
+    return readHashValue(QStringList{hashKey, field}).toMap();
+}
+
+QVariant RedisLogicCommandAccess::readHashValue(const QStringList& path)
+{
+    if (path.isEmpty()) {
+        emit errorOccurred(QStringLiteral("Redis hash path is empty"));
+        return QVariant();
+    }
+
+    QString errorMessage;
+    QVariant result;
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!ensureConnectedLocked(&errorMessage)) {
+            result = QVariant();
+        } else if (path.size() == 1) {
+            const QByteArray hashKeyBytes = path.first().toUtf8();
+            redisReply* reply = static_cast<redisReply*>(redisCommand(
+                m_context,
+                "HGETALL %b",
+                hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size())));
+
+            if (!reply) {
+                errorMessage = redisErrorMessage(
+                    m_context,
+                    QStringLiteral("Timed out reading Redis hash '%1'").arg(path.first()));
+                closeContextLocked();
+            } else {
+                std::unique_ptr<redisReply, decltype(&freeReplyObject)> guard(reply, &freeReplyObject);
+                if (reply->type == REDIS_REPLY_ERROR) {
+                    errorMessage = QStringLiteral("Redis HGETALL failed for hash '%1': %2")
+                                       .arg(path.first(), replyString(reply));
+                } else {
+                    result = replyToHashMap(reply);
+                }
+            }
+        } else {
+            const QString hashKey = path.at(0);
+            const QString field = path.at(1);
+            const QByteArray hashKeyBytes = hashKey.toUtf8();
+            const QByteArray fieldBytes = field.toUtf8();
+            redisReply* reply = static_cast<redisReply*>(redisCommand(
+                m_context,
+                "HGET %b %b",
+                hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size()),
+                fieldBytes.constData(), static_cast<size_t>(fieldBytes.size())));
+
+            if (!reply) {
+                errorMessage = redisErrorMessage(
+                    m_context,
+                    QStringLiteral("Timed out reading Redis hash '%1' field '%2'")
+                        .arg(hashKey, field));
+                closeContextLocked();
+            } else {
+                std::unique_ptr<redisReply, decltype(&freeReplyObject)> guard(reply, &freeReplyObject);
+                if (reply->type == REDIS_REPLY_ERROR) {
+                    errorMessage = QStringLiteral("Redis HGET failed for hash '%1' field '%2': %3")
+                                       .arg(hashKey, field, replyString(reply));
+                } else {
+                    result = decodeStructuredVariant(replyToVariant(reply));
+                    if (path.size() > 2) {
+                        result = extractNestedValue(result, path.mid(2));
+                    }
+                }
+            }
+        }
+    }
+
+    if (!errorMessage.isEmpty()) {
+        emit errorOccurred(errorMessage);
+    }
+
+    return result;
+}
+
+QString RedisLogicCommandAccess::readHashStringValue(const QStringList& path)
+{
+    return readHashValue(path).toString();
+}
+
+QVariantMap RedisLogicCommandAccess::readHashJsonValue(const QStringList& path)
+{
+    return readHashValue(path).toMap();
+}
+
 bool RedisLogicCommandAccess::writeValue(const QString& key, const QVariant& value)
 {
     QString errorMessage;
@@ -247,6 +487,164 @@ bool RedisLogicCommandAccess::writeJsonValue(const QString& key, const QVariantM
 {
     const QJsonDocument document(QJsonObject::fromVariantMap(value));
     return writeValue(key, document.toJson(QJsonDocument::Compact));
+}
+
+bool RedisLogicCommandAccess::writeHashValue(const QStringList& path, const QVariant& value)
+{
+    if (path.isEmpty()) {
+        emit errorOccurred(QStringLiteral("Redis hash path is empty"));
+        return false;
+    }
+
+    QString errorMessage;
+    bool success = false;
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!ensureConnectedLocked(&errorMessage)) {
+            success = false;
+        } else if (path.size() == 1) {
+            const QVariantMap wholeHash = value.toMap();
+            const QByteArray hashKeyBytes = path.first().toUtf8();
+
+            redisReply* deleteReply = static_cast<redisReply*>(redisCommand(
+                m_context,
+                "DEL %b",
+                hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size())));
+            if (!deleteReply) {
+                errorMessage = redisErrorMessage(
+                    m_context,
+                    QStringLiteral("Failed clearing Redis hash '%1'").arg(path.first()));
+                closeContextLocked();
+            } else {
+                freeReplyObject(deleteReply);
+            }
+
+            if (errorMessage.isEmpty()) {
+                success = true;
+                for (auto it = wholeHash.cbegin(); it != wholeHash.cend(); ++it) {
+                    const QByteArray fieldBytes = it.key().toUtf8();
+                    const QByteArray payload = variantToRedisBytes(it.value());
+                    redisReply* reply = static_cast<redisReply*>(redisCommand(
+                        m_context,
+                        "HSET %b %b %b",
+                        hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size()),
+                        fieldBytes.constData(), static_cast<size_t>(fieldBytes.size()),
+                        payload.constData(), static_cast<size_t>(payload.size())));
+                    if (!reply) {
+                        errorMessage = redisErrorMessage(
+                            m_context,
+                            QStringLiteral("Failed writing Redis hash '%1' field '%2'")
+                                .arg(path.first(), it.key()));
+                        closeContextLocked();
+                        success = false;
+                        break;
+                    }
+
+                    std::unique_ptr<redisReply, decltype(&freeReplyObject)> guard(reply, &freeReplyObject);
+                    if (reply->type == REDIS_REPLY_ERROR) {
+                        errorMessage = QStringLiteral("Redis HSET failed for hash '%1' field '%2': %3")
+                                           .arg(path.first(), it.key(), replyString(reply));
+                        success = false;
+                        break;
+                    }
+                }
+            }
+        } else if (path.size() == 2) {
+            const QByteArray hashKeyBytes = path.at(0).toUtf8();
+            const QByteArray fieldBytes = path.at(1).toUtf8();
+            const QByteArray payload = variantToRedisBytes(value);
+            redisReply* reply = static_cast<redisReply*>(redisCommand(
+                m_context,
+                "HSET %b %b %b",
+                hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size()),
+                fieldBytes.constData(), static_cast<size_t>(fieldBytes.size()),
+                payload.constData(), static_cast<size_t>(payload.size())));
+
+            if (!reply) {
+                errorMessage = redisErrorMessage(
+                    m_context,
+                    QStringLiteral("Failed writing Redis hash '%1' field '%2'")
+                        .arg(path.at(0), path.at(1)));
+                closeContextLocked();
+            } else {
+                std::unique_ptr<redisReply, decltype(&freeReplyObject)> guard(reply, &freeReplyObject);
+                if (reply->type == REDIS_REPLY_ERROR) {
+                    errorMessage = QStringLiteral("Redis HSET failed for hash '%1' field '%2': %3")
+                                       .arg(path.at(0), path.at(1), replyString(reply));
+                } else {
+                    success = true;
+                }
+            }
+        } else {
+            const QByteArray hashKeyBytes = path.at(0).toUtf8();
+            const QByteArray fieldBytes = path.at(1).toUtf8();
+            redisReply* readReply = static_cast<redisReply*>(redisCommand(
+                m_context,
+                "HGET %b %b",
+                hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size()),
+                fieldBytes.constData(), static_cast<size_t>(fieldBytes.size())));
+
+            if (!readReply) {
+                errorMessage = redisErrorMessage(
+                    m_context,
+                    QStringLiteral("Failed reading Redis hash '%1' field '%2'")
+                        .arg(path.at(0), path.at(1)));
+                closeContextLocked();
+            } else {
+                std::unique_ptr<redisReply, decltype(&freeReplyObject)> readGuard(readReply, &freeReplyObject);
+                if (readReply->type == REDIS_REPLY_ERROR) {
+                    errorMessage = QStringLiteral("Redis HGET failed for hash '%1' field '%2': %3")
+                        .arg(path.at(0), path.at(1), replyString(readReply));
+                } else {
+                    QVariant root = decodeStructuredVariant(replyToVariant(readReply));
+                    if (!assignNestedValue(root, path.mid(2), value)) {
+                        errorMessage = QStringLiteral("Failed applying nested Redis hash path '%1'")
+                            .arg(path.join(QStringLiteral("/")));
+                    } else {
+                        const QByteArray payload = variantToRedisBytes(root);
+                        redisReply* reply = static_cast<redisReply*>(redisCommand(
+                            m_context,
+                            "HSET %b %b %b",
+                            hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size()),
+                            fieldBytes.constData(), static_cast<size_t>(fieldBytes.size()),
+                            payload.constData(), static_cast<size_t>(payload.size())));
+                        if (!reply) {
+                            errorMessage = redisErrorMessage(
+                                m_context,
+                                QStringLiteral("Failed writing Redis hash '%1' field '%2'")
+                                    .arg(path.at(0), path.at(1)));
+                            closeContextLocked();
+                        } else {
+                            std::unique_ptr<redisReply, decltype(&freeReplyObject)> guard(reply, &freeReplyObject);
+                            if (reply->type == REDIS_REPLY_ERROR) {
+                                errorMessage = QStringLiteral("Redis HSET failed for hash '%1' field '%2': %3")
+                                    .arg(path.at(0), path.at(1), replyString(reply));
+                            } else {
+                                success = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (!errorMessage.isEmpty()) {
+        emit errorOccurred(errorMessage);
+    }
+
+    return success;
+}
+
+bool RedisLogicCommandAccess::writeHashJsonValue(const QStringList& path, const QVariantMap& value)
+{
+    if (path.size() <= 1) {
+        return writeHashValue(path, value);
+    }
+
+    const QJsonDocument document(QJsonObject::fromVariantMap(value));
+    return writeHashValue(path, document.toJson(QJsonDocument::Compact));
 }
 
 bool RedisLogicCommandAccess::publishMessage(const QString& channel, const QByteArray& message)

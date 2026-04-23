@@ -30,13 +30,13 @@
 //   }
 //
 // module == "global" means the data is broadcast to ALL registered module
-// logic handlers.  Use this for shared / cross-cutting Redis keys.
+// logic handlers.  Use this for shared / cross-cutting Redis data.
 // ---------------------------------------------------------------------------
 
 // One group of polling keys all belonging to the same module.
 struct RedisKeyGroup {
     QString     module; // target module ID, or "global" to broadcast
-    QStringList keys;   // Redis keys to include in MGET
+    QStringList keys;   // logical polling keys; worker resolves them to HGET targets
 };
 
 // One Redis pub/sub channel and its owning module.
@@ -54,15 +54,15 @@ struct RedisConnectionConfig {
     QString host            = QStringLiteral("127.0.0.1");
     int     port            = 6379;
     int     db              = 0;
-    int     pollIntervalMs  = 16;   // MGET interval (≈60 Hz)
+    int     pollIntervalMs  = 16;   // HGET interval (≈60 Hz)
 
     QVector<RedisKeyGroup>   pollingKeyGroups;
     QVector<RedisSubChannel> subscriptionChannels;
 
-    // Returns all polling keys across all groups (for MGET).
+    // Returns all polling keys across all groups.
     QStringList allPollingKeys() const;
 
-    // Returns the module that owns 'key' (exact or prefix match).
+    // Returns the module that owns 'key'.
     // Returns an empty string if no group claims the key.
     QString moduleForKey(const QString& key) const;
 

@@ -16,8 +16,8 @@ class QTimer;
 //
 // Owns all resources for one Redis connection described by RedisConnectionConfig:
 //
-//   • Polling:       a dedicated QThread + RedisPollingWorker that fires MGET
-//                    for all configured keys at 'pollIntervalMs' intervals.
+//   • Polling:       a dedicated QThread + RedisPollingWorker that fires HGET
+//                    for all configured logical polling keys at 'pollIntervalMs' intervals.
 //
 //   • Subscription:  a RedisGateway that maintains a subscriber thread and
 //                    emits messageReceived() for every incoming pub/sub message.
@@ -28,8 +28,8 @@ class QTimer;
 // Signals
 // -------
 //   pollBatchReady(connectionId, values)
-//       Emitted when the MGET poll completes.  'values' is a raw key→QVariant
-//       map; values may be null QVariants when a key has no data in Redis.
+//       Emitted when the hash poll completes.  'values' is a raw logicalKey→QVariant
+//       map; values may be null QVariants when a field has no data in Redis.
 //
 //   subscriptionReceived(connectionId, module, channel, payload)
 //       Emitted when a pub/sub message arrives on a subscribed channel.
@@ -54,7 +54,7 @@ public:
     bool isRunning() const;
 
 signals:
-    // Raw MGET result — one entry per key in pollingKeyGroups (null = key absent).
+    // Raw hash poll result — one entry per configured logical key (null = field absent).
     void pollBatchReady(const QString& connectionId, const QVariantMap& values);
 
     // Decoded pub/sub message for the given module and channel.
@@ -64,7 +64,7 @@ signals:
                                const QVariantMap& payload);
 
     // Internal: cross-thread trigger to start a poll on the worker thread.
-    void requestPoll(const QStringList& keys);
+    void requestPoll();
 
 private slots:
     void onPollResult(const QVariantMap& values);
@@ -77,6 +77,6 @@ private:
     RedisGateway*          m_gateway       = nullptr;
     RedisPollingWorker*    m_pollWorker    = nullptr;
     QThread*               m_pollThread   = nullptr;
-    QTimer*                m_pollTimer    = nullptr;
-    QStringList            m_allKeys;     // cached flat key list
+    QTimer*      m_pollTimer    = nullptr;
+    QStringList  m_allPollingKeys;
 };

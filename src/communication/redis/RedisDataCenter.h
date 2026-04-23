@@ -19,8 +19,8 @@ class LogicRuntime;
 // each worker's signals, and dispatches the results to the application's
 // LogicRuntime via two functions:
 //
-//   onPollBatch()     — called when a MGET round completes for a connection.
-//                       Splits the raw key→value map by module (using the
+//   onPollBatch()     — called when a hash polling round completes for a connection.
+//                       Splits the raw valueKey→value map by module (using the
 //                       pollingKeyGroups declared in the config), normalises
 //                       each value (JSON decode), aggregates per-module maps,
 //                       and calls LogicRuntime::onModulePollBatch() once per
@@ -32,7 +32,7 @@ class LogicRuntime;
 //
 // "global" module
 // ---------------
-// When a key group or subscription channel carries module == "global", the
+// When a polling group or subscription channel carries module == "global", the
 // data is delivered to EVERY registered module logic handler.  The handlers
 // themselves decide whether the data is relevant to them.
 // ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ public:
     bool isRunning() const;
 
 private slots:
-    // Called when a MGET batch result arrives from a worker.
+    // Called when a polling batch result arrives from a worker.
     void onPollBatch(const QString& connectionId, const QVariantMap& rawValues);
 
     // Called when a pub/sub message arrives from a worker.

@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QString>
-#include <QStringList>
 #include <QVariant>
 
 struct redisContext;
@@ -24,11 +23,12 @@ public:
 
 public slots:
     void setConnection(const QString& host, int port);
+    void setPollingKeys(const QStringList& keys);
     // Switch to the given DB index.  The command is sent immediately if the
     // worker is already connected; otherwise it is applied on the next
     // successful reconnect.
     void selectDb(int db);
-    void readKeys(const QStringList& keys);
+    void poll();
 
 signals:
     void keyValuesReceived(const QVariantMap& values);
@@ -41,5 +41,6 @@ private:
     int m_port = 0;
     int m_db = 0;
     int m_connectTimeoutMs = 2000;
+    QStringList m_pollingKeys;
     redisContext* m_context = nullptr;
 };

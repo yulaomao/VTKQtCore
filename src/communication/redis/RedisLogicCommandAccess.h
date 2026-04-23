@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 #include <QVariantMap>
 
@@ -26,8 +27,16 @@ public:
     QVariant readValue(const QString& key) override;
     QString readStringValue(const QString& key) override;
     QVariantMap readJsonValue(const QString& key) override;
+    QVariant readHashValue(const QString& hashKey, const QString& field) override;
+    QString readHashStringValue(const QString& hashKey, const QString& field) override;
+    QVariantMap readHashJsonValue(const QString& hashKey, const QString& field) override;
+    QVariant readHashValue(const QStringList& path) override;
+    QString readHashStringValue(const QStringList& path) override;
+    QVariantMap readHashJsonValue(const QStringList& path) override;
     bool writeValue(const QString& key, const QVariant& value) override;
     bool writeJsonValue(const QString& key, const QVariantMap& value) override;
+    bool writeHashValue(const QStringList& path, const QVariant& value) override;
+    bool writeHashJsonValue(const QStringList& path, const QVariantMap& value) override;
     bool publishMessage(const QString& channel, const QByteArray& message) override;
     bool publishJsonMessage(const QString& channel, const QVariantMap& payload) override;
 

@@ -11,6 +11,28 @@
 
 namespace {
 
+struct PollTarget {
+    QString hashKey;
+    QString field;
+    bool valid = false;
+};
+
+PollTarget resolvePollTarget(const QString& logicalKey)
+{
+    const int dotIndex = logicalKey.lastIndexOf(QLatin1Char('.'));
+    const int colonIndex = logicalKey.lastIndexOf(QLatin1Char(':'));
+    const int splitIndex = (std::max)(dotIndex, colonIndex);
+    if (splitIndex <= 0 || splitIndex >= logicalKey.size() - 1) {
+        return {};
+    }
+
+    PollTarget target;
+    target.hashKey = logicalKey.left(splitIndex);
+    target.field = logicalKey.mid(splitIndex + 1);
+    target.valid = !target.hashKey.isEmpty() && !target.field.isEmpty();
+    return target;
+}
+
 QVariant replyToVariantPoll(const redisReply* reply)
 {
     if (!reply) {
@@ -66,6 +88,11 @@ void RedisPollingWorker::setConnection(const QString& host, int port)
     closeContext();
 }
 
+void RedisPollingWorker::setPollingKeys(const QStringList& keys)
+{
+    m_pollingKeys = keys;
+}
+
 void RedisPollingWorker::selectDb(int db)
 {
     if (m_db == db) {
@@ -86,9 +113,9 @@ void RedisPollingWorker::selectDb(int db)
     }
 }
 
-void RedisPollingWorker::readKeys(const QStringList& keys)
+void RedisPollingWorker::poll()
 {
-    if (keys.isEmpty()) {
+    if (m_pollingKeys.isEmpty()) {
         emit keyValuesReceived({});
         return;
     }
@@ -97,41 +124,29 @@ void RedisPollingWorker::readKeys(const QStringList& keys)
         return;
     }
 
-    QVector<QByteArray> commandParts;
-    commandParts.reserve(keys.size() + 1);
-    commandParts.append(QByteArrayLiteral("MGET"));
-    for (const QString& key : keys) {
-        commandParts.append(key.toUtf8());
-    }
-
-    QVector<const char*> argv;
-    QVector<size_t> argvlen;
-    argv.reserve(commandParts.size());
-    argvlen.reserve(commandParts.size());
-    for (const QByteArray& part : commandParts) {
-        argv.append(part.constData());
-        argvlen.append(static_cast<size_t>(part.size()));
-    }
-
-    redisReply* reply = static_cast<redisReply*>(
-        redisCommandArgv(m_context,
-                         commandParts.size(),
-                         argv.data(),
-                         argvlen.data()));
-
-    if (!reply) {
-        closeContext();
-        return;
-    }
-
     QVariantMap values;
-    if (reply->type == REDIS_REPLY_ARRAY) {
-        const size_t count = (std::min)(reply->elements, static_cast<size_t>(keys.size()));
-        for (size_t index = 0; index < count; ++index) {
-            values.insert(keys.at(static_cast<int>(index)), replyToVariantPoll(reply->element[index]));
+    for (const QString& logicalKey : m_pollingKeys) {
+        const PollTarget target = resolvePollTarget(logicalKey);
+        if (!target.valid) {
+            continue;
         }
+
+        const QByteArray hashKeyBytes = target.hashKey.toUtf8();
+        const QByteArray fieldBytes = target.field.toUtf8();
+        redisReply* reply = static_cast<redisReply*>(redisCommand(
+            m_context,
+            "HGET %b %b",
+            hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size()),
+            fieldBytes.constData(), static_cast<size_t>(fieldBytes.size())));
+
+        if (!reply) {
+            closeContext();
+            return;
+        }
+
+        values.insert(logicalKey, replyToVariantPoll(reply));
+        freeReplyObject(reply);
     }
-    freeReplyObject(reply);
 
     emit keyValuesReceived(values);
 }

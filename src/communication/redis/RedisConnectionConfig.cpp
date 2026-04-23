@@ -27,13 +27,7 @@ QString RedisConnectionConfig::moduleForKey(const QString& key) const
 {
     for (const RedisKeyGroup& group : pollingKeyGroups) {
         for (const QString& configKey : group.keys) {
-            // Exact match or prefix wildcard (configKey ending with '*').
-            if (configKey.endsWith(QLatin1Char('*'))) {
-                const QString prefix = configKey.left(configKey.size() - 1);
-                if (prefix.isEmpty() || key.startsWith(prefix)) {
-                    return group.module;
-                }
-            } else if (key == configKey) {
+            if (configKey == key) {
                 return group.module;
             }
         }
@@ -63,10 +57,10 @@ RedisKeyGroup parseKeyGroup(const QJsonObject& obj)
     group.module = obj.value(QStringLiteral("module")).toString().trimmed();
 
     const QJsonArray keys = obj.value(QStringLiteral("keys")).toArray();
-    for (const QJsonValue& v : keys) {
-        const QString k = v.toString().trimmed();
-        if (!k.isEmpty()) {
-            group.keys.append(k);
+    for (const QJsonValue& value : keys) {
+        const QString key = value.toString().trimmed();
+        if (!key.isEmpty()) {
+            group.keys.append(key);
         }
     }
     return group;

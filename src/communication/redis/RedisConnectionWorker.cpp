@@ -44,7 +44,7 @@ RedisConnectionWorker::RedisConnectionWorker(const RedisConnectionConfig& config
                                              QObject* parent)
     : QObject(parent)
     , m_config(config)
-    , m_allKeys(config.allPollingKeys())
+    , m_allPollingKeys(config.allPollingKeys())
 {
     // --- Gateway (subscription + command access) ---
     m_gateway = new RedisGateway(this);
@@ -66,17 +66,18 @@ RedisConnectionWorker::RedisConnectionWorker(const RedisConnectionConfig& config
             this, &RedisConnectionWorker::onPollResult,
             Qt::QueuedConnection);
 
-    // Cross-thread poll trigger: requestPoll() → m_pollWorker->readKeys()
+    // Cross-thread poll trigger: requestPoll() → m_pollWorker->poll()
     connect(this, &RedisConnectionWorker::requestPoll,
-            m_pollWorker, &RedisPollingWorker::readKeys,
+            m_pollWorker, &RedisPollingWorker::poll,
             Qt::QueuedConnection);
 
     // Select the correct DB on the poll worker when the thread starts.
     connect(m_pollThread, &QThread::started, m_pollWorker, [this]() {
+        m_pollWorker->setPollingKeys(m_allPollingKeys);
         m_pollWorker->selectDb(m_config.db);
     });
 
-    // Poll timer lives on the main thread — fires the MGET on the worker.
+    // Poll timer lives on the main thread — fires the HGET sequence on the worker.
     m_pollTimer = new QTimer(this);
     m_pollTimer->setInterval(qMax(1, m_config.pollIntervalMs));
     m_pollTimer->setSingleShot(false);
@@ -123,7 +124,7 @@ void RedisConnectionWorker::start()
     }
 
     // Start the polling thread and the timer.
-    if (!m_allKeys.isEmpty()) {
+    if (!m_allPollingKeys.isEmpty()) {
         m_pollThread->start();
         m_pollTimer->start();
     }
@@ -135,7 +136,7 @@ void RedisConnectionWorker::start()
                .arg(m_config.host)
                .arg(m_config.port)
                .arg(m_config.db)
-               .arg(m_allKeys.size())
+               .arg(m_allPollingKeys.size())
                .arg(m_config.subscriptionChannels.size());
 }
 
@@ -162,8 +163,8 @@ void RedisConnectionWorker::stop()
 
 void RedisConnectionWorker::onPollTimerTick()
 {
-    if (!m_allKeys.isEmpty()) {
-        emit requestPoll(m_allKeys);
+    if (!m_allPollingKeys.isEmpty()) {
+        emit requestPoll();
     }
 }
 

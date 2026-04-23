@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QMap>
+#include <QStringList>
 
 #include "communication/datasource/StateSample.h"
 #include "contracts/ModuleInvoke.h"
@@ -32,8 +33,16 @@ public:
     QVariant readRedisValue(const QString& key);
     QString readRedisStringValue(const QString& key);
     QVariantMap readRedisJsonValue(const QString& key);
+    QVariant readRedisHashValue(const QString& hashKey, const QString& field);
+    QString readRedisHashStringValue(const QString& hashKey, const QString& field);
+    QVariantMap readRedisHashJsonValue(const QString& hashKey, const QString& field);
+    QVariant readRedisHashValue(const QStringList& path);
+    QString readRedisHashStringValue(const QStringList& path);
+    QVariantMap readRedisHashJsonValue(const QStringList& path);
     bool writeRedisValue(const QString& key, const QVariant& value);
     bool writeRedisJsonValue(const QString& key, const QVariantMap& value);
+    bool writeRedisHashValue(const QStringList& path, const QVariant& value);
+    bool writeRedisHashJsonValue(const QStringList& path, const QVariantMap& value);
     bool publishRedisMessage(const QString& channel, const QByteArray& message);
     bool publishRedisJsonMessage(const QString& channel, const QVariantMap& payload);
     ModuleInvokeResult invokeModule(const ModuleInvokeRequest& request) override;

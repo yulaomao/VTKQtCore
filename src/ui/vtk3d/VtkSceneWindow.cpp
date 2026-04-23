@@ -126,7 +126,6 @@ VtkSceneWindow::VtkSceneWindow(const QString& windowId, SceneGraph* sceneGraph,
             });
         connect(m_sceneGraph, &SceneGraph::batchModifyEnded,
             this, [this]() {
-                reconcile();
                 scheduleRender();
             });
         }

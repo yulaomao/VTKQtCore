@@ -106,7 +106,7 @@ void RedisDataCenter::onPollBatch(const QString& connectionId,
         return;
     }
 
-    // Find the config for this connection so we can look up key→module.
+    // Find the config for this connection so we can look up logical key→module.
     const RedisConnectionConfig* cfg = nullptr;
     for (const RedisConnectionConfig& c : m_configs) {
         if (c.connectionId == connectionId) {
@@ -126,12 +126,12 @@ void RedisDataCenter::onPollBatch(const QString& connectionId,
     QMap<QString, QVariantMap> moduleBatches;
 
     for (auto it = rawValues.cbegin(); it != rawValues.cend(); ++it) {
-        const QString&  key   = it.key();
+        const QString&  key = it.key();
         const QVariant  value = normalizeValue(it.value());
 
         const QString module = cfg->moduleForKey(key);
         if (module.isEmpty()) {
-            // Key not in any group — skip silently.
+            // Field not in any group — skip silently.
             continue;
         }
 

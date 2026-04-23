@@ -32,9 +32,13 @@ PerConnectionPollingBundle::PerConnectionPollingBundle(const QString& connection
     connect(m_pollingThread, &QThread::finished,
             m_pollingWorker, &QObject::deleteLater);
 
-    // Wire the polling pipeline: source requests keys → worker does MGET → source receives results.
+    // Wire the polling pipeline: source requests keys -> worker resolves them to HGET targets -> source receives results.
     connect(m_pollingSource, &PollingSource::batchPollRequested,
-            m_pollingWorker, &RedisPollingWorker::readKeys);
+            m_pollingWorker,
+            [this](const QStringList& redisKeys) {
+                m_pollingWorker->setPollingKeys(redisKeys);
+                m_pollingWorker->poll();
+            });
     connect(m_pollingWorker, &RedisPollingWorker::keyValuesReceived,
             m_pollingSource, &PollingSource::onBatchPollResult);
 
