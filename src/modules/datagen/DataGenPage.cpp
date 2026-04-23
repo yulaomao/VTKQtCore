@@ -373,6 +373,10 @@ void DataGenPage::setActionDispatcher(UiActionDispatcher* dispatcher)
 
 void DataGenPage::updateModuleState(const QVariantMap& state)
 {
+    if (!state.contains(QStringLiteral("nodeSummaries"))) {
+        return;
+    }
+
     m_nodeSummaries = state.value(QStringLiteral("nodeSummaries")).toList();
     const QString selectedId = state.value(QStringLiteral("selectedNodeId")).toString();
     rebuildNodeList(m_nodeSummaries, selectedId);

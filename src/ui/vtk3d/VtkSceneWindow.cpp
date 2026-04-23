@@ -252,7 +252,7 @@ void VtkSceneWindow::onInteraction()
         return;
     }
 
-    m_cameraResetTimer->start();
+    restartCameraResetTimer();
 }
 
 void VtkSceneWindow::scheduleRender()
@@ -344,6 +344,24 @@ bool VtkSceneWindow::eventFilter(QObject* watched, QEvent* event)
         case QEvent::TouchEnd:
         case QEvent::TouchCancel:
             return handleTouchEnd(static_cast<QTouchEvent*>(event));
+        case QEvent::Wheel:
+            restartCameraResetTimer();
+            break;
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonRelease: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::RightButton) {
+                restartCameraResetTimer();
+            }
+            break;
+        }
+        case QEvent::MouseMove: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->buttons().testFlag(Qt::RightButton)) {
+                restartCameraResetTimer();
+            }
+            break;
+        }
         default:
             break;
         }
@@ -624,11 +642,18 @@ void VtkSceneWindow::renderAfterTouch()
         return;
     }
 
-    if (m_cameraResetTimer) {
-        m_cameraResetTimer->start();
-    }
+    restartCameraResetTimer();
 
     m_renderWindow->Render();
+}
+
+void VtkSceneWindow::restartCameraResetTimer()
+{
+    if (m_isShuttingDown || m_cameraResetTimer == nullptr) {
+        return;
+    }
+
+    m_cameraResetTimer->start();
 }
 
 void VtkSceneWindow::resetTouchState()

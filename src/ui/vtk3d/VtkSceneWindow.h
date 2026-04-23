@@ -13,8 +13,10 @@
 #include <QVector>
 #include <QString>
 #include <QPointF>
+#include <QMouseEvent>
 #include <QShowEvent>
 #include <QTouchEvent>
+#include <QWheelEvent>
 
 #include "display/NodeDisplayManager.h"
 #include "display/BillboardArrowNodeDisplayManager.h"
@@ -71,6 +73,7 @@ private:
     void renderAfterTouch();
     void resetTouchState();
     bool shouldBlockMouseEvent(QEvent::Type eventType) const;
+    void restartCameraResetTimer();
     void detachInteractorObserver();
     void teardownRenderWindow();
 
