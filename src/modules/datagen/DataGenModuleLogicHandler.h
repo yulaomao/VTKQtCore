@@ -11,6 +11,7 @@ class NodeBase;
 class PointNode;
 class LineNode;
 class ModelNode;
+class PlaneNode;
 class TransformNode;
 class SceneGraph;
 
@@ -59,6 +60,7 @@ private:
     PointNode* createPointNode(const QVariantMap& payload);
     LineNode* createLineNode(const QVariantMap& payload);
     ModelNode* createModelNode(const QVariantMap& payload);
+    PlaneNode* createPlaneNode(const QVariantMap& payload);
     TransformNode* createTransformNode(const QVariantMap& payload);
 
     void updateDisplay(NodeBase* node, const QVariantMap& payload);

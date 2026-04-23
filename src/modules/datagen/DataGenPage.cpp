@@ -5,6 +5,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDebug>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -60,6 +61,9 @@ QString nodeTypeLabel(const QString& nodeType)
     }
     if (nodeType == QStringLiteral("line")) {
         return QStringLiteral("LineNode");
+    }
+    if (nodeType == QStringLiteral("plane")) {
+        return QStringLiteral("PlaneNode");
     }
     if (nodeType == QStringLiteral("model")) {
         return QStringLiteral("ModelNode");
@@ -117,6 +121,7 @@ DataGenPage::DataGenPage(QWidget* parent)
     m_createTypeCombo = new QComboBox(createGroup);
     m_createTypeCombo->addItem(QStringLiteral("PointNode"), QStringLiteral("point"));
     m_createTypeCombo->addItem(QStringLiteral("LineNode"), QStringLiteral("line"));
+    m_createTypeCombo->addItem(QStringLiteral("PlaneNode"), QStringLiteral("plane"));
     m_createTypeCombo->addItem(QStringLiteral("ModelNode"), QStringLiteral("model"));
     m_createTypeCombo->addItem(QStringLiteral("TransformNode"), QStringLiteral("transform"));
     m_createNameEdit = new QLineEdit(QStringLiteral("Generated Node"), createGroup);
@@ -149,6 +154,26 @@ DataGenPage::DataGenPage(QWidget* parent)
     lineForm->addRow(QStringLiteral("顶点间距"), lineSpacingSpin);
     lineForm->addRow(QString(), m_closedLineCheck);
     m_createStack->addWidget(linePage);
+
+    auto* planePage = new QWidget(m_createStack);
+    auto* planeForm = new QFormLayout(planePage);
+    m_planeCreateWidthSpin = createAxisSpinBox(planePage, 0.1, 500.0, 48.0);
+    m_planeCreateHeightSpin = createAxisSpinBox(planePage, 0.1, 500.0, 30.0);
+    m_planeCreateCenterXSpin = createAxisSpinBox(planePage, -500.0, 500.0, 0.0);
+    m_planeCreateCenterYSpin = createAxisSpinBox(planePage, -500.0, 500.0, 0.0);
+    m_planeCreateCenterZSpin = createAxisSpinBox(planePage, -500.0, 500.0, 0.0);
+    m_planeCreateNormalXSpin = createAxisSpinBox(planePage, -1.0, 1.0, 0.0);
+    m_planeCreateNormalYSpin = createAxisSpinBox(planePage, -1.0, 1.0, 0.0);
+    m_planeCreateNormalZSpin = createAxisSpinBox(planePage, -1.0, 1.0, 1.0);
+    planeForm->addRow(QStringLiteral("宽度"), m_planeCreateWidthSpin);
+    planeForm->addRow(QStringLiteral("高度"), m_planeCreateHeightSpin);
+    planeForm->addRow(QStringLiteral("中心 X"), m_planeCreateCenterXSpin);
+    planeForm->addRow(QStringLiteral("中心 Y"), m_planeCreateCenterYSpin);
+    planeForm->addRow(QStringLiteral("中心 Z"), m_planeCreateCenterZSpin);
+    planeForm->addRow(QStringLiteral("法向量 X"), m_planeCreateNormalXSpin);
+    planeForm->addRow(QStringLiteral("法向量 Y"), m_planeCreateNormalYSpin);
+    planeForm->addRow(QStringLiteral("法向量 Z"), m_planeCreateNormalZSpin);
+    m_createStack->addWidget(planePage);
 
     auto* modelPage = new QWidget(m_createStack);
     auto* modelForm = new QFormLayout(modelPage);
@@ -272,6 +297,11 @@ DataGenPage::DataGenPage(QWidget* parent)
     m_showEdgesCheck = new QCheckBox(QStringLiteral("显示模型边线"), m_displayGroup);
     m_dashedCheck = new QCheckBox(QStringLiteral("虚线"), m_displayGroup);
     m_showAxesDisplayCheck = new QCheckBox(QStringLiteral("显示坐标轴"), m_displayGroup);
+    m_borderRedSpin = createAxisSpinBox(m_displayGroup, 0.0, 1.0, 0.05);
+    m_borderGreenSpin = createAxisSpinBox(m_displayGroup, 0.0, 1.0, 0.12);
+    m_borderBlueSpin = createAxisSpinBox(m_displayGroup, 0.0, 1.0, 0.2);
+    m_borderOpacitySpin = createAxisSpinBox(m_displayGroup, 0.0, 1.0, 1.0);
+    m_borderWidthSpin = createAxisSpinBox(m_displayGroup, 0.0, 20.0, 2.0);
     m_displayForm->addRow(QString(), m_visibleCheck);
     m_displayForm->addRow(QStringLiteral("图层"), m_layerCombo);
     m_displayForm->addRow(QStringLiteral("红"), m_redSpin);
@@ -289,6 +319,11 @@ DataGenPage::DataGenPage(QWidget* parent)
     m_displayForm->addRow(QString(), m_showEdgesCheck);
     m_displayForm->addRow(QString(), m_dashedCheck);
     m_displayForm->addRow(QString(), m_showAxesDisplayCheck);
+    m_displayForm->addRow(QStringLiteral("边框红"), m_borderRedSpin);
+    m_displayForm->addRow(QStringLiteral("边框绿"), m_borderGreenSpin);
+    m_displayForm->addRow(QStringLiteral("边框蓝"), m_borderBlueSpin);
+    m_displayForm->addRow(QStringLiteral("边框透明度"), m_borderOpacitySpin);
+    m_displayForm->addRow(QStringLiteral("边框厚度"), m_borderWidthSpin);
     m_applyDisplayButton = new QPushButton(QStringLiteral("应用显示属性"), m_displayGroup);
     m_displayForm->addRow(QString(), m_applyDisplayButton);
     controlLayout->addWidget(m_displayGroup);
@@ -344,6 +379,27 @@ DataGenPage::DataGenPage(QWidget* parent)
     dataLayout->addLayout(m_vertexForm);
     m_addVertexButton = new QPushButton(QStringLiteral("向 LineNode 添加顶点"), m_dataGroup);
     dataLayout->addWidget(m_addVertexButton);
+
+    m_planeDataForm = new QFormLayout();
+    m_planeWidthSpin = createAxisSpinBox(m_dataGroup, 0.1, 500.0, 48.0);
+    m_planeHeightSpin = createAxisSpinBox(m_dataGroup, 0.1, 500.0, 30.0);
+    m_planeCenterXSpin = createAxisSpinBox(m_dataGroup, -500.0, 500.0, 0.0);
+    m_planeCenterYSpin = createAxisSpinBox(m_dataGroup, -500.0, 500.0, 0.0);
+    m_planeCenterZSpin = createAxisSpinBox(m_dataGroup, -500.0, 500.0, 0.0);
+    m_planeNormalXSpin = createAxisSpinBox(m_dataGroup, -1.0, 1.0, 0.0);
+    m_planeNormalYSpin = createAxisSpinBox(m_dataGroup, -1.0, 1.0, 0.0);
+    m_planeNormalZSpin = createAxisSpinBox(m_dataGroup, -1.0, 1.0, 1.0);
+    m_planeDataForm->addRow(QStringLiteral("宽度"), m_planeWidthSpin);
+    m_planeDataForm->addRow(QStringLiteral("高度"), m_planeHeightSpin);
+    m_planeDataForm->addRow(QStringLiteral("中心 X"), m_planeCenterXSpin);
+    m_planeDataForm->addRow(QStringLiteral("中心 Y"), m_planeCenterYSpin);
+    m_planeDataForm->addRow(QStringLiteral("中心 Z"), m_planeCenterZSpin);
+    m_planeDataForm->addRow(QStringLiteral("法向量 X"), m_planeNormalXSpin);
+    m_planeDataForm->addRow(QStringLiteral("法向量 Y"), m_planeNormalYSpin);
+    m_planeDataForm->addRow(QStringLiteral("法向量 Z"), m_planeNormalZSpin);
+    dataLayout->addLayout(m_planeDataForm);
+    m_applyPlaneGeometryButton = new QPushButton(QStringLiteral("应用 PlaneNode 几何"), m_dataGroup);
+    dataLayout->addWidget(m_applyPlaneGeometryButton);
 
     m_detailText = new QTextEdit(m_dataGroup);
     m_detailText->setReadOnly(true);
@@ -413,6 +469,8 @@ DataGenPage::DataGenPage(QWidget* parent)
             this, &DataGenPage::onAddPointClicked);
         connect(m_addVertexButton, &QPushButton::clicked,
             this, &DataGenPage::onAddVertexClicked);
+        connect(m_applyPlaneGeometryButton, &QPushButton::clicked,
+            this, &DataGenPage::onApplyPlaneGeometryClicked);
 
     setCreatePanelForNodeType(QStringLiteral("point"));
         updateOperationPanelVisibility(QString());
@@ -424,8 +482,38 @@ void DataGenPage::setSceneWindow(VtkSceneWindow* sceneWindow)
         return;
     }
 
+    if (m_sceneWindow != nullptr) {
+        disconnect(m_sceneWindow, &VtkSceneWindow::interactionStarted,
+                   this, nullptr);
+        disconnect(m_sceneWindow, &VtkSceneWindow::interactionFinished,
+                   this, nullptr);
+    }
+
     m_sceneWindow = sceneWindow;
     replaceLayoutWidget(m_sceneLayout, m_sceneWindow);
+
+    if (m_sceneWindow != nullptr) {
+        connect(m_sceneWindow, &VtkSceneWindow::interactionStarted,
+                this,
+                [](VtkSceneWindow* sender,
+                   const QString& windowId,
+                   const QString& inputSource) {
+                    qDebug() << "[DataGenPage] 3D窗口开始交互"
+                             << "sender=" << sender
+                             << "windowId=" << windowId
+                             << "input=" << inputSource;
+                });
+        connect(m_sceneWindow, &VtkSceneWindow::interactionFinished,
+                this,
+                [](VtkSceneWindow* sender,
+                   const QString& windowId,
+                   const QString& inputSource) {
+                    qDebug() << "[DataGenPage] 3D窗口结束交互"
+                             << "sender=" << sender
+                             << "windowId=" << windowId
+                             << "input=" << inputSource;
+                });
+    }
 }
 
 void DataGenPage::setActionDispatcher(UiActionDispatcher* dispatcher)
@@ -587,6 +675,27 @@ void DataGenPage::onClearGeometryClicked()
     });
 }
 
+void DataGenPage::onApplyPlaneGeometryClicked()
+{
+    if (selectedNodeId().isEmpty()) {
+        setStatusText(QStringLiteral("请先选择 PlaneNode。"));
+        return;
+    }
+
+    emitCommand({
+        {QStringLiteral("command"), QStringLiteral("update_plane_geometry")},
+        {QStringLiteral("nodeId"), selectedNodeId()},
+        {QStringLiteral("width"), m_planeWidthSpin->value()},
+        {QStringLiteral("height"), m_planeHeightSpin->value()},
+        {QStringLiteral("centerX"), m_planeCenterXSpin->value()},
+        {QStringLiteral("centerY"), m_planeCenterYSpin->value()},
+        {QStringLiteral("centerZ"), m_planeCenterZSpin->value()},
+        {QStringLiteral("normalX"), m_planeNormalXSpin->value()},
+        {QStringLiteral("normalY"), m_planeNormalYSpin->value()},
+        {QStringLiteral("normalZ"), m_planeNormalZSpin->value()}
+    });
+}
+
 void DataGenPage::onSeedDemoClicked()
 {
     emitCommand({
@@ -669,7 +778,12 @@ QVariantMap DataGenPage::createDisplayPayload() const
         {QStringLiteral("showLabels"), m_showLabelsCheck->isChecked()},
         {QStringLiteral("showEdges"), m_showEdgesCheck->isChecked()},
         {QStringLiteral("dashed"), m_dashedCheck->isChecked()},
-        {QStringLiteral("showAxes"), m_showAxesDisplayCheck->isChecked()}
+        {QStringLiteral("showAxes"), m_showAxesDisplayCheck->isChecked()},
+        {QStringLiteral("borderRed"), m_borderRedSpin->value()},
+        {QStringLiteral("borderGreen"), m_borderGreenSpin->value()},
+        {QStringLiteral("borderBlue"), m_borderBlueSpin->value()},
+        {QStringLiteral("borderOpacity"), m_borderOpacitySpin->value()},
+        {QStringLiteral("borderWidth"), m_borderWidthSpin->value()}
     };
 }
 
@@ -691,6 +805,24 @@ QVariantMap DataGenPage::createCreatePayload() const
         payload.insert(QStringLiteral("count"), lineCountSpin ? lineCountSpin->value() : 4);
         payload.insert(QStringLiteral("spacing"), lineSpacingSpin ? lineSpacingSpin->value() : 24.0);
         payload.insert(QStringLiteral("closed"), m_closedLineCheck->isChecked());
+    } else if (nodeType == QStringLiteral("plane")) {
+        payload.insert(QStringLiteral("width"), m_planeCreateWidthSpin->value());
+        payload.insert(QStringLiteral("height"), m_planeCreateHeightSpin->value());
+        payload.insert(QStringLiteral("centerX"), m_planeCreateCenterXSpin->value());
+        payload.insert(QStringLiteral("centerY"), m_planeCreateCenterYSpin->value());
+        payload.insert(QStringLiteral("centerZ"), m_planeCreateCenterZSpin->value());
+        payload.insert(QStringLiteral("normalX"), m_planeCreateNormalXSpin->value());
+        payload.insert(QStringLiteral("normalY"), m_planeCreateNormalYSpin->value());
+        payload.insert(QStringLiteral("normalZ"), m_planeCreateNormalZSpin->value());
+        payload.insert(QStringLiteral("red"), 0.28);
+        payload.insert(QStringLiteral("green"), 0.68);
+        payload.insert(QStringLiteral("blue"), 0.94);
+        payload.insert(QStringLiteral("opacity"), 0.35);
+        payload.insert(QStringLiteral("borderRed"), 0.05);
+        payload.insert(QStringLiteral("borderGreen"), 0.12);
+        payload.insert(QStringLiteral("borderBlue"), 0.2);
+        payload.insert(QStringLiteral("borderOpacity"), 1.0);
+        payload.insert(QStringLiteral("borderWidth"), 2.0);
     } else if (nodeType == QStringLiteral("model")) {
         payload.insert(QStringLiteral("shape"), m_modelShapeCombo->currentData().toString());
         payload.insert(QStringLiteral("sizeA"), m_primarySizeSpin->value());
@@ -799,6 +931,11 @@ void DataGenPage::applySelectedNodeDetails(const QVariantMap& details)
     m_showEdgesCheck->setChecked(details.value(QStringLiteral("showEdges"), false).toBool());
     m_dashedCheck->setChecked(details.value(QStringLiteral("dashed"), false).toBool());
     m_showAxesDisplayCheck->setChecked(details.value(QStringLiteral("showAxes"), false).toBool());
+    m_borderRedSpin->setValue(details.value(QStringLiteral("borderRed"), 0.05).toDouble());
+    m_borderGreenSpin->setValue(details.value(QStringLiteral("borderGreen"), 0.12).toDouble());
+    m_borderBlueSpin->setValue(details.value(QStringLiteral("borderBlue"), 0.2).toDouble());
+    m_borderOpacitySpin->setValue(details.value(QStringLiteral("borderOpacity"), 1.0).toDouble());
+    m_borderWidthSpin->setValue(details.value(QStringLiteral("borderWidth"), 2.0).toDouble());
 
     m_translateXSpin->setValue(details.value(QStringLiteral("tx"), 0.0).toDouble());
     m_translateYSpin->setValue(details.value(QStringLiteral("ty"), 0.0).toDouble());
@@ -820,6 +957,25 @@ void DataGenPage::applySelectedNodeDetails(const QVariantMap& details)
         detailText.append(QStringLiteral("\n顶点数量: %1\n总长度: %2")
             .arg(details.value(QStringLiteral("vertexCount")).toInt())
             .arg(details.value(QStringLiteral("length")).toDouble(), 0, 'f', 2));
+    } else if (nodeType == QStringLiteral("plane")) {
+        m_planeWidthSpin->setValue(details.value(QStringLiteral("width"), 48.0).toDouble());
+        m_planeHeightSpin->setValue(details.value(QStringLiteral("height"), 30.0).toDouble());
+        m_planeCenterXSpin->setValue(details.value(QStringLiteral("centerX"), 0.0).toDouble());
+        m_planeCenterYSpin->setValue(details.value(QStringLiteral("centerY"), 0.0).toDouble());
+        m_planeCenterZSpin->setValue(details.value(QStringLiteral("centerZ"), 0.0).toDouble());
+        m_planeNormalXSpin->setValue(details.value(QStringLiteral("normalX"), 0.0).toDouble());
+        m_planeNormalYSpin->setValue(details.value(QStringLiteral("normalY"), 0.0).toDouble());
+        m_planeNormalZSpin->setValue(details.value(QStringLiteral("normalZ"), 1.0).toDouble());
+        detailText.append(QStringLiteral("\n宽度: %1\n高度: %2\n中心: (%3, %4, %5)\n法向量: (%6, %7, %8)\n边框厚度: %9")
+            .arg(details.value(QStringLiteral("width"), 48.0).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("height"), 30.0).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("centerX"), 0.0).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("centerY"), 0.0).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("centerZ"), 0.0).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("normalX"), 0.0).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("normalY"), 0.0).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("normalZ"), 1.0).toDouble(), 0, 'f', 2)
+            .arg(details.value(QStringLiteral("borderWidth"), 2.0).toDouble(), 0, 'f', 2));
     } else if (nodeType == QStringLiteral("model")) {
         detailText.append(QStringLiteral("\n模型形体: %1\n面片数量: %2\nAmbient: %3\nDiffuse: %4\nSpecular: %5\nPower: %6\nRoughness: %7")
             .arg(details.value(QStringLiteral("shape"), QStringLiteral("mesh")).toString())
@@ -843,6 +999,7 @@ void DataGenPage::updateOperationPanelVisibility(const QString& nodeType)
     const bool hasSelection = !nodeType.isEmpty();
     const bool isPoint = nodeType == QStringLiteral("point");
     const bool isLine = nodeType == QStringLiteral("line");
+    const bool isPlane = nodeType == QStringLiteral("plane");
     const bool isModel = nodeType == QStringLiteral("model");
     const bool isTransform = nodeType == QStringLiteral("transform");
 
@@ -859,6 +1016,8 @@ void DataGenPage::updateOperationPanelVisibility(const QString& nodeType)
                 m_dataGroup->setTitle(QStringLiteral("PointNode 数据编辑"));
             } else if (isLine) {
                 m_dataGroup->setTitle(QStringLiteral("LineNode 数据编辑"));
+            } else if (isPlane) {
+                m_dataGroup->setTitle(QStringLiteral("PlaneNode 数据编辑"));
             } else if (isModel) {
                 m_dataGroup->setTitle(QStringLiteral("ModelNode 数据概览"));
             } else if (isTransform) {
@@ -878,6 +1037,11 @@ void DataGenPage::updateOperationPanelVisibility(const QString& nodeType)
     setFormRowVisible(m_displayForm, m_showEdgesCheck, isModel);
     setFormRowVisible(m_displayForm, m_dashedCheck, isLine);
     setFormRowVisible(m_displayForm, m_showAxesDisplayCheck, isTransform);
+    setFormRowVisible(m_displayForm, m_borderRedSpin, isPlane);
+    setFormRowVisible(m_displayForm, m_borderGreenSpin, isPlane);
+    setFormRowVisible(m_displayForm, m_borderBlueSpin, isPlane);
+    setFormRowVisible(m_displayForm, m_borderOpacitySpin, isPlane);
+    setFormRowVisible(m_displayForm, m_borderWidthSpin, isPlane);
     if (m_applyDisplayButton) {
         m_applyDisplayButton->setVisible(hasSelection);
     }
@@ -913,6 +1077,18 @@ void DataGenPage::updateOperationPanelVisibility(const QString& nodeType)
     if (m_addVertexButton) {
         m_addVertexButton->setVisible(isLine);
     }
+
+    setFormRowVisible(m_planeDataForm, m_planeWidthSpin, isPlane);
+    setFormRowVisible(m_planeDataForm, m_planeHeightSpin, isPlane);
+    setFormRowVisible(m_planeDataForm, m_planeCenterXSpin, isPlane);
+    setFormRowVisible(m_planeDataForm, m_planeCenterYSpin, isPlane);
+    setFormRowVisible(m_planeDataForm, m_planeCenterZSpin, isPlane);
+    setFormRowVisible(m_planeDataForm, m_planeNormalXSpin, isPlane);
+    setFormRowVisible(m_planeDataForm, m_planeNormalYSpin, isPlane);
+    setFormRowVisible(m_planeDataForm, m_planeNormalZSpin, isPlane);
+    if (m_applyPlaneGeometryButton) {
+        m_applyPlaneGeometryButton->setVisible(isPlane);
+    }
 }
 
 void DataGenPage::setCreatePanelForNodeType(const QString& nodeType)
@@ -923,12 +1099,15 @@ void DataGenPage::setCreatePanelForNodeType(const QString& nodeType)
     } else if (nodeType == QStringLiteral("line")) {
         m_createNameEdit->setText(QStringLiteral("Generated Path"));
         m_createStack->setCurrentIndex(1);
+    } else if (nodeType == QStringLiteral("plane")) {
+        m_createNameEdit->setText(QStringLiteral("Generated Plane"));
+        m_createStack->setCurrentIndex(2);
     } else if (nodeType == QStringLiteral("model")) {
         m_createNameEdit->setText(QStringLiteral("Generated Model"));
-        m_createStack->setCurrentIndex(2);
+        m_createStack->setCurrentIndex(3);
     } else {
         m_createNameEdit->setText(QStringLiteral("Generated Transform"));
-        m_createStack->setCurrentIndex(3);
+        m_createStack->setCurrentIndex(4);
     }
 }
 

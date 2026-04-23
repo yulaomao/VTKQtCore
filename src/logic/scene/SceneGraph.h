@@ -6,6 +6,7 @@
 #include "nodes/BillboardLineNode.h"
 #include "nodes/LineNode.h"
 #include "nodes/ModelNode.h"
+#include "nodes/PlaneNode.h"
 #include "nodes/TransformNode.h"
 
 #include <QObject>
@@ -54,6 +55,7 @@ public:
     QVector<BillboardArrowNode*> getAllBillboardArrowNodes() const;
     QVector<LineNode*> getAllLineNodes() const;
     QVector<ModelNode*> getAllModelNodes() const;
+    QVector<PlaneNode*> getAllPlaneNodes() const;
     QVector<TransformNode*> getAllTransformNodes() const;
 
 signals:
