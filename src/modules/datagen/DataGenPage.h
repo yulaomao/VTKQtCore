@@ -43,6 +43,10 @@ private slots:
     void onAddVertexClicked();
     void onClearGeometryClicked();
     void onSeedDemoClicked();
+    void onPlayProgressPromptOnceClicked();
+    void onPlayAttentionPromptOnceClicked();
+    void onPlayProgressPromptBurstClicked();
+    void onPlayAttentionPromptBurstClicked();
 
 private:
     QVariantMap selectedNodeSummary() const;
@@ -62,6 +66,7 @@ private:
     QListWidget* m_nodeList = nullptr;
     QLabel* m_statusLabel = nullptr;
     QTextEdit* m_detailText = nullptr;
+    QGroupBox* m_audioGroup = nullptr;
     QGroupBox* m_displayGroup = nullptr;
     QGroupBox* m_hierarchyGroup = nullptr;
     QGroupBox* m_dataGroup = nullptr;

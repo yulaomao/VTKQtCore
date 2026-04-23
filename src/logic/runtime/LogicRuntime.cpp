@@ -3,11 +3,13 @@
 #include "communication/hub/IRedisCommandAccess.h"
 #include "communication/redis/RedisConnectionConfig.h"
 #include "logic/runtime/GlobalPollingSampleParser.h"
+#include "logic/runtime/IPromptAudioService.h"
 #include "scene/SceneGraph.h"
 #include "workflow/ActiveModuleState.h"
 #include "registry/ModuleLogicRegistry.h"
 #include "registry/ModuleLogicHandler.h"
 
+#include <QDebug>
 #include <limits>
 
 namespace {
@@ -135,6 +137,16 @@ ModuleLogicRegistry* LogicRuntime::getModuleLogicRegistry() const
     return m_moduleLogicRegistry;
 }
 
+void LogicRuntime::setPromptAudioService(IPromptAudioService* promptAudioService)
+{
+    m_promptAudioService = promptAudioService;
+}
+
+bool LogicRuntime::hasPromptAudioService() const
+{
+    return m_promptAudioService != nullptr;
+}
+
 void LogicRuntime::setGlobalPollingSampleParser(GlobalPollingSampleParser* parser)
 {
     if (m_globalPollingSampleParser == parser) {
@@ -236,6 +248,45 @@ bool LogicRuntime::publishRedisMessage(const QString& channel, const QByteArray&
 bool LogicRuntime::publishRedisJsonMessage(const QString& channel, const QVariantMap& payload)
 {
     return m_redisCommandAccess && m_redisCommandAccess->publishJsonMessage(channel, payload);
+}
+
+bool LogicRuntime::playPromptAudioPreset(const QString& presetId)
+{
+    if (!m_promptAudioService) {
+        qWarning().noquote() << QStringLiteral("[LogicRuntime] prompt audio service is not configured.");
+        return false;
+    }
+
+    return m_promptAudioService->playPreset(presetId);
+}
+
+bool LogicRuntime::playPromptAudioSource(const QString& source)
+{
+    if (!m_promptAudioService) {
+        qWarning().noquote() << QStringLiteral("[LogicRuntime] prompt audio service is not configured.");
+        return false;
+    }
+
+    return m_promptAudioService->playSource(source);
+}
+
+bool LogicRuntime::registerPromptAudioPreset(const QString& presetId, const QString& source)
+{
+    if (!m_promptAudioService) {
+        qWarning().noquote() << QStringLiteral("[LogicRuntime] prompt audio service is not configured.");
+        return false;
+    }
+
+    return m_promptAudioService->registerPreset(presetId, source);
+}
+
+void LogicRuntime::stopPromptAudio()
+{
+    if (!m_promptAudioService) {
+        return;
+    }
+
+    m_promptAudioService->stopPlayback();
 }
 
 void LogicRuntime::registerModuleHandler(ModuleLogicHandler* handler)

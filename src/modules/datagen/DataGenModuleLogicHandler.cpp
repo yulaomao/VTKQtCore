@@ -6,6 +6,7 @@
 #include "logic/scene/nodes/NodeBase.h"
 #include "logic/scene/nodes/PointNode.h"
 #include "logic/scene/nodes/TransformNode.h"
+#include "contracts/PromptAudioPresetIds.h"
 
 #include <vtkCubeSource.h>
 #include <vtkCylinderSource.h>
@@ -17,6 +18,7 @@
 #include <vtkMatrix4x4.h>
 
 #include <QDateTime>
+#include <QTimer>
 #include <QUuid>
 
 #include <QtMath>
@@ -258,7 +260,22 @@ bool fillMatrixFromVariantList(const QVariantList& values, double out[16])
 
 DataGenModuleLogicHandler::DataGenModuleLogicHandler(QObject* parent)
     : ModuleLogicHandler(QStringLiteral("datagen"), parent)
+    , m_promptBurstTimer(new QTimer(this))
 {
+    m_promptBurstTimer->setSingleShot(false);
+    connect(m_promptBurstTimer, &QTimer::timeout,
+            this, [this]() {
+                if (m_promptBurstRemaining <= 0 || m_promptBurstPresetId.isEmpty()) {
+                    stopPromptBurst();
+                    return;
+                }
+
+                playPromptAudioPreset(m_promptBurstPresetId);
+                --m_promptBurstRemaining;
+                if (m_promptBurstRemaining <= 0) {
+                    stopPromptBurst();
+                }
+            });
 }
 
 QString DataGenModuleLogicHandler::moduleOwnerTag()
@@ -369,6 +386,47 @@ void DataGenModuleLogicHandler::onResync()
     emitState(QStringLiteral("DataGen 模块已重同步。"));
 }
 
+void DataGenModuleLogicHandler::stopPromptBurst()
+{
+    if (m_promptBurstTimer) {
+        m_promptBurstTimer->stop();
+    }
+    m_promptBurstPresetId.clear();
+    m_promptBurstSourceActionId.clear();
+    m_promptBurstRemaining = 0;
+}
+
+void DataGenModuleLogicHandler::playPromptPresetBurst(const QString& presetId,
+                                                      int count,
+                                                      int intervalMs,
+                                                      const QString& sourceActionId)
+{
+    const QString normalizedPresetId = presetId.trimmed();
+    if (normalizedPresetId.isEmpty()) {
+        emitState(QStringLiteral("提示音预设不能为空。"),
+                  LogicNotification::SceneNodesUpdated,
+                  sourceActionId);
+        return;
+    }
+
+    const int safeCount = qBound(1, count, 100);
+    const int safeIntervalMs = qBound(10, intervalMs, 2000);
+
+    stopPromptBurst();
+    m_promptBurstPresetId = normalizedPresetId;
+    m_promptBurstSourceActionId = sourceActionId;
+    m_promptBurstRemaining = safeCount;
+
+    playPromptAudioPreset(m_promptBurstPresetId);
+    --m_promptBurstRemaining;
+    if (m_promptBurstRemaining <= 0) {
+        stopPromptBurst();
+        return;
+    }
+
+    m_promptBurstTimer->start(safeIntervalMs);
+}
+
 void DataGenModuleLogicHandler::ensureSeedScene()
 {
     if (!managedNodes().isEmpty()) {
@@ -448,6 +506,31 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
 {
     const QString command = payload.value(QStringLiteral("command")).toString();
     if (command.isEmpty()) {
+        return;
+    }
+
+    if (command == QStringLiteral("test_prompt_play_once")) {
+        const QString presetId = payload.value(QStringLiteral("presetId")).toString();
+        const bool ok = playPromptAudioPreset(presetId);
+        emitState(ok
+                      ? QStringLiteral("已触发预设提示音：%1。").arg(presetId)
+                      : QStringLiteral("提示音触发失败：%1。").arg(presetId),
+                  LogicNotification::SceneNodesUpdated,
+                  QString());
+        return;
+    }
+
+    if (command == QStringLiteral("test_prompt_play_burst")) {
+        const QString presetId = payload.value(QStringLiteral("presetId")).toString();
+        const int count = payload.value(QStringLiteral("count"), 10).toInt();
+        const int intervalMs = payload.value(QStringLiteral("intervalMs"), 100).toInt();
+        playPromptPresetBurst(presetId, count, intervalMs, sourceActionId);
+        emitState(QStringLiteral("已开始高频提示音测试：%1，每 %2ms 一次，共 %3 次。")
+                      .arg(presetId)
+                      .arg(intervalMs)
+                      .arg(count),
+                  LogicNotification::SceneNodesUpdated,
+                  QString());
         return;
     }
 
@@ -605,6 +688,11 @@ void DataGenModuleLogicHandler::emitState(const QString& statusText,
 {
     if (!statusText.isEmpty()) {
         m_statusText = statusText;
+    }
+
+    if (eventType == LogicNotification::SceneNodesUpdated &&
+        !sourceActionId.trimmed().isEmpty()) {
+        playPromptAudioPreset(PromptAudioPresetIds::pollingProgress());
     }
 
     LogicNotification notification = LogicNotification::create(

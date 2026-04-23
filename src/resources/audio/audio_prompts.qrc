@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/audio/prompts">
+        <file alias="news.wav">../../../News.wav</file>
+        <file alias="news_anchor_female.wav">../../../News anchor_ female voice.wav</file>
+    </qresource>
+</RCC>

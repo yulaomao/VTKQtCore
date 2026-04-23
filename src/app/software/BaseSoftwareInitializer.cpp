@@ -7,6 +7,8 @@
 #include "PageManager.h"
 #include "GlobalUiManager.h"
 #include "ActiveModuleState.h"
+#include "app/audio/PromptAudioService.h"
+#include "contracts/PromptAudioPresetIds.h"
 #include "WorkspaceShell.h"
 #include "ui/coordination/UiActionDispatcher.h"
 
@@ -75,6 +77,16 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
     m_activeModuleState = logicRuntime->getActiveModuleState();
     m_activeModuleState->setInitialModule(initialModule);
     m_activeModuleState->setCurrentModule(QString());
+
+    // 4.1 Create the application-wide prompt audio service before any module logic is registered.
+    auto* promptAudioService = new PromptAudioService(this);
+    logicRuntime->setPromptAudioService(promptAudioService);
+    logicRuntime->registerPromptAudioPreset(
+        PromptAudioPresetIds::pollingProgress(),
+        QStringLiteral(":/audio/prompts/news.wav"));
+    logicRuntime->registerPromptAudioPreset(
+        PromptAudioPresetIds::pollingAttention(),
+        QStringLiteral(":/audio/prompts/news_anchor_female.wav"));
 
     // 5. Register module logic handlers
     registerModuleLogicHandlers(logicRuntime);

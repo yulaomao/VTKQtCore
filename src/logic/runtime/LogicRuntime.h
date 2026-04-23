@@ -16,6 +16,7 @@ class ModuleLogicRegistry;
 class ModuleLogicHandler;
 class GlobalPollingSampleParser;
 class IRedisCommandAccess;
+class IPromptAudioService;
 
 class LogicRuntime : public QObject, public IModuleInvoker
 {
@@ -46,6 +47,12 @@ public:
     bool publishRedisMessage(const QString& channel, const QByteArray& message);
     bool publishRedisJsonMessage(const QString& channel, const QVariantMap& payload);
     ModuleInvokeResult invokeModule(const ModuleInvokeRequest& request) override;
+    void setPromptAudioService(IPromptAudioService* promptAudioService);
+    bool hasPromptAudioService() const;
+    bool playPromptAudioPreset(const QString& presetId) override;
+    bool playPromptAudioSource(const QString& source) override;
+    bool registerPromptAudioPreset(const QString& presetId, const QString& source) override;
+    void stopPromptAudio() override;
 
     void registerModuleHandler(ModuleLogicHandler* handler);
 
@@ -88,5 +95,6 @@ private:
     ModuleLogicRegistry* m_moduleLogicRegistry;
     GlobalPollingSampleParser* m_globalPollingSampleParser = nullptr;
     IRedisCommandAccess* m_redisCommandAccess = nullptr;
+    IPromptAudioService* m_promptAudioService = nullptr;
     QMap<QString, qint64> m_lastInboundSeqByStream;
 };

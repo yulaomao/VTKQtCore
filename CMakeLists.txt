@@ -31,6 +31,15 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS
     ${QT_VERSION_SPECIFIC_COMPONENTS}
 )
 
+set(VTKQTCORE_HAS_QT_MULTIMEDIA OFF)
+find_package(Qt${QT_VERSION_MAJOR} QUIET COMPONENTS Multimedia)
+if(TARGET Qt${QT_VERSION_MAJOR}::Multimedia)
+    set(VTKQTCORE_HAS_QT_MULTIMEDIA ON)
+    message(STATUS "Qt${QT_VERSION_MAJOR} Multimedia found: prompt audio playback enabled")
+else()
+    message(WARNING "Qt${QT_VERSION_MAJOR} Multimedia not found: prompt audio playback will be disabled")
+endif()
+
 # ---------------------------------------------------------------------------
 # hiredis
 # ---------------------------------------------------------------------------
@@ -87,6 +96,9 @@ list(APPEND INCLUDE_DIRS ${hiredis_INCLUDE_DIRS})
 
 target_include_directories(VTKQtCore PRIVATE ${INCLUDE_DIRS})
 
+target_compile_definitions(VTKQtCore PRIVATE
+    VTKQTCORE_HAS_QT_MULTIMEDIA=$<BOOL:${VTKQTCORE_HAS_QT_MULTIMEDIA}>)
+
 # ---------------------------------------------------------------------------
 # Link libraries
 # ---------------------------------------------------------------------------
@@ -99,6 +111,10 @@ target_link_libraries(VTKQtCore PRIVATE
     hiredis::hiredis
     ${VTK_LIBRARIES}
 )
+
+if(VTKQTCORE_HAS_QT_MULTIMEDIA)
+    target_link_libraries(VTKQtCore PRIVATE Qt${QT_VERSION_MAJOR}::Multimedia)
+endif()
 
 if(QT_VERSION_MAJOR EQUAL 6)
     target_link_libraries(VTKQtCore PRIVATE Qt${QT_VERSION_MAJOR}::OpenGLWidgets)

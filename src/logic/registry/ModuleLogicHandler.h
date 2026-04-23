@@ -87,6 +87,10 @@ protected:
     bool writeRedisHashJsonValue(const QStringList& path, const QVariantMap& value);
     bool publishRedisMessage(const QString& channel, const QByteArray& message);
     bool publishRedisJsonMessage(const QString& channel, const QVariantMap& payload);
+    bool playPromptAudioPreset(const QString& presetId);
+    bool playPromptAudioSource(const QString& source);
+    bool registerPromptAudioPreset(const QString& presetId, const QString& source);
+    void stopPromptAudio();
     ModuleInvokeResult invokeModule(const QString& targetModule,
                                     const QString& method,
                                     const QVariantMap& payload = {});

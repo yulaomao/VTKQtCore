@@ -130,6 +130,28 @@ bool ModuleLogicHandler::publishRedisJsonMessage(const QString& channel, const Q
     return m_redisCommandAccess && m_redisCommandAccess->publishJsonMessage(channel, payload);
 }
 
+bool ModuleLogicHandler::playPromptAudioPreset(const QString& presetId)
+{
+    return m_moduleInvoker && m_moduleInvoker->playPromptAudioPreset(presetId);
+}
+
+bool ModuleLogicHandler::playPromptAudioSource(const QString& source)
+{
+    return m_moduleInvoker && m_moduleInvoker->playPromptAudioSource(source);
+}
+
+bool ModuleLogicHandler::registerPromptAudioPreset(const QString& presetId, const QString& source)
+{
+    return m_moduleInvoker && m_moduleInvoker->registerPromptAudioPreset(presetId, source);
+}
+
+void ModuleLogicHandler::stopPromptAudio()
+{
+    if (m_moduleInvoker) {
+        m_moduleInvoker->stopPromptAudio();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Data dispatch — default subscription shim
 // ---------------------------------------------------------------------------

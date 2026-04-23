@@ -217,6 +217,30 @@ DataGenPage::DataGenPage(QWidget* parent)
     listLayout->addLayout(listButtonsLayout);
     controlLayout->addWidget(listGroup);
 
+    m_audioGroup = new QGroupBox(QStringLiteral("声音测试"), controlPanel);
+    auto* audioLayout = new QVBoxLayout(m_audioGroup);
+    auto* audioHintLabel = new QLabel(
+        QStringLiteral("用于验证预设提示音的单次播放与高频抢占。\n“1 秒 10 次”会每 100ms 触发一次最新播放请求。"),
+        m_audioGroup);
+    audioHintLabel->setWordWrap(true);
+    audioLayout->addWidget(audioHintLabel);
+
+    auto* audioSingleButtonsLayout = new QHBoxLayout();
+    auto* playProgressOnceButton = new QPushButton(QStringLiteral("进度音播放一次"), m_audioGroup);
+    auto* playAttentionOnceButton = new QPushButton(QStringLiteral("提示音播放一次"), m_audioGroup);
+    audioSingleButtonsLayout->addWidget(playProgressOnceButton);
+    audioSingleButtonsLayout->addWidget(playAttentionOnceButton);
+    audioLayout->addLayout(audioSingleButtonsLayout);
+
+    auto* audioBurstButtonsLayout = new QHBoxLayout();
+    auto* playProgressBurstButton = new QPushButton(QStringLiteral("进度音 1 秒 10 次"), m_audioGroup);
+    auto* playAttentionBurstButton = new QPushButton(QStringLiteral("提示音 1 秒 10 次"), m_audioGroup);
+    audioBurstButtonsLayout->addWidget(playProgressBurstButton);
+    audioBurstButtonsLayout->addWidget(playAttentionBurstButton);
+    audioLayout->addLayout(audioBurstButtonsLayout);
+
+    controlLayout->addWidget(m_audioGroup);
+
     m_displayGroup = new QGroupBox(QStringLiteral("显示属性"), controlPanel);
     m_displayForm = new QFormLayout(m_displayGroup);
     m_visibleCheck = new QCheckBox(QStringLiteral("在 datagen_main 可见"), m_displayGroup);
@@ -361,6 +385,14 @@ DataGenPage::DataGenPage(QWidget* parent)
             this, &DataGenPage::onCreateNodeClicked);
     connect(seedButton, &QPushButton::clicked,
             this, &DataGenPage::onSeedDemoClicked);
+        connect(playProgressOnceButton, &QPushButton::clicked,
+            this, &DataGenPage::onPlayProgressPromptOnceClicked);
+        connect(playAttentionOnceButton, &QPushButton::clicked,
+            this, &DataGenPage::onPlayAttentionPromptOnceClicked);
+        connect(playProgressBurstButton, &QPushButton::clicked,
+            this, &DataGenPage::onPlayProgressPromptBurstClicked);
+        connect(playAttentionBurstButton, &QPushButton::clicked,
+            this, &DataGenPage::onPlayAttentionPromptBurstClicked);
     connect(deleteButton, &QPushButton::clicked,
             this, &DataGenPage::onDeleteNodeClicked);
     connect(clearGeometryButton, &QPushButton::clicked,
@@ -559,6 +591,42 @@ void DataGenPage::onSeedDemoClicked()
 {
     emitCommand({
         {QStringLiteral("command"), QStringLiteral("seed_demo")}
+    });
+}
+
+void DataGenPage::onPlayProgressPromptOnceClicked()
+{
+    emitCommand({
+        {QStringLiteral("command"), QStringLiteral("test_prompt_play_once")},
+        {QStringLiteral("presetId"), QStringLiteral("polling_progress")}
+    });
+}
+
+void DataGenPage::onPlayAttentionPromptOnceClicked()
+{
+    emitCommand({
+        {QStringLiteral("command"), QStringLiteral("test_prompt_play_once")},
+        {QStringLiteral("presetId"), QStringLiteral("polling_attention")}
+    });
+}
+
+void DataGenPage::onPlayProgressPromptBurstClicked()
+{
+    emitCommand({
+        {QStringLiteral("command"), QStringLiteral("test_prompt_play_burst")},
+        {QStringLiteral("presetId"), QStringLiteral("polling_progress")},
+        {QStringLiteral("count"), 10},
+        {QStringLiteral("intervalMs"), 100}
+    });
+}
+
+void DataGenPage::onPlayAttentionPromptBurstClicked()
+{
+    emitCommand({
+        {QStringLiteral("command"), QStringLiteral("test_prompt_play_burst")},
+        {QStringLiteral("presetId"), QStringLiteral("polling_attention")},
+        {QStringLiteral("count"), 10},
+        {QStringLiteral("intervalMs"), 100}
     });
 }
 
