@@ -61,9 +61,10 @@ private slots:
                          const QVariantMap& payload);
 
 private:
-    // Normalise a raw Redis value (QByteArray / QString) to a proper QVariant.
-    // Attempts JSON decoding; falls back to a plain string.
-    static QVariant normalizeValue(const QVariant& raw);
+    // Normalise one polled Redis hash into one or more restored entries.
+    // Attempts JSON decoding and may expand a hash back into its original
+    // flattened key layout for downstream consumers.
+    static QVariantMap normalizeEntries(const QString& redisKey, const QVariant& raw);
 
     QVector<RedisConnectionConfig>  m_configs;
     QVector<RedisConnectionWorker*> m_workers;

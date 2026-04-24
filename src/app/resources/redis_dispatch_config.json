@@ -7,9 +7,9 @@
       "db": 0,
       "pollIntervalMs": 16,
       "pollingKeyGroups": [
-        { "module": "params",    "keys": ["state.params.latest"] },
-        { "module": "pointpick", "keys": ["state.pointpick.latest"] },
-        { "module": "planning",  "keys": ["state.planning.latest"] }
+        { "module": "params",    "keys": ["state.params"] },
+        { "module": "pointpick", "keys": ["state.pointpick"] },
+        { "module": "planning",  "keys": ["state.planning"] }
       ],
       "subscriptionChannels": [
         { "channel": "state.params",     "module": "params"     },
@@ -27,13 +27,8 @@
         {
           "module": "navigation",
           "keys": [
-            "state.navigation.latest",
-            "demo:navigation:transform:world",
-            "demo:navigation:transform:reference",
-            "demo:navigation:transform:patient",
-            "demo:navigation:transform:instrument",
-            "demo:navigation:transform:guide",
-            "demo:navigation:transform:tip"
+            "state.navigation",
+            "demo:navigation:transform"
           ]
         }
       ],

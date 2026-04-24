@@ -133,23 +133,26 @@ writeRedisHashValue(
 
 ## 5. 轮询配置与模块读取的关系
 
-Redis 轮询配置格式不变，仍然写原来的总 key：
+Redis 轮询现在直接写顶级 hash key：
 
 ```json
 {
   "module": "navigation",
   "keys": [
-  "demo:navigation:transform:world",
-  "demo:navigation:transform:reference"
+  "state.navigation",
+  "demo:navigation:transform"
   ]
 }
 ```
 
 说明：
 
-- polling worker 内部会把总 key 解析成 `hashKey + field` 后执行 `HGET`
-- 返回给模块的批量结果键名仍然是原来的总 key
-- 模块处理 polling 批量数据时，仍然从 `sample.data["values"]` 里按总 key 读取
+- polling worker 会对每个配置 key 直接执行一次 `HGETALL`
+- `state.navigation` 这类只有 `latest` 字段的 hash，会在数据中心自动折叠成该字段对应的业务 payload
+- 对于所有“hash 名本身还有上级层级”的多字段 hash，数据中心都会自动去掉最后一层层级，再把 field 还原成旧顶层键
+- 例如 `demo:navigation:transform` 下的 `world` 会还原成 `demo:navigation:world`，`demo:transform` 下的 `tip` 会还原成 `demo:tip`
+- 只有像 `transform` 这种本身没有上级层级的 hash，才不会做这种还原，仍保持 `transform -> {...}`
+- 模块处理 polling 批量数据时，拿到的是“还原后的顶层键 -> payload”字典，而不是 `demo:navigation:transform -> {...}` 这种再包一层的结构
 
 ## 6. 什么时候用主动读取，什么时候用轮询
 

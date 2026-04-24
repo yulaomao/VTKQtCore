@@ -36,7 +36,7 @@
 // One group of polling keys all belonging to the same module.
 struct RedisKeyGroup {
     QString     module; // target module ID, or "global" to broadcast
-    QStringList keys;   // logical polling keys; worker resolves them to HGET targets
+    QStringList keys;   // Redis hash keys; polling reads each hash with HGETALL
 };
 
 // One Redis pub/sub channel and its owning module.
@@ -54,7 +54,7 @@ struct RedisConnectionConfig {
     QString host            = QStringLiteral("127.0.0.1");
     int     port            = 6379;
     int     db              = 0;
-    int     pollIntervalMs  = 16;   // HGET interval (≈60 Hz)
+    int     pollIntervalMs  = 16;   // HGETALL interval (≈60 Hz)
 
     QVector<RedisKeyGroup>   pollingKeyGroups;
     QVector<RedisSubChannel> subscriptionChannels;

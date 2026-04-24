@@ -10,29 +10,6 @@
 #endif
 
 namespace {
-
-struct PollTarget {
-    QString hashKey;
-    QString field;
-    bool valid = false;
-};
-
-PollTarget resolvePollTarget(const QString& logicalKey)
-{
-    const int dotIndex = logicalKey.lastIndexOf(QLatin1Char('.'));
-    const int colonIndex = logicalKey.lastIndexOf(QLatin1Char(':'));
-    const int splitIndex = (std::max)(dotIndex, colonIndex);
-    if (splitIndex <= 0 || splitIndex >= logicalKey.size() - 1) {
-        return {};
-    }
-
-    PollTarget target;
-    target.hashKey = logicalKey.left(splitIndex);
-    target.field = logicalKey.mid(splitIndex + 1);
-    target.valid = !target.hashKey.isEmpty() && !target.field.isEmpty();
-    return target;
-}
-
 QVariant replyToVariantPoll(const redisReply* reply)
 {
     if (!reply) {
@@ -58,6 +35,26 @@ QVariant replyToVariantPoll(const redisReply* reply)
     default:
         return reply->str ? QVariant(QString::fromUtf8(reply->str)) : QVariant();
     }
+}
+
+QVariantMap replyToHashMapPoll(const redisReply* reply)
+{
+    QVariantMap values;
+    if (!reply || reply->type != REDIS_REPLY_ARRAY || !reply->element) {
+        return values;
+    }
+
+    for (size_t index = 0; index + 1 < reply->elements; index += 2) {
+        const redisReply* keyReply = reply->element[index];
+        if (!keyReply || !keyReply->str) {
+            continue;
+        }
+
+        values.insert(QString::fromUtf8(keyReply->str),
+                      replyToVariantPoll(reply->element[index + 1]));
+    }
+
+    return values;
 }
 
 } // namespace
@@ -126,25 +123,18 @@ void RedisPollingWorker::poll()
 
     QVariantMap values;
     for (const QString& logicalKey : m_pollingKeys) {
-        const PollTarget target = resolvePollTarget(logicalKey);
-        if (!target.valid) {
-            continue;
-        }
-
-        const QByteArray hashKeyBytes = target.hashKey.toUtf8();
-        const QByteArray fieldBytes = target.field.toUtf8();
+        const QByteArray hashKeyBytes = logicalKey.toUtf8();
         redisReply* reply = static_cast<redisReply*>(redisCommand(
             m_context,
-            "HGET %b %b",
-            hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size()),
-            fieldBytes.constData(), static_cast<size_t>(fieldBytes.size())));
+            "HGETALL %b",
+            hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size())));
 
         if (!reply) {
             closeContext();
             return;
         }
 
-        values.insert(logicalKey, replyToVariantPoll(reply));
+        values.insert(logicalKey, replyToHashMapPoll(reply));
         freeReplyObject(reply);
     }
 

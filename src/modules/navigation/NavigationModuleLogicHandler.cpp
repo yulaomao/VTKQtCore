@@ -250,31 +250,36 @@ void NavigationModuleLogicHandler::handleAction(const UiAction& action)
 void NavigationModuleLogicHandler::handleStateSample(const StateSample& sample)
 {
     const QVariantMap batchValues = sample.data.value(QStringLiteral("values")).toMap();
+    auto consumePayload = [this](const QVariantMap& payloadData,
+                                 bool& navigationChanged,
+                                 bool& transformChanged) -> void {
+        if (payloadData.isEmpty()) {
+            return;
+        }
+
+        if (payloadData.contains(QStringLiteral("nodeId")) &&
+            payloadData.contains(QStringLiteral("matrixToParent"))) {
+            applyTransformSample(payloadData);
+            transformChanged = true;
+            return;
+        }
+
+        if (applyNavigationStatePayload(payloadData,
+                                        m_navigating,
+                                        m_navigationStatus,
+                                        m_currentPositionX,
+                                        m_currentPositionY,
+                                        m_currentPositionZ)) {
+            navigationChanged = true;
+        }
+    };
+
     if (!batchValues.isEmpty()) {
         bool navigationChanged = false;
         bool transformChanged = false;
 
         for (auto it = batchValues.cbegin(); it != batchValues.cend(); ++it) {
-            const QVariantMap payloadData = it.value().toMap();
-            if (payloadData.isEmpty()) {
-                continue;
-            }
-
-            if (payloadData.contains(QStringLiteral("nodeId")) &&
-                payloadData.contains(QStringLiteral("matrixToParent"))) {
-                applyTransformSample(payloadData);
-                transformChanged = true;
-                continue;
-            }
-
-            if (applyNavigationStatePayload(payloadData,
-                                            m_navigating,
-                                            m_navigationStatus,
-                                            m_currentPositionX,
-                                            m_currentPositionY,
-                                            m_currentPositionZ)) {
-                navigationChanged = true;
-            }
+            consumePayload(it.value().toMap(), navigationChanged, transformChanged);
         }
 
         if (navigationChanged) {
@@ -288,20 +293,15 @@ void NavigationModuleLogicHandler::handleStateSample(const StateSample& sample)
 
     const QVariantMap payloadData = normalizedSampleData(sample);
 
-    if (payloadData.contains(QStringLiteral("nodeId")) &&
-        payloadData.contains(QStringLiteral("matrixToParent"))) {
-        applyTransformSample(payloadData);
-        emitTransformHealth(false, sample.sampleId);
-        return;
-    }
+    bool navigationChanged = false;
+    bool transformChanged = false;
+    consumePayload(payloadData, navigationChanged, transformChanged);
 
-    if (applyNavigationStatePayload(payloadData,
-                                    m_navigating,
-                                    m_navigationStatus,
-                                    m_currentPositionX,
-                                    m_currentPositionY,
-                                    m_currentPositionZ)) {
+    if (navigationChanged) {
         emitNavigationState(QString(), sample.sampleId);
+    }
+    if (transformChanged) {
+        emitTransformHealth(false, sample.sampleId);
     }
 }
 
