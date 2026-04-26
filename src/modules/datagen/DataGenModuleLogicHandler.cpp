@@ -847,7 +847,7 @@ QVariantMap DataGenModuleLogicHandler::buildNodeDetails(NodeBase* node) const
     double color[4] = {1.0, 1.0, 1.0, 1.0};
     if (auto* pointNode = dynamic_cast<PointNode*>(node)) {
         pointNode->getDefaultPointColor(color);
-        details.insert(QStringLiteral("opacity"), color[3]);
+        details.insert(QStringLiteral("opacity"), pointNode->getOpacity());
         details.insert(QStringLiteral("sizeValue"), pointNode->getDefaultPointSize());
         details.insert(QStringLiteral("showLabels"), pointNode->isShowPointLabel());
         details.insert(QStringLiteral("pointCount"), pointNode->getPointCount());
@@ -948,6 +948,7 @@ QVariantMap DataGenModuleLogicHandler::serializeNodeForRedis(NodeBase* node) con
         payload.insert(QStringLiteral("showLabels"), pointNode->isShowPointLabel());
         payload.insert(QStringLiteral("pointLabelFormat"), pointNode->getPointLabelFormat());
         payload.insert(QStringLiteral("selectedPointIndex"), pointNode->getSelectedPointIndex());
+        payload.insert(QStringLiteral("opacity"), pointNode->getOpacity());
         payload.insert(QStringLiteral("defaultPointSize"), pointNode->getDefaultPointSize());
         payload.insert(QStringLiteral("defaultPointColor"), QVariantList{defaultColor[0], defaultColor[1], defaultColor[2], defaultColor[3]});
         payload.insert(QStringLiteral("points"), points);
@@ -1071,13 +1072,25 @@ bool DataGenModuleLogicHandler::restoreFromRedisSnapshot(const QVariantMap& snap
             pointNode->setShowPointLabel(nodeMap.value(QStringLiteral("showLabels"), false).toBool());
             pointNode->setSelectedPointIndex(nodeMap.value(QStringLiteral("selectedPointIndex"), -1).toInt());
             const QVariantList defaultColor = nodeMap.value(QStringLiteral("defaultPointColor")).toList();
+            double color[4] = {1.0, 0.0, 0.0, 1.0};
+            bool hasDefaultColor = false;
             if (defaultColor.size() == 4) {
-                const double color[4] = {
+                const double importedColor[4] = {
                     defaultColor.at(0).toDouble(),
                     defaultColor.at(1).toDouble(),
                     defaultColor.at(2).toDouble(),
                     defaultColor.at(3).toDouble()
                 };
+                copyArray(importedColor, color, 4);
+                hasDefaultColor = true;
+            }
+            if (nodeMap.contains(QStringLiteral("opacity"))) {
+                pointNode->setOpacity(nodeMap.value(QStringLiteral("opacity"), 1.0).toDouble());
+            } else if (hasDefaultColor) {
+                pointNode->setOpacity(color[3]);
+                color[3] = 1.0;
+            }
+            if (hasDefaultColor) {
                 pointNode->setDefaultPointColor(color);
             }
             pointNode->setDefaultPointSize(nodeMap.value(QStringLiteral("defaultPointSize"), 8.0).toDouble());
@@ -1585,8 +1598,13 @@ void DataGenModuleLogicHandler::updateDisplay(NodeBase* node, const QVariantMap&
     const double opacity = payload.value(QStringLiteral("opacity"), 1.0).toDouble();
 
     if (auto* pointNode = dynamic_cast<PointNode*>(node)) {
-        const double color[4] = {red, green, blue, opacity};
+        double color[4];
+        pointNode->getDefaultPointColor(color);
+        color[0] = red;
+        color[1] = green;
+        color[2] = blue;
         pointNode->setDefaultPointColor(color);
+        pointNode->setOpacity(opacity);
         pointNode->setDefaultPointSize(payload.value(QStringLiteral("sizeValue"), 6.0).toDouble());
         pointNode->setShowPointLabel(payload.value(QStringLiteral("showLabels"), false).toBool());
     } else if (auto* lineNode = dynamic_cast<LineNode*>(node)) {
