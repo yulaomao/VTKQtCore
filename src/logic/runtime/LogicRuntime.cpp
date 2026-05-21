@@ -116,6 +116,11 @@ bool isGlobalModuleSample(const StateSample& sample)
     return sample.module.compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0;
 }
 
+bool isGlobalModuleName(const QString& module)
+{
+    return module.compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0;
+}
+
 } // namespace
 
 LogicRuntime::LogicRuntime(QObject* parent)
@@ -620,7 +625,7 @@ void LogicRuntime::onModulePollBatch(const QString& module,
             data));
     };
 
-    if (module.compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0) {
+    if (isGlobalModuleName(module)) {
         const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
         for (const QString& moduleId : modules) {
             dispatchBatch(moduleId);
@@ -635,7 +640,7 @@ void LogicRuntime::onModuleSubscription(const QString& module,
                                          const QString& channel,
                                          const QVariantMap& payload)
 {
-    if (module.compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0) {
+    if (isGlobalModuleName(module)) {
         // Broadcast to every registered module handler.
         const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
         for (const QString& moduleId : modules) {

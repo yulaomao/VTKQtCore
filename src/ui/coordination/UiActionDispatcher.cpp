@@ -57,23 +57,24 @@ void UiActionDispatcher::sendCommand(const QString& command,
 }
 
 void UiActionDispatcher::sendTargetedCommand(const QString& targetModule,
-                                              const QString& command,
-                                              const QVariantMap& payload)
+                                             const QString& command,
+                                             const QVariantMap& payload)
 {
-    if (targetModule.trimmed().isEmpty() || command.trimmed().isEmpty()) {
-        return;
-    }
-
-    QVariantMap targetedPayload = payload;
-    targetedPayload.insert(QStringLiteral("targetModule"), targetModule);
-    sendCommand(command, targetedPayload);
+    sendToTarget(targetModule, command, payload);
 }
 
 void UiActionDispatcher::sendToTarget(const QString& targetName,
                                       const QString& command,
                                       const QVariantMap& payload)
 {
-    sendTargetedCommand(targetName, command, payload);
+    if (targetName.trimmed().isEmpty() || command.trimmed().isEmpty()) {
+        return;
+    }
+
+    QVariantMap targetedPayload = payload;
+    targetedPayload.insert(QStringLiteral("targetName"), targetName.trimmed());
+    targetedPayload.insert(QStringLiteral("targetModule"), targetName.trimmed());
+    sendCommand(command, targetedPayload);
 }
 
 void UiActionDispatcher::sendModuleUiEvent(const QString& targetModule,

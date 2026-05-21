@@ -16,9 +16,7 @@ namespace {
 
 QString normalizeMessageType(const QString& value)
 {
-    QString normalized = value.trimmed().toLower();
-    normalized.replace(QLatin1Char('-'), QLatin1Char('_'));
-    return normalized;
+    return value.trimmed().toLower().replace(QLatin1Char('-'), QLatin1Char('_'));
 }
 
 bool isGlobalTarget(const QString& module)
@@ -353,9 +351,10 @@ void CommunicationHub::routeEnvelopeMessage(const QVariantMap& envelope, const Q
         type == QStringLiteral("server_command")) {
         m_lastControlMessageMs = QDateTime::currentMSecsSinceEpoch();
         ++m_receivedControlCount;
-        const QString commandType = payload.value(QStringLiteral("commandType")).toString().isEmpty()
-            ? payload.value(QStringLiteral("command")).toString()
-            : payload.value(QStringLiteral("commandType")).toString();
+        QString commandType = payload.value(QStringLiteral("commandType")).toString();
+        if (commandType.isEmpty()) {
+            commandType = payload.value(QStringLiteral("command")).toString();
+        }
         emit serverCommandReceived(commandType, payload);
         refreshHealthSnapshot();
         return;
