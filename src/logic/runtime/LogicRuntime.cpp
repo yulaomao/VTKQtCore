@@ -594,7 +594,7 @@ void LogicRuntime::onStateSampleReceived(const StateSample& sample)
 }
 
 // ---------------------------------------------------------------------------
-// Data dispatch from RedisDataCenter
+// Data dispatch from socket message center
 // ---------------------------------------------------------------------------
 
 void LogicRuntime::onModulePollBatch(const QString& module,
