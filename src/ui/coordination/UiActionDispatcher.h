@@ -25,6 +25,9 @@ public:
     void sendTargetedCommand(const QString& targetModule,
                              const QString& command,
                              const QVariantMap& payload = {});
+    void sendToTarget(const QString& targetName,
+                      const QString& command,
+                      const QVariantMap& payload = {});
     void sendModuleUiEvent(const QString& targetModule,
                            const QString& eventName,
                            const QVariantMap& payload = {});

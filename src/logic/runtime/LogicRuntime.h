@@ -70,7 +70,7 @@ public slots:
     void requestResync(const QString& reason);
 
     // ---------------------------------------------------------------------------
-    // Data dispatch from RedisDataCenter
+    // Data dispatch from socket message center
     // ---------------------------------------------------------------------------
     // Called once per module per poll cycle. 'module' may be "global" to
     // broadcast the same aggregated values map to ALL registered module handlers.

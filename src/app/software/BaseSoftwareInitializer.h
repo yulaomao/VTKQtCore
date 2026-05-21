@@ -14,7 +14,7 @@ class PageManager;
 class GlobalUiManager;
 class ActiveModuleState;
 
-enum class RunMode { Local, Redis };
+enum class RunMode { Local, Socket };
 
 class BaseSoftwareInitializer : public QObject
 {

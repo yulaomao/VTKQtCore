@@ -44,7 +44,7 @@ public:
     }
 
     // ---------------------------------------------------------------------------
-    // Data dispatch — called by RedisDataCenter via LogicRuntime.
+    // Data dispatch — called by the socket message center via LogicRuntime.
     //
     // Polling data is delivered as one aggregated StateSample per module per poll
     // round via handleStateSample(). The sample data always carries a

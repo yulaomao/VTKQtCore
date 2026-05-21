@@ -1,16 +1,15 @@
 #include <QApplication>
 #include <QDebug>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QFile>
 #include <QSurfaceFormat>
 #include <QVTKOpenGLNativeWidget.h>
 #include <QStringList>
 
 #include "app/software/BaseSoftwareInitializer.h"
-#include "app/software/RedisSoftwareResolver.h"
 #include "app/software/SoftwareInitializerFactory.h"
 #include "communication/hub/CommunicationHub.h"
-#include "communication/hub/IRedisCommandAccess.h"
-#include "communication/redis/RedisLogicCommandAccess.h"
-#include "communication/redis/RedisGateway.h"
 #include "logic/gateway/LocalLogicGateway.h"
 #include "logic/runtime/LogicRuntime.h"
 #include "shell/MainWindow.h"
@@ -38,17 +37,62 @@ QString styleThemeFromProfile(const QVariantMap& profile)
     return profile.value(QStringLiteral("globalStyleTheme")).toString().trimmed();
 }
 
-QString redisConnectionStateName(RedisGateway::ConnectionState state)
+QString argumentValue(const QStringList& arguments, const QString& optionName, const QString& fallback = QString())
 {
-    switch (state) {
-    case RedisGateway::Connected:
-        return QStringLiteral("Connected");
-    case RedisGateway::Reconnecting:
-        return QStringLiteral("Reconnecting");
-    case RedisGateway::Disconnected:
-    default:
-        return QStringLiteral("Disconnected");
+    const QString prefix = optionName + QStringLiteral("=");
+    for (int index = 0; index < arguments.size(); ++index) {
+        const QString argument = arguments.at(index);
+        if (argument.startsWith(prefix)) {
+            return argument.mid(prefix.size()).trimmed();
+        }
+        if (argument == optionName) {
+            if (index + 1 >= arguments.size()) {
+                return fallback;
+            }
+            return arguments.at(index + 1).trimmed();
+        }
     }
+    return fallback;
+}
+
+QVariantMap loadSoftwareProfile(const QString& path)
+{
+    if (path.trimmed().isEmpty()) {
+        return {};
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qWarning().noquote()
+            << QStringLiteral("[Startup] failed to open profile file: %1").arg(path);
+        return {};
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        qWarning().noquote()
+            << QStringLiteral("[Startup] invalid profile JSON: %1").arg(parseError.errorString());
+        return {};
+    }
+
+    return doc.object().toVariantMap();
+}
+
+quint16 socketPortFromArguments(const QStringList& arguments)
+{
+    const QString rawPort = argumentValue(
+        arguments,
+        QStringLiteral("--socket-port"),
+        QStringLiteral("9000"));
+    bool ok = false;
+    const ushort port = rawPort.toUShort(&ok);
+    if (!ok || port == 0) {
+        qWarning().noquote()
+            << QStringLiteral("[Startup] invalid --socket-port '%1', using 9000").arg(rawPort);
+        return 9000;
+    }
+    return port;
 }
 
 }
@@ -59,78 +103,42 @@ int main(int argc, char* argv[])
     QApplication app(argc, argv);
 
     const QStringList arguments = QCoreApplication::arguments();
-    const bool useRedisMode = true; // arguments.contains(QStringLiteral("--redis"));
-    const RunMode runMode = useRedisMode ? RunMode::Redis : RunMode::Local;
+    const bool useLocalMode = arguments.contains(QStringLiteral("--local"));
+    const RunMode runMode = useLocalMode ? RunMode::Local : RunMode::Socket;
 
     LogicRuntime logicRuntime;
-    RedisGateway redisGateway;
-    RedisLogicCommandAccess logicRedisCommandAccess;
-    CommunicationHub communicationHub(&redisGateway);
+    CommunicationHub communicationHub;
     communicationHub.initialize();
-    logicRuntime.setRedisCommandAccess(useRedisMode ? static_cast<IRedisCommandAccess*>(&logicRedisCommandAccess)
-                                                    : nullptr);
-
-    QObject::connect(&redisGateway, &RedisGateway::connectionStateChanged,
-                     &app, [](RedisGateway::ConnectionState state) {
-                         qInfo().noquote()
-                             << QStringLiteral("[Redis] state changed -> %1")
-                                    .arg(redisConnectionStateName(state));
-                     });
-    QObject::connect(&redisGateway, &RedisGateway::errorOccurred,
-                     &app, [](const QString& errorMessage) {
-                         qWarning().noquote()
-                             << QStringLiteral("[Redis] error: %1").arg(errorMessage);
-                     });
-    QObject::connect(&logicRedisCommandAccess, &RedisLogicCommandAccess::errorOccurred,
-                     &app, [](const QString& errorMessage) {
-                         qWarning().noquote()
-                             << QStringLiteral("[RedisLogicCommand] error: %1").arg(errorMessage);
-                     });
-    QObject::connect(&logicRedisCommandAccess, &RedisLogicCommandAccess::errorOccurred,
-                     &logicRuntime, [&logicRuntime](const QString& errorMessage) {
-                         logicRuntime.onCommunicationIssue(
-                             QStringLiteral("RedisLogicCommandAccess"),
-                             QStringLiteral("warning"),
-                             QStringLiteral("COMM_REDIS_LOGIC_COMMAND_ERROR"),
-                             errorMessage,
-                             {{QStringLiteral("layer"), QStringLiteral("logic_command")}});
-                     });
-
-    bool redisReady = false;
-
-    if (useRedisMode) {
-        qInfo().noquote() << QStringLiteral("[Redis] connecting to 127.0.0.1:6379 ...");
-        redisGateway.connectToServer(QStringLiteral("127.0.0.1"), 6379);
-        logicRedisCommandAccess.connectToServer(QStringLiteral("127.0.0.1"), 6379, 0);
-        redisReady = redisGateway.waitForConnected(2000);
-        if (redisReady) {
-            qInfo().noquote() << QStringLiteral("[Redis] connected to 127.0.0.1:6379");
-        } else {
-            qWarning().noquote()
-                << QStringLiteral("[Redis] connect failed or timed out, final state=%1")
-                       .arg(redisConnectionStateName(redisGateway.getConnectionState()));
-        }
-    }
+    communicationHub.setServerEndpoint(
+        argumentValue(arguments, QStringLiteral("--socket-host"), QStringLiteral("127.0.0.1")),
+        socketPortFromArguments(arguments));
 
     LocalLogicGateway gateway(
         &logicRuntime,
-        useRedisMode ? &communicationHub : nullptr,
-        useRedisMode ? &redisGateway : nullptr);
+        useLocalMode ? nullptr : &communicationHub);
 
-    RedisSoftwareResolver resolver(useRedisMode && redisReady ? &redisGateway : nullptr);
-    const QVariantMap softwareProfile = resolver.resolveSoftwareProfile();
+    QVariantMap softwareProfile = loadSoftwareProfile(
+        argumentValue(arguments, QStringLiteral("--software-profile")));
+    const QString requestedSoftwareType = argumentValue(arguments, QStringLiteral("--software-type"));
+    if (!requestedSoftwareType.isEmpty()) {
+        softwareProfile.insert(QStringLiteral("softwareType"), requestedSoftwareType);
+    }
+    const QString requestedStyleTheme = argumentValue(arguments, QStringLiteral("--style-theme"));
+    if (!requestedStyleTheme.isEmpty()) {
+        softwareProfile.insert(QStringLiteral("styleTheme"), requestedStyleTheme);
+    }
     QString softwareType = softwareTypeFromProfile(softwareProfile);
     if (softwareType.isEmpty()) {
-        softwareType = resolver.resolveSoftwareType();
+        softwareType = QStringLiteral("default");
     }
 
     AppStyleManager styleManager(&app, &app);
     styleManager.registerStyle(
         QStringLiteral("clinical-light"),
         QStringLiteral(":/styles/styles/app-theme.qss"));
-    const QString requestedStyleTheme = styleThemeFromProfile(softwareProfile);
-    if (!requestedStyleTheme.isEmpty()) {
-        styleManager.applyStyle(requestedStyleTheme);
+    const QString styleTheme = styleThemeFromProfile(softwareProfile);
+    if (!styleTheme.isEmpty()) {
+        styleManager.applyStyle(styleTheme);
     }
     if (styleManager.currentStyleId().isEmpty()) {
         styleManager.applyStyle(QStringLiteral("clinical-light"));
@@ -143,14 +151,14 @@ int main(int argc, char* argv[])
     initializer->setSoftwareProfile(softwareProfile);
     initializer->initialize(&mainWindow, &logicRuntime, &gateway, &communicationHub);
 
-    if (useRedisMode) {
+    if (!useLocalMode) {
         communicationHub.start();
     }
 
     mainWindow.show();
     const int exitCode = app.exec();
 
-    if (useRedisMode) {
+    if (!useLocalMode) {
         communicationHub.stop();
     }
 

@@ -7,8 +7,6 @@
 #include "LogicRuntime.h"
 #include "MainWindow.h"
 #include "communication/hub/CommunicationHub.h"
-#include "communication/redis/RedisConnectionConfig.h"
-#include "communication/redis/RedisDataCenter.h"
 #include "logic/registry/ModuleLogicHandler.h"
 #include "logic/registry/ModuleLogicRegistry.h"
 #include "modules/intermoduletest/InterModuleReceiverLogicHandler.h"
@@ -287,23 +285,7 @@ void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
 
 void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runtime)
 {
-    if (!runtime) {
-        return;
-    }
-
-    // Load connection configs from the embedded JSON resource.
-    const QVector<RedisConnectionConfig>& configs = connectionConfigs();
-    if (configs.isEmpty()) {
-        qWarning().noquote()
-            << QStringLiteral("[DefaultSoftwareInitializer] redis_dispatch_config.json "
-                              "has no connections — Redis polling and subscriptions will be inactive");
-        return;
-    }
-
-    // Create the simple dispatch center.  It owns the worker threads.
-    // Parented to runtime so it is cleaned up on shutdown.
-    auto* dataCenter = new RedisDataCenter(configs, runtime, /*parent=*/runtime);
-    dataCenter->start();
+    Q_UNUSED(runtime);
 }
 
 void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
@@ -323,17 +305,6 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
         commHub->addRoutingChannel(routingChannel);
     }
 
-    // NOTE: Data polling and subscriptions are now managed by RedisDataCenter,
-    // which is created in configureAdditionalSettings().  Nothing more to do here.
+    // Socket mode does not need Redis polling/subscription sources; all inbound
+    // messages arrive through CommunicationHub and are routed after receipt.
 }
-
-const QVector<RedisConnectionConfig>& DefaultSoftwareInitializer::connectionConfigs() const
-{
-    if (!m_configLoaded) {
-        m_configLoaded = true;
-        m_connectionConfigs = RedisConnectionConfig::loadFromFile(
-            QStringLiteral(":/redis_dispatch_config.json"));
-    }
-    return m_connectionConfigs;
-}
-

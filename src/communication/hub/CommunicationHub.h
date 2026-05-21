@@ -1,54 +1,39 @@
 #pragma once
 
-#include <QList>
-#include <QMap>
 #include <QObject>
-#include <QSet>
-#include <QStringList>
+#include <QString>
 #include <QVariantMap>
-#include <QVector>
 
-#include "contracts/UiAction.h"
-#include "communication/config/RedisDispatchConfig.h"
+#include <memory>
+
 #include "communication/datasource/StateSample.h"
-#include "communication/redis/RedisGateway.h"
+#include "contracts/UiAction.h"
 
 class MessageRouter;
-class PerConnectionPollingBundle;
 class QTimer;
-class SubscriptionSource;
+
+namespace redis_dc {
+class SocketClient;
+}
 
 class CommunicationHub : public QObject
 {
     Q_OBJECT
 
-    struct OutboundControlMessage {
-        QString channel;
-        QVariantMap payload;
-        QString msgId;
-        bool requireAck = false;
-        int retryCount = 0;
-        qint64 firstQueuedMs = 0;
-        qint64 lastSentMs = 0;
-    };
-
 public:
-    explicit CommunicationHub(RedisGateway* gateway, QObject* parent = nullptr);
+    explicit CommunicationHub(QObject* parent = nullptr);
     ~CommunicationHub() override;
 
     void initialize();
-    void addRoutingChannel(const QString& channel);
-    void addSubscriptionSource(SubscriptionSource* source);
-
-    // Add a per-connection polling bundle driven by a ConnectionEntry from
-    // RedisDispatchConfig.  Each connection polls its own DB independently.
-    // Multiple connections may be added before start() is called.
-    void addPollingConnection(const RedisDispatchConfig::ConnectionEntry& entry);
-
+    void setServerEndpoint(const QString& host, quint16 port);
     void setOutboundChannels(const QString& controlPublishChannel,
                              const QString& ackChannel);
+    void addRoutingChannel(const QString& channel);
     void sendActionRequest(const UiAction& action, bool loopbackToLocal = true);
     void sendResyncRequest(const QString& reason, bool loopbackToLocal = true);
+    void sendTargetedMessage(const QString& targetName,
+                             const QString& messageType,
+                             const QVariantMap& payload = {});
     void start();
     void stop();
     QString getConnectionStateName() const;
@@ -66,65 +51,38 @@ signals:
     void healthSnapshotChanged(const QVariantMap& snapshot);
     void heartbeatReceived();
 
-private slots:
-    void onAckReceived(const QVariantMap& payload);
-    void onGatewayMessageReceived(const QString& channel, const QByteArray& message);
-    void onGatewayConnectionStateChanged(RedisGateway::ConnectionState state);
-    void onOutboundRetryTimeout();
-
 private:
-    void connectSource(SubscriptionSource* source);
-    void activateTransport();
-    void deactivateTransport();
-    void publishAck(const QString& category, const QVariantMap& payload,
-                    const QString& status = QStringLiteral("received"));
-    bool publishJson(const QString& channel, const QVariantMap& payload);
-    void dispatchOutboundMessage(OutboundControlMessage message);
-    void flushOutboundQueue();
-    void resendInflightMessages();
-    bool shouldAck(const QString& category, const QVariantMap& payload) const;
-    bool requiresReliableAck(const QString& channel, const QVariantMap& payload) const;
-    bool isSelfOriginated(const QVariantMap& payload) const;
+    void wireRouter();
+    void configureSocketCallbacks();
+    void onSocketConnected();
+    void onSocketDisconnected();
+    void onSocketError(const QString& errorMessage);
+    void onSocketRawMessage(const QByteArray& message);
+    void routeEnvelopeMessage(const QVariantMap& envelope, const QByteArray& rawMessage);
+    bool sendJson(const QVariantMap& payload);
+    bool sendEnvelope(const QString& module, const QString& type, const QVariantMap& value);
     void emitIssue(const QString& source, const QString& severity,
                    const QString& errorCode, const QString& errorMessage,
                    const QVariantMap& context = {});
-    void cleanupIdempotencyWindow(qint64 nowMs);
     void refreshHealthSnapshot();
-    int activePollingPlanCount() const;
-    bool hasSubscriptionSource(const QString& sourceId) const;
 
-    RedisGateway* m_redisGateway = nullptr;
+    std::unique_ptr<redis_dc::SocketClient> m_socketClient;
     MessageRouter* m_messageRouter = nullptr;
-    QVector<SubscriptionSource*> m_subscriptionSources;
-    // Per-connection polling bundles (config-driven, one per ConnectionEntry).
-    QVector<PerConnectionPollingBundle*> m_pollingBundles;
-    QTimer* m_outboundRetryTimer = nullptr;
-    QSet<QString> m_routingChannels;
-    bool m_started = false;
-    RedisGateway::ConnectionState m_lastConnectionState = RedisGateway::Disconnected;
+    QString m_host = QStringLiteral("127.0.0.1");
+    quint16 m_port = 9000;
+    QString m_connectionState = QStringLiteral("Disconnected");
     QString m_controlPublishChannel = QStringLiteral("control.upstream");
     QString m_ackChannel = QStringLiteral("control.ack");
     QString m_clientInstanceId;
     QVariantMap m_healthSnapshot;
+    bool m_initialized = false;
+    bool m_started = false;
     qint64 m_lastHeartbeatMs = 0;
     qint64 m_lastControlMessageMs = 0;
     qint64 m_lastStateSampleMs = 0;
     int m_routingErrorCount = 0;
-    int m_datasourceErrorCount = 0;
-    int m_ackCount = 0;
-    int m_ackConfirmedCount = 0;
-    int m_ackTimeoutCount = 0;
-    int m_resyncRequestCount = 0;
-    int m_reconnectCount = 0;
-    int m_droppedReliableCount = 0;
+    int m_transportErrorCount = 0;
     int m_receivedControlCount = 0;
     int m_receivedSampleCount = 0;
-    qint64 m_nextOutboundSeq = 1;
-    QList<OutboundControlMessage> m_outboundQueue;
-    QMap<QString, OutboundControlMessage> m_inflightReliableMessages;
-    QMap<QString, qint64> m_confirmedOutboundWindow;
-    int m_outboundRetryLimit = 3;
-    int m_outboundAckTimeoutMs = 2000;
-    int m_outboundRetryTickMs = 500;
-    int m_idempotencyWindowMs = 60000;
+    int m_sentMessageCount = 0;
 };

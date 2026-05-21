@@ -60,12 +60,22 @@ void UiActionDispatcher::sendTargetedCommand(const QString& targetModule,
                                              const QString& command,
                                              const QVariantMap& payload)
 {
-    if (targetModule.trimmed().isEmpty() || command.trimmed().isEmpty()) {
+    sendToTarget(targetModule, command, payload);
+}
+
+void UiActionDispatcher::sendToTarget(const QString& targetName,
+                                      const QString& command,
+                                      const QVariantMap& payload)
+{
+    if (targetName.trimmed().isEmpty() || command.trimmed().isEmpty()) {
         return;
     }
 
     QVariantMap targetedPayload = payload;
-    targetedPayload.insert(QStringLiteral("targetModule"), targetModule);
+    // targetName is the generic registered-address field; targetModule keeps
+    // compatibility with LogicRuntime's existing module-routing contract.
+    targetedPayload.insert(QStringLiteral("targetName"), targetName.trimmed());
+    targetedPayload.insert(QStringLiteral("targetModule"), targetName.trimmed());
     sendCommand(command, targetedPayload);
 }
 

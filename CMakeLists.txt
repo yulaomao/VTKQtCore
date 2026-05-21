@@ -41,13 +41,6 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# hiredis
-# ---------------------------------------------------------------------------
-find_package(hiredis CONFIG REQUIRED
-    PATHS "${CMAKE_CURRENT_SOURCE_DIR}/thirtyPart/hiredis"
-    NO_DEFAULT_PATH)
-
-# ---------------------------------------------------------------------------
 # VTK
 # ---------------------------------------------------------------------------
 set(VTK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirtyPart/vtk/lib/cmake/vtk-9.4")
@@ -75,17 +68,22 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.qrc
 )
 
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/communication/redis/.*")
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/communication/datasource/.*\\.cpp$")
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/logic/socket_client/.*")
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/app/software/RedisSoftwareResolver\\.(h|cpp)$")
+list(APPEND SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/communication/datasource/StateSample.cpp
+)
+
 # ---------------------------------------------------------------------------
 # Executable
 # ---------------------------------------------------------------------------
+set(REDIS_SOCKET_CLIENT_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+set(REDIS_SOCKET_CLIENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(src/logic/socket_client)
+
 add_executable(VTKQtCore ${SOURCES})
-
-set(REDIS_BATCH_READ_SMOKE_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/redis_batch_read_smoke.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/communication/redis/RedisPollingWorker.cpp
-)
-
-add_executable(redis_batch_read_smoke ${REDIS_BATCH_READ_SMOKE_SOURCES})
 
 # ---------------------------------------------------------------------------
 # Include directories – src/ and every subdirectory beneath it
@@ -99,10 +97,7 @@ foreach(ENTRY ${ALL_SRC_FILES})
 endforeach()
 list(REMOVE_DUPLICATES INCLUDE_DIRS)
 
-list(APPEND INCLUDE_DIRS ${hiredis_INCLUDE_DIRS})
-
 target_include_directories(VTKQtCore PRIVATE ${INCLUDE_DIRS})
-target_include_directories(redis_batch_read_smoke PRIVATE ${INCLUDE_DIRS})
 
 target_compile_definitions(VTKQtCore PRIVATE
     VTKQTCORE_HAS_QT_MULTIMEDIA=$<BOOL:${VTKQTCORE_HAS_QT_MULTIMEDIA}>)
@@ -116,13 +111,8 @@ target_link_libraries(VTKQtCore PRIVATE
     Qt${QT_VERSION_MAJOR}::Gui
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::OpenGL
-    hiredis::hiredis
+    redis_dc::socket_client
     ${VTK_LIBRARIES}
-)
-
-target_link_libraries(redis_batch_read_smoke PRIVATE
-    Qt${QT_VERSION_MAJOR}::Core
-    hiredis::hiredis
 )
 
 if(VTKQTCORE_HAS_QT_MULTIMEDIA)
@@ -156,12 +146,6 @@ if(WIN32)
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             $<TARGET_RUNTIME_DLLS:VTKQtCore>
             $<TARGET_FILE_DIR:VTKQtCore>
-        COMMAND_EXPAND_LISTS)
-
-    add_custom_command(TARGET redis_batch_read_smoke POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            $<TARGET_RUNTIME_DLLS:redis_batch_read_smoke>
-            $<TARGET_FILE_DIR:redis_batch_read_smoke>
         COMMAND_EXPAND_LISTS)
 
     add_custom_command(TARGET VTKQtCore POST_BUILD
