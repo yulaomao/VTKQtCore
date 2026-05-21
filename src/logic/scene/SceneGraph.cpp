@@ -374,6 +374,18 @@ QVector<ModelNode*> SceneGraph::getAllModelNodes() const
     return result;
 }
 
+QVector<PlaneNode*> SceneGraph::getAllPlaneNodes() const
+{
+    QReadLocker locker(&m_lock);
+    QVector<PlaneNode*> result;
+    for (NodeBase* node : m_nodes) {
+        if (auto* typed = dynamic_cast<PlaneNode*>(node)) {
+            result.append(typed);
+        }
+    }
+    return result;
+}
+
 QVector<TransformNode*> SceneGraph::getAllTransformNodes() const
 {
     QReadLocker locker(&m_lock);

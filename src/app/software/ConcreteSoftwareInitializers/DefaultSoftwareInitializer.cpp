@@ -1,14 +1,16 @@
 #include "DefaultSoftwareInitializer.h"
 
-#include "DefaultGlobalPollingSampleParser.h"
 #include "ModuleUiAssemblers.h"
 #include "SoftwareInitializerFactory.h"
 #include "ApplicationCoordinator.h"
 #include "ILogicGateway.h"
 #include "LogicRuntime.h"
 #include "MainWindow.h"
-#include "communication/datasource/GlobalPollingPlan.h"
 #include "communication/hub/CommunicationHub.h"
+#include "communication/redis/RedisConnectionConfig.h"
+#include "communication/redis/RedisDataCenter.h"
+#include "logic/registry/ModuleLogicHandler.h"
+#include "logic/registry/ModuleLogicRegistry.h"
 #include "modules/intermoduletest/InterModuleReceiverLogicHandler.h"
 #include "modules/intermoduletest/InterModuleReceiverWidget.h"
 #include "modules/intermoduletest/InterModuleSenderLogicHandler.h"
@@ -25,6 +27,7 @@
 #include "PlanningModuleLogicHandler.h"
 #include "NavigationModuleLogicHandler.h"
 
+#include <QDebug>
 #include <QHBoxLayout>
 #include <QLayout>
 #include <QVector>
@@ -35,11 +38,6 @@ QString stringFromVariantOrDefault(const QVariant& value, const QString& fallbac
 {
     const QString text = value.toString().trimmed();
     return text.isEmpty() ? fallback : text;
-}
-
-QString defaultSubscriptionChannel(const QString& moduleId)
-{
-    return QStringLiteral("state.%1").arg(moduleId);
 }
 
 QString defaultControlRoutingChannel()
@@ -55,11 +53,6 @@ QString defaultControlPublishChannel()
 QString defaultAckChannel()
 {
     return QStringLiteral("control.ack");
-}
-
-QString defaultPollingKey(const QString& moduleId)
-{
-    return QStringLiteral("state.%1.latest").arg(moduleId);
 }
 
 QVariantMap communicationProfile(const QVariantMap& profile)
@@ -103,34 +96,6 @@ QString ackChannelFromProfile(const QVariantMap& profile)
     return stringFromVariantOrDefault(
         communicationProfile(profile).value(QStringLiteral("ackChannel")),
         defaultAckChannel());
-}
-
-QStringList defaultGlobalPollingKeys()
-{
-    return {
-        defaultPollingKey(QStringLiteral("params")),
-        defaultPollingKey(QStringLiteral("pointpick")),
-        defaultPollingKey(QStringLiteral("planning")),
-        defaultPollingKey(QStringLiteral("navigation")),
-        QStringLiteral("demo:navigation:transform:world"),
-        QStringLiteral("demo:navigation:transform:reference"),
-        QStringLiteral("demo:navigation:transform:patient"),
-        QStringLiteral("demo:navigation:transform:instrument"),
-        QStringLiteral("demo:navigation:transform:guide"),
-        QStringLiteral("demo:navigation:transform:tip"),
-    };
-}
-
-GlobalPollingPlan createDefaultGlobalPollingPlan()
-{
-    GlobalPollingPlan plan(
-        QStringLiteral("framework_global_poll"),
-        defaultGlobalPollingKeys(),
-        16);
-    plan.setChangeDetection(true);
-    plan.setMaxDispatchRateHz(60.0);
-    plan.setActive(true);
-    return plan;
 }
 
 QString gatewayStateName(ILogicGateway* gateway)
@@ -326,7 +291,19 @@ void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runti
         return;
     }
 
-    runtime->setGlobalPollingSampleParser(new DefaultGlobalPollingSampleParser(runtime));
+    // Load connection configs from the embedded JSON resource.
+    const QVector<RedisConnectionConfig>& configs = connectionConfigs();
+    if (configs.isEmpty()) {
+        qWarning().noquote()
+            << QStringLiteral("[DefaultSoftwareInitializer] redis_dispatch_config.json "
+                              "has no connections — Redis polling and subscriptions will be inactive");
+        return;
+    }
+
+    // Create the simple dispatch center.  It owns the worker threads.
+    // Parented to runtime so it is cleaned up on shutdown.
+    auto* dataCenter = new RedisDataCenter(configs, runtime, /*parent=*/runtime);
+    dataCenter->start();
 }
 
 void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
@@ -335,14 +312,28 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
         return;
     }
 
+    // Configure outbound control channels (unchanged — used for external control
+    // messages, ACK, and resync; unrelated to the data polling/subscription path).
     const QVariantMap profile = getSoftwareProfile();
     commHub->setOutboundChannels(
         outboundControlChannelFromProfile(profile),
         ackChannelFromProfile(profile));
+
     for (const QString& routingChannel : routingChannelsFromProfile(profile)) {
         commHub->addRoutingChannel(routingChannel);
     }
 
-    commHub->setGlobalPollingPlan(createDefaultGlobalPollingPlan());
+    // NOTE: Data polling and subscriptions are now managed by RedisDataCenter,
+    // which is created in configureAdditionalSettings().  Nothing more to do here.
+}
+
+const QVector<RedisConnectionConfig>& DefaultSoftwareInitializer::connectionConfigs() const
+{
+    if (!m_configLoaded) {
+        m_configLoaded = true;
+        m_connectionConfigs = RedisConnectionConfig::loadFromFile(
+            QStringLiteral(":/redis_dispatch_config.json"));
+    }
+    return m_connectionConfigs;
 }
 

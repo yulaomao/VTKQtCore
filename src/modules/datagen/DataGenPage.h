@@ -43,6 +43,11 @@ private slots:
     void onAddVertexClicked();
     void onClearGeometryClicked();
     void onSeedDemoClicked();
+    void onPlayProgressPromptOnceClicked();
+    void onPlayAttentionPromptOnceClicked();
+    void onPlayProgressPromptBurstClicked();
+    void onPlayAttentionPromptBurstClicked();
+    void onApplyPlaneGeometryClicked();
 
 private:
     QVariantMap selectedNodeSummary() const;
@@ -62,6 +67,7 @@ private:
     QListWidget* m_nodeList = nullptr;
     QLabel* m_statusLabel = nullptr;
     QTextEdit* m_detailText = nullptr;
+    QGroupBox* m_audioGroup = nullptr;
     QGroupBox* m_displayGroup = nullptr;
     QGroupBox* m_hierarchyGroup = nullptr;
     QGroupBox* m_dataGroup = nullptr;
@@ -69,6 +75,7 @@ private:
     QFormLayout* m_hierarchyForm = nullptr;
     QFormLayout* m_pointDataForm = nullptr;
     QFormLayout* m_vertexForm = nullptr;
+    QFormLayout* m_planeDataForm = nullptr;
 
     QComboBox* m_createTypeCombo = nullptr;
     QLineEdit* m_createNameEdit = nullptr;
@@ -77,6 +84,19 @@ private:
     QDoubleSpinBox* m_secondarySizeSpin = nullptr;
     QDoubleSpinBox* m_depthSizeSpin = nullptr;
     QSpinBox* m_resolutionSpin = nullptr;
+    QDoubleSpinBox* m_createModelAmbientSpin = nullptr;
+    QDoubleSpinBox* m_createModelDiffuseSpin = nullptr;
+    QDoubleSpinBox* m_createModelSpecularSpin = nullptr;
+    QDoubleSpinBox* m_createModelSpecularPowerSpin = nullptr;
+    QDoubleSpinBox* m_createModelRoughnessSpin = nullptr;
+    QDoubleSpinBox* m_planeCreateWidthSpin = nullptr;
+    QDoubleSpinBox* m_planeCreateHeightSpin = nullptr;
+    QDoubleSpinBox* m_planeCreateCenterXSpin = nullptr;
+    QDoubleSpinBox* m_planeCreateCenterYSpin = nullptr;
+    QDoubleSpinBox* m_planeCreateCenterZSpin = nullptr;
+    QDoubleSpinBox* m_planeCreateNormalXSpin = nullptr;
+    QDoubleSpinBox* m_planeCreateNormalYSpin = nullptr;
+    QDoubleSpinBox* m_planeCreateNormalZSpin = nullptr;
     QSpinBox* m_initialCountSpin = nullptr;
     QDoubleSpinBox* m_spacingSpin = nullptr;
     QCheckBox* m_closedLineCheck = nullptr;
@@ -92,10 +112,20 @@ private:
     QDoubleSpinBox* m_opacitySpin = nullptr;
     QComboBox* m_renderModeCombo = nullptr;
     QDoubleSpinBox* m_sizeSpin = nullptr;
+    QDoubleSpinBox* m_materialAmbientSpin = nullptr;
+    QDoubleSpinBox* m_materialDiffuseSpin = nullptr;
+    QDoubleSpinBox* m_materialSpecularSpin = nullptr;
+    QDoubleSpinBox* m_materialSpecularPowerSpin = nullptr;
+    QDoubleSpinBox* m_materialRoughnessSpin = nullptr;
     QCheckBox* m_showLabelsCheck = nullptr;
     QCheckBox* m_showEdgesCheck = nullptr;
     QCheckBox* m_dashedCheck = nullptr;
     QCheckBox* m_showAxesDisplayCheck = nullptr;
+    QDoubleSpinBox* m_borderRedSpin = nullptr;
+    QDoubleSpinBox* m_borderGreenSpin = nullptr;
+    QDoubleSpinBox* m_borderBlueSpin = nullptr;
+    QDoubleSpinBox* m_borderOpacitySpin = nullptr;
+    QDoubleSpinBox* m_borderWidthSpin = nullptr;
     QPushButton* m_applyDisplayButton = nullptr;
 
     QComboBox* m_parentCombo = nullptr;
@@ -116,8 +146,17 @@ private:
     QDoubleSpinBox* m_vertexXSpin = nullptr;
     QDoubleSpinBox* m_vertexYSpin = nullptr;
     QDoubleSpinBox* m_vertexZSpin = nullptr;
+    QDoubleSpinBox* m_planeWidthSpin = nullptr;
+    QDoubleSpinBox* m_planeHeightSpin = nullptr;
+    QDoubleSpinBox* m_planeCenterXSpin = nullptr;
+    QDoubleSpinBox* m_planeCenterYSpin = nullptr;
+    QDoubleSpinBox* m_planeCenterZSpin = nullptr;
+    QDoubleSpinBox* m_planeNormalXSpin = nullptr;
+    QDoubleSpinBox* m_planeNormalYSpin = nullptr;
+    QDoubleSpinBox* m_planeNormalZSpin = nullptr;
     QPushButton* m_addPointButton = nullptr;
     QPushButton* m_addVertexButton = nullptr;
+    QPushButton* m_applyPlaneGeometryButton = nullptr;
 
     VtkSceneWindow* m_sceneWindow = nullptr;
     QVBoxLayout* m_sceneLayout = nullptr;

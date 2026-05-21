@@ -4,8 +4,10 @@
 #include "logic/scene/nodes/LineNode.h"
 #include "logic/scene/nodes/ModelNode.h"
 #include "logic/scene/nodes/NodeBase.h"
+#include "logic/scene/nodes/PlaneNode.h"
 #include "logic/scene/nodes/PointNode.h"
 #include "logic/scene/nodes/TransformNode.h"
+#include "contracts/PromptAudioPresetIds.h"
 
 #include <vtkCubeSource.h>
 #include <vtkCylinderSource.h>
@@ -17,6 +19,7 @@
 #include <vtkMatrix4x4.h>
 
 #include <QDateTime>
+#include <QTimer>
 #include <QUuid>
 
 #include <QtMath>
@@ -49,6 +52,9 @@ QString typeKeyForNode(const NodeBase* node)
     if (dynamic_cast<const ModelNode*>(node)) {
         return QStringLiteral("model");
     }
+    if (dynamic_cast<const PlaneNode*>(node)) {
+        return QStringLiteral("plane");
+    }
     if (dynamic_cast<const TransformNode*>(node)) {
         return QStringLiteral("transform");
     }
@@ -74,6 +80,27 @@ void configureColor(double out[4], double r, double g, double b, double a)
     out[1] = g;
     out[2] = b;
     out[3] = a;
+}
+
+void applyModelMaterialPayload(ModelNode* modelNode, const QVariantMap& payload)
+{
+    if (!modelNode) {
+        return;
+    }
+
+    modelNode->setMaterialAmbient(
+        qBound(0.0, payload.value(QStringLiteral("ambient"), 0.2).toDouble(), 1.0));
+    modelNode->setMaterialDiffuse(
+        qBound(0.0, payload.value(QStringLiteral("diffuse"), 0.8).toDouble(), 1.0));
+    modelNode->setMaterialSpecular(
+        qBound(0.0, payload.value(QStringLiteral("specular"), 0.15).toDouble(), 1.0));
+    modelNode->setMaterialSpecularPower(
+        qMax(0.0,
+             payload.value(
+                 QStringLiteral("specularPower"),
+                 payload.value(QStringLiteral("power"), 20.0)).toDouble()));
+    modelNode->setMaterialRoughness(
+        qBound(0.0, payload.value(QStringLiteral("roughness"), 0.4).toDouble(), 1.0));
 }
 
 vtkSmartPointer<vtkPolyData> buildShapePolyData(const QString& shape,
@@ -237,7 +264,22 @@ bool fillMatrixFromVariantList(const QVariantList& values, double out[16])
 
 DataGenModuleLogicHandler::DataGenModuleLogicHandler(QObject* parent)
     : ModuleLogicHandler(QStringLiteral("datagen"), parent)
+    , m_promptBurstTimer(new QTimer(this))
 {
+    m_promptBurstTimer->setSingleShot(false);
+    connect(m_promptBurstTimer, &QTimer::timeout,
+            this, [this]() {
+                if (m_promptBurstRemaining <= 0 || m_promptBurstPresetId.isEmpty()) {
+                    stopPromptBurst();
+                    return;
+                }
+
+                playPromptAudioPreset(m_promptBurstPresetId);
+                --m_promptBurstRemaining;
+                if (m_promptBurstRemaining <= 0) {
+                    stopPromptBurst();
+                }
+            });
 }
 
 QString DataGenModuleLogicHandler::moduleOwnerTag()
@@ -286,6 +328,8 @@ ModuleInvokeResult DataGenModuleLogicHandler::handleModuleInvoke(const ModuleInv
             created = createLineNode(request.payload);
         } else if (nodeType == QStringLiteral("model")) {
             created = createModelNode(request.payload);
+        } else if (nodeType == QStringLiteral("plane")) {
+            created = createPlaneNode(request.payload);
         } else if (nodeType == QStringLiteral("transform")) {
             created = createTransformNode(request.payload);
         }
@@ -348,6 +392,47 @@ void DataGenModuleLogicHandler::onResync()
     emitState(QStringLiteral("DataGen 模块已重同步。"));
 }
 
+void DataGenModuleLogicHandler::stopPromptBurst()
+{
+    if (m_promptBurstTimer) {
+        m_promptBurstTimer->stop();
+    }
+    m_promptBurstPresetId.clear();
+    m_promptBurstSourceActionId.clear();
+    m_promptBurstRemaining = 0;
+}
+
+void DataGenModuleLogicHandler::playPromptPresetBurst(const QString& presetId,
+                                                      int count,
+                                                      int intervalMs,
+                                                      const QString& sourceActionId)
+{
+    const QString normalizedPresetId = presetId.trimmed();
+    if (normalizedPresetId.isEmpty()) {
+        emitState(QStringLiteral("提示音预设不能为空。"),
+                  LogicNotification::SceneNodesUpdated,
+                  sourceActionId);
+        return;
+    }
+
+    const int safeCount = qBound(1, count, 100);
+    const int safeIntervalMs = qBound(10, intervalMs, 2000);
+
+    stopPromptBurst();
+    m_promptBurstPresetId = normalizedPresetId;
+    m_promptBurstSourceActionId = sourceActionId;
+    m_promptBurstRemaining = safeCount;
+
+    playPromptAudioPreset(m_promptBurstPresetId);
+    --m_promptBurstRemaining;
+    if (m_promptBurstRemaining <= 0) {
+        stopPromptBurst();
+        return;
+    }
+
+    m_promptBurstTimer->start(safeIntervalMs);
+}
+
 void DataGenModuleLogicHandler::ensureSeedScene()
 {
     if (!managedNodes().isEmpty()) {
@@ -391,6 +476,17 @@ void DataGenModuleLogicHandler::ensureSeedScene()
         {QStringLiteral("sizeC"), 42.0},
         {QStringLiteral("resolution"), 28}
     });
+    auto* planeNode = createPlaneNode({
+        {QStringLiteral("name"), QStringLiteral("Reference Plane")},
+        {QStringLiteral("width"), 72.0},
+        {QStringLiteral("height"), 48.0},
+        {QStringLiteral("centerX"), 24.0},
+        {QStringLiteral("centerY"), -18.0},
+        {QStringLiteral("centerZ"), 8.0},
+        {QStringLiteral("normalX"), 0.0},
+        {QStringLiteral("normalY"), 0.25},
+        {QStringLiteral("normalZ"), 1.0}
+    });
     auto* childTransform = createTransformNode({
         {QStringLiteral("name"), QStringLiteral("Tool Frame")},
         {QStringLiteral("showAxes"), true},
@@ -415,6 +511,9 @@ void DataGenModuleLogicHandler::ensureSeedScene()
     if (lineNode) {
         assignParent(lineNode, rootTransform->getNodeId());
     }
+    if (planeNode) {
+        assignParent(planeNode, rootTransform->getNodeId());
+    }
     if (modelNode && childTransform) {
         assignParent(modelNode, childTransform->getNodeId());
     }
@@ -427,6 +526,31 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
 {
     const QString command = payload.value(QStringLiteral("command")).toString();
     if (command.isEmpty()) {
+        return;
+    }
+
+    if (command == QStringLiteral("test_prompt_play_once")) {
+        const QString presetId = payload.value(QStringLiteral("presetId")).toString();
+        const bool ok = playPromptAudioPreset(presetId);
+        emitState(ok
+                      ? QStringLiteral("已触发预设提示音：%1。").arg(presetId)
+                      : QStringLiteral("提示音触发失败：%1。").arg(presetId),
+                  LogicNotification::SceneNodesUpdated,
+                  QString());
+        return;
+    }
+
+    if (command == QStringLiteral("test_prompt_play_burst")) {
+        const QString presetId = payload.value(QStringLiteral("presetId")).toString();
+        const int count = payload.value(QStringLiteral("count"), 10).toInt();
+        const int intervalMs = payload.value(QStringLiteral("intervalMs"), 100).toInt();
+        playPromptPresetBurst(presetId, count, intervalMs, sourceActionId);
+        emitState(QStringLiteral("已开始高频提示音测试：%1，每 %2ms 一次，共 %3 次。")
+                      .arg(presetId)
+                      .arg(intervalMs)
+                      .arg(count),
+                  LogicNotification::SceneNodesUpdated,
+                  QString());
         return;
     }
 
@@ -452,6 +576,8 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
             created = createLineNode(payload);
         } else if (nodeType == QStringLiteral("model")) {
             created = createModelNode(payload);
+        } else if (nodeType == QStringLiteral("plane")) {
+            created = createPlaneNode(payload);
         } else if (nodeType == QStringLiteral("transform")) {
             created = createTransformNode(payload);
         }
@@ -576,6 +702,32 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
         }
         return;
     }
+
+    if (command == QStringLiteral("update_plane_geometry")) {
+        if (auto* planeNode = dynamic_cast<PlaneNode*>(node)) {
+            const std::array<double, 3> center = planeNode->getCenter();
+            const std::array<double, 3> normal = planeNode->getNormal();
+            planeNode->setPlaneSize(
+                payload.value(QStringLiteral("width"), planeNode->getPlaneWidth()).toDouble(),
+                payload.value(QStringLiteral("height"), planeNode->getPlaneHeight()).toDouble());
+            planeNode->setCenter(
+                payload.value(QStringLiteral("centerX"), center[0]).toDouble(),
+                payload.value(QStringLiteral("centerY"), center[1]).toDouble(),
+                payload.value(QStringLiteral("centerZ"), center[2]).toDouble());
+            planeNode->setNormal(
+                payload.value(QStringLiteral("normalX"), normal[0]).toDouble(),
+                payload.value(QStringLiteral("normalY"), normal[1]).toDouble(),
+                payload.value(QStringLiteral("normalZ"), normal[2]).toDouble());
+            persistRedisSnapshot(
+                QStringLiteral("plane_geometry_updated"),
+                persistIdForNode(planeNode),
+                nodeNameOrFallback(planeNode));
+            emitState(QStringLiteral("平面几何已更新。"),
+                      LogicNotification::SceneNodesUpdated,
+                      sourceActionId);
+        }
+        return;
+    }
 }
 
 void DataGenModuleLogicHandler::emitState(const QString& statusText,
@@ -584,6 +736,11 @@ void DataGenModuleLogicHandler::emitState(const QString& statusText,
 {
     if (!statusText.isEmpty()) {
         m_statusText = statusText;
+    }
+
+    if (eventType == LogicNotification::SceneNodesUpdated &&
+        !sourceActionId.trimmed().isEmpty()) {
+        playPromptAudioPreset(PromptAudioPresetIds::pollingProgress());
     }
 
     LogicNotification notification = LogicNotification::create(
@@ -690,7 +847,7 @@ QVariantMap DataGenModuleLogicHandler::buildNodeDetails(NodeBase* node) const
     double color[4] = {1.0, 1.0, 1.0, 1.0};
     if (auto* pointNode = dynamic_cast<PointNode*>(node)) {
         pointNode->getDefaultPointColor(color);
-        details.insert(QStringLiteral("opacity"), color[3]);
+        details.insert(QStringLiteral("opacity"), pointNode->getOpacity());
         details.insert(QStringLiteral("sizeValue"), pointNode->getDefaultPointSize());
         details.insert(QStringLiteral("showLabels"), pointNode->isShowPointLabel());
         details.insert(QStringLiteral("pointCount"), pointNode->getPointCount());
@@ -707,9 +864,34 @@ QVariantMap DataGenModuleLogicHandler::buildNodeDetails(NodeBase* node) const
         details.insert(QStringLiteral("opacity"), modelNode->getOpacity());
         details.insert(QStringLiteral("renderMode"), modelNode->getRenderMode());
         details.insert(QStringLiteral("showEdges"), modelNode->isShowEdges());
+        details.insert(QStringLiteral("ambient"), modelNode->getMaterialAmbient());
+        details.insert(QStringLiteral("diffuse"), modelNode->getMaterialDiffuse());
+        details.insert(QStringLiteral("specular"), modelNode->getMaterialSpecular());
+        details.insert(QStringLiteral("specularPower"), modelNode->getMaterialSpecularPower());
+        details.insert(QStringLiteral("roughness"), modelNode->getMaterialRoughness());
         details.insert(QStringLiteral("triangleCount"), modelNode->getIndices().size());
         details.insert(QStringLiteral("shape"), modelNode->getAttribute(
             QStringLiteral("geometryPreset"), QStringLiteral("mesh")).toString());
+    } else if (auto* planeNode = dynamic_cast<PlaneNode*>(node)) {
+        const std::array<double, 3> center = planeNode->getCenter();
+        const std::array<double, 3> normal = planeNode->getNormal();
+        double borderColor[4];
+        planeNode->getPlaneColor(color);
+        planeNode->getBorderColor(borderColor);
+        details.insert(QStringLiteral("opacity"), planeNode->getPlaneOpacity());
+        details.insert(QStringLiteral("width"), planeNode->getPlaneWidth());
+        details.insert(QStringLiteral("height"), planeNode->getPlaneHeight());
+        details.insert(QStringLiteral("centerX"), center[0]);
+        details.insert(QStringLiteral("centerY"), center[1]);
+        details.insert(QStringLiteral("centerZ"), center[2]);
+        details.insert(QStringLiteral("normalX"), normal[0]);
+        details.insert(QStringLiteral("normalY"), normal[1]);
+        details.insert(QStringLiteral("normalZ"), normal[2]);
+        details.insert(QStringLiteral("borderRed"), borderColor[0]);
+        details.insert(QStringLiteral("borderGreen"), borderColor[1]);
+        details.insert(QStringLiteral("borderBlue"), borderColor[2]);
+        details.insert(QStringLiteral("borderOpacity"), planeNode->getBorderOpacity());
+        details.insert(QStringLiteral("borderWidth"), planeNode->getBorderWidth());
     } else if (auto* transformNode = dynamic_cast<TransformNode*>(node)) {
         transformNode->getAxesColorX(color);
         details.insert(QStringLiteral("opacity"), color[3]);
@@ -766,6 +948,7 @@ QVariantMap DataGenModuleLogicHandler::serializeNodeForRedis(NodeBase* node) con
         payload.insert(QStringLiteral("showLabels"), pointNode->isShowPointLabel());
         payload.insert(QStringLiteral("pointLabelFormat"), pointNode->getPointLabelFormat());
         payload.insert(QStringLiteral("selectedPointIndex"), pointNode->getSelectedPointIndex());
+        payload.insert(QStringLiteral("opacity"), pointNode->getOpacity());
         payload.insert(QStringLiteral("defaultPointSize"), pointNode->getDefaultPointSize());
         payload.insert(QStringLiteral("defaultPointColor"), QVariantList{defaultColor[0], defaultColor[1], defaultColor[2], defaultColor[3]});
         payload.insert(QStringLiteral("points"), points);
@@ -796,6 +979,11 @@ QVariantMap DataGenModuleLogicHandler::serializeNodeForRedis(NodeBase* node) con
         payload.insert(QStringLiteral("renderMode"), modelNode->getRenderMode());
         payload.insert(QStringLiteral("opacity"), modelNode->getOpacity());
         payload.insert(QStringLiteral("showEdges"), modelNode->isShowEdges());
+        payload.insert(QStringLiteral("ambient"), modelNode->getMaterialAmbient());
+        payload.insert(QStringLiteral("diffuse"), modelNode->getMaterialDiffuse());
+        payload.insert(QStringLiteral("specular"), modelNode->getMaterialSpecular());
+        payload.insert(QStringLiteral("specularPower"), modelNode->getMaterialSpecularPower());
+        payload.insert(QStringLiteral("roughness"), modelNode->getMaterialRoughness());
         payload.insert(QStringLiteral("edgeWidth"), modelNode->getEdgeWidth());
         payload.insert(QStringLiteral("backfaceCulling"), modelNode->isBackfaceCulling());
         payload.insert(QStringLiteral("useScalarColor"), modelNode->isUseScalarColor());
@@ -804,6 +992,22 @@ QVariantMap DataGenModuleLogicHandler::serializeNodeForRedis(NodeBase* node) con
         payload.insert(QStringLiteral("edgeColor"), QVariantList{edgeColor[0], edgeColor[1], edgeColor[2], edgeColor[3]});
         payload.insert(QStringLiteral("vertices"), toPointVariantList(modelNode->getVertices()));
         payload.insert(QStringLiteral("triangles"), toTriangleVariantList(modelNode->getIndices()));
+    } else if (auto* planeNode = dynamic_cast<PlaneNode*>(node)) {
+        double color[4];
+        double borderColor[4];
+        const std::array<double, 3> center = planeNode->getCenter();
+        const std::array<double, 3> normal = planeNode->getNormal();
+        planeNode->getPlaneColor(color);
+        planeNode->getBorderColor(borderColor);
+        payload.insert(QStringLiteral("opacity"), planeNode->getPlaneOpacity());
+        payload.insert(QStringLiteral("width"), planeNode->getPlaneWidth());
+        payload.insert(QStringLiteral("height"), planeNode->getPlaneHeight());
+        payload.insert(QStringLiteral("center"), QVariantList{center[0], center[1], center[2]});
+        payload.insert(QStringLiteral("normal"), QVariantList{normal[0], normal[1], normal[2]});
+        payload.insert(QStringLiteral("color"), QVariantList{color[0], color[1], color[2], color[3]});
+        payload.insert(QStringLiteral("borderColor"), QVariantList{borderColor[0], borderColor[1], borderColor[2], borderColor[3]});
+        payload.insert(QStringLiteral("borderOpacity"), planeNode->getBorderOpacity());
+        payload.insert(QStringLiteral("borderWidth"), planeNode->getBorderWidth());
     } else if (auto* transformNode = dynamic_cast<TransformNode*>(node)) {
         double matrix[16];
         double colorX[4];
@@ -868,13 +1072,25 @@ bool DataGenModuleLogicHandler::restoreFromRedisSnapshot(const QVariantMap& snap
             pointNode->setShowPointLabel(nodeMap.value(QStringLiteral("showLabels"), false).toBool());
             pointNode->setSelectedPointIndex(nodeMap.value(QStringLiteral("selectedPointIndex"), -1).toInt());
             const QVariantList defaultColor = nodeMap.value(QStringLiteral("defaultPointColor")).toList();
+            double color[4] = {1.0, 0.0, 0.0, 1.0};
+            bool hasDefaultColor = false;
             if (defaultColor.size() == 4) {
-                const double color[4] = {
+                const double importedColor[4] = {
                     defaultColor.at(0).toDouble(),
                     defaultColor.at(1).toDouble(),
                     defaultColor.at(2).toDouble(),
                     defaultColor.at(3).toDouble()
                 };
+                copyArray(importedColor, color, 4);
+                hasDefaultColor = true;
+            }
+            if (nodeMap.contains(QStringLiteral("opacity"))) {
+                pointNode->setOpacity(nodeMap.value(QStringLiteral("opacity"), 1.0).toDouble());
+            } else if (hasDefaultColor) {
+                pointNode->setOpacity(color[3]);
+                color[3] = 1.0;
+            }
+            if (hasDefaultColor) {
                 pointNode->setDefaultPointColor(color);
             }
             pointNode->setDefaultPointSize(nodeMap.value(QStringLiteral("defaultPointSize"), 8.0).toDouble());
@@ -955,6 +1171,7 @@ bool DataGenModuleLogicHandler::restoreFromRedisSnapshot(const QVariantMap& snap
             modelNode->setOpacity(nodeMap.value(QStringLiteral("opacity"), 1.0).toDouble());
             modelNode->setRenderMode(nodeMap.value(QStringLiteral("renderMode"), QStringLiteral("surface")).toString());
             modelNode->setShowEdges(nodeMap.value(QStringLiteral("showEdges"), false).toBool());
+            applyModelMaterialPayload(modelNode, nodeMap);
             modelNode->setEdgeWidth(nodeMap.value(QStringLiteral("edgeWidth"), 1.0).toDouble());
             modelNode->setBackfaceCulling(nodeMap.value(QStringLiteral("backfaceCulling"), false).toBool());
             modelNode->setUseScalarColor(nodeMap.value(QStringLiteral("useScalarColor"), false).toBool());
@@ -963,6 +1180,50 @@ bool DataGenModuleLogicHandler::restoreFromRedisSnapshot(const QVariantMap& snap
                 fromPointVariantList(nodeMap.value(QStringLiteral("vertices")).toList()),
                 fromTriangleVariantList(nodeMap.value(QStringLiteral("triangles")).toList()));
             createdNode = modelNode;
+        } else if (nodeType == QStringLiteral("plane")) {
+            auto* planeNode = new PlaneNode(scene);
+            setManagedDefaults(planeNode, layer);
+            planeNode->setName(nodeMap.value(QStringLiteral("name")).toString());
+            planeNode->setAttribute(persistIdAttributeName(), nodeMap.value(QStringLiteral("persistId")).toString());
+            const QVariantList color = nodeMap.value(QStringLiteral("color")).toList();
+            if (color.size() == 4) {
+                const double rgba[4] = {
+                    color.at(0).toDouble(),
+                    color.at(1).toDouble(),
+                    color.at(2).toDouble(),
+                    color.at(3).toDouble()
+                };
+                planeNode->setPlaneColor(rgba);
+            }
+            const QVariantList borderColor = nodeMap.value(QStringLiteral("borderColor")).toList();
+            if (borderColor.size() == 4) {
+                const double rgba[4] = {
+                    borderColor.at(0).toDouble(),
+                    borderColor.at(1).toDouble(),
+                    borderColor.at(2).toDouble(),
+                    borderColor.at(3).toDouble()
+                };
+                planeNode->setBorderColor(rgba);
+            }
+            const QVariantList center = nodeMap.value(QStringLiteral("center")).toList();
+            if (center.size() >= 3) {
+                planeNode->setCenter(center.at(0).toDouble(),
+                                     center.at(1).toDouble(),
+                                     center.at(2).toDouble());
+            }
+            const QVariantList normal = nodeMap.value(QStringLiteral("normal")).toList();
+            if (normal.size() >= 3) {
+                planeNode->setNormal(normal.at(0).toDouble(),
+                                     normal.at(1).toDouble(),
+                                     normal.at(2).toDouble());
+            }
+            planeNode->setPlaneSize(
+                nodeMap.value(QStringLiteral("width"), 36.0).toDouble(),
+                nodeMap.value(QStringLiteral("height"), 24.0).toDouble());
+            planeNode->setPlaneOpacity(nodeMap.value(QStringLiteral("opacity"), 0.35).toDouble());
+            planeNode->setBorderOpacity(nodeMap.value(QStringLiteral("borderOpacity"), 1.0).toDouble());
+            planeNode->setBorderWidth(nodeMap.value(QStringLiteral("borderWidth"), 2.0).toDouble());
+            createdNode = planeNode;
         } else if (nodeType == QStringLiteral("transform")) {
             auto* transformNode = new TransformNode(scene);
             setManagedDefaults(transformNode, layer);
@@ -1139,6 +1400,8 @@ void DataGenModuleLogicHandler::removeParentReferencesTo(const QString& nodeId)
                 lineNode->setParentTransform(QString());
             } else if (auto* modelNode = dynamic_cast<ModelNode*>(node)) {
                 modelNode->setParentTransform(QString());
+            } else if (auto* planeNode = dynamic_cast<PlaneNode*>(node)) {
+                planeNode->setParentTransform(QString());
             } else if (auto* transformNode = dynamic_cast<TransformNode*>(node)) {
                 transformNode->setParentTransform(QString());
             }
@@ -1242,9 +1505,52 @@ ModelNode* DataGenModuleLogicHandler::createModelNode(const QVariantMap& payload
     node->setOpacity(0.85);
     node->setRenderMode(QStringLiteral("surface"));
     node->setShowEdges(true);
+    applyModelMaterialPayload(node, payload);
     const double edgeColor[4] = {0.04, 0.1, 0.22, 1.0};
     node->setEdgeColor(edgeColor);
     node->setEdgeWidth(1.2);
+    scene->addNode(node);
+    return node;
+}
+
+PlaneNode* DataGenModuleLogicHandler::createPlaneNode(const QVariantMap& payload)
+{
+    SceneGraph* scene = getSceneGraph();
+    if (!scene) {
+        return nullptr;
+    }
+
+    auto* node = new PlaneNode(scene);
+    node->setName(payload.value(QStringLiteral("name"), QStringLiteral("Generated Plane")).toString());
+    setManagedDefaults(node, 1);
+    node->setPlaneSize(
+        qMax(0.01, payload.value(QStringLiteral("width"), 48.0).toDouble()),
+        qMax(0.01, payload.value(QStringLiteral("height"), 30.0).toDouble()));
+    node->setCenter(
+        payload.value(QStringLiteral("centerX"), 0.0).toDouble(),
+        payload.value(QStringLiteral("centerY"), 0.0).toDouble(),
+        payload.value(QStringLiteral("centerZ"), 0.0).toDouble());
+    node->setNormal(
+        payload.value(QStringLiteral("normalX"), 0.0).toDouble(),
+        payload.value(QStringLiteral("normalY"), 0.0).toDouble(),
+        payload.value(QStringLiteral("normalZ"), 1.0).toDouble());
+    const double color[4] = {
+        payload.value(QStringLiteral("red"), 0.28).toDouble(),
+        payload.value(QStringLiteral("green"), 0.68).toDouble(),
+        payload.value(QStringLiteral("blue"), 0.94).toDouble(),
+        payload.value(QStringLiteral("opacity"), 0.35).toDouble()
+    };
+    node->setPlaneColor(color);
+    node->setPlaneOpacity(color[3]);
+    const double borderColor[4] = {
+        payload.value(QStringLiteral("borderRed"), 0.05).toDouble(),
+        payload.value(QStringLiteral("borderGreen"), 0.12).toDouble(),
+        payload.value(QStringLiteral("borderBlue"), 0.2).toDouble(),
+        payload.value(QStringLiteral("borderOpacity"), 1.0).toDouble()
+    };
+    node->setBorderColor(borderColor);
+    node->setBorderOpacity(borderColor[3]);
+    node->setBorderWidth(payload.value(QStringLiteral("borderWidth"), 2.0).toDouble());
     scene->addNode(node);
     return node;
 }
@@ -1292,8 +1598,13 @@ void DataGenModuleLogicHandler::updateDisplay(NodeBase* node, const QVariantMap&
     const double opacity = payload.value(QStringLiteral("opacity"), 1.0).toDouble();
 
     if (auto* pointNode = dynamic_cast<PointNode*>(node)) {
-        const double color[4] = {red, green, blue, opacity};
+        double color[4];
+        pointNode->getDefaultPointColor(color);
+        color[0] = red;
+        color[1] = green;
+        color[2] = blue;
         pointNode->setDefaultPointColor(color);
+        pointNode->setOpacity(opacity);
         pointNode->setDefaultPointSize(payload.value(QStringLiteral("sizeValue"), 6.0).toDouble());
         pointNode->setShowPointLabel(payload.value(QStringLiteral("showLabels"), false).toBool());
     } else if (auto* lineNode = dynamic_cast<LineNode*>(node)) {
@@ -1309,6 +1620,20 @@ void DataGenModuleLogicHandler::updateDisplay(NodeBase* node, const QVariantMap&
         modelNode->setOpacity(opacity);
         modelNode->setRenderMode(payload.value(QStringLiteral("renderMode"), QStringLiteral("surface")).toString());
         modelNode->setShowEdges(payload.value(QStringLiteral("showEdges"), false).toBool());
+        applyModelMaterialPayload(modelNode, payload);
+    } else if (auto* planeNode = dynamic_cast<PlaneNode*>(node)) {
+        const double color[4] = {red, green, blue, opacity};
+        const double borderColor[4] = {
+            payload.value(QStringLiteral("borderRed"), 0.05).toDouble(),
+            payload.value(QStringLiteral("borderGreen"), 0.12).toDouble(),
+            payload.value(QStringLiteral("borderBlue"), 0.2).toDouble(),
+            payload.value(QStringLiteral("borderOpacity"), 1.0).toDouble()
+        };
+        planeNode->setPlaneColor(color);
+        planeNode->setPlaneOpacity(opacity);
+        planeNode->setBorderColor(borderColor);
+        planeNode->setBorderOpacity(payload.value(QStringLiteral("borderOpacity"), borderColor[3]).toDouble());
+        planeNode->setBorderWidth(payload.value(QStringLiteral("borderWidth"), 2.0).toDouble());
     } else if (auto* transformNode = dynamic_cast<TransformNode*>(node)) {
         const double axisColor[4] = {red, green, blue, opacity};
         transformNode->setAxesColorX(axisColor);
@@ -1335,6 +1660,8 @@ void DataGenModuleLogicHandler::assignParent(NodeBase* node, const QString& pare
         lineNode->setParentTransform(parentTransformId);
     } else if (auto* modelNode = dynamic_cast<ModelNode*>(node)) {
         modelNode->setParentTransform(parentTransformId);
+    } else if (auto* planeNode = dynamic_cast<PlaneNode*>(node)) {
+        planeNode->setParentTransform(parentTransformId);
     } else if (auto* transformNode = dynamic_cast<TransformNode*>(node)) {
         transformNode->setParentTransform(parentTransformId);
     }
@@ -1375,6 +1702,12 @@ void DataGenModuleLogicHandler::clearNodeGeometry(NodeBase* node)
     }
     if (auto* modelNode = dynamic_cast<ModelNode*>(node)) {
         modelNode->clearPolyData();
+        return;
+    }
+    if (auto* planeNode = dynamic_cast<PlaneNode*>(node)) {
+        planeNode->setPlaneSize(1.0, 1.0);
+        planeNode->setCenter(0.0, 0.0, 0.0);
+        planeNode->setNormal(0.0, 0.0, 1.0);
         return;
     }
     if (auto* transformNode = dynamic_cast<TransformNode*>(node)) {

@@ -10,7 +10,6 @@
 #endif
 
 namespace {
-
 QVariant replyToVariantPoll(const redisReply* reply)
 {
     if (!reply) {
@@ -36,6 +35,26 @@ QVariant replyToVariantPoll(const redisReply* reply)
     default:
         return reply->str ? QVariant(QString::fromUtf8(reply->str)) : QVariant();
     }
+}
+
+QVariantMap replyToHashMapPoll(const redisReply* reply)
+{
+    QVariantMap values;
+    if (!reply || reply->type != REDIS_REPLY_ARRAY || !reply->element) {
+        return values;
+    }
+
+    for (size_t index = 0; index + 1 < reply->elements; index += 2) {
+        const redisReply* keyReply = reply->element[index];
+        if (!keyReply || !keyReply->str) {
+            continue;
+        }
+
+        values.insert(QString::fromUtf8(keyReply->str),
+                      replyToVariantPoll(reply->element[index + 1]));
+    }
+
+    return values;
 }
 
 } // namespace
@@ -66,9 +85,34 @@ void RedisPollingWorker::setConnection(const QString& host, int port)
     closeContext();
 }
 
-void RedisPollingWorker::readKeys(const QStringList& keys)
+void RedisPollingWorker::setPollingKeys(const QStringList& keys)
 {
-    if (keys.isEmpty()) {
+    m_pollingKeys = keys;
+}
+
+void RedisPollingWorker::selectDb(int db)
+{
+    if (m_db == db) {
+        return;
+    }
+    m_db = db;
+    // If already connected, issue SELECT immediately; otherwise it will be
+    // applied inside ensureConnected() on the next readKeys() call.
+    if (m_context && m_context->err == REDIS_OK) {
+        redisReply* reply = static_cast<redisReply*>(
+            redisCommand(m_context, "SELECT %d", m_db));
+        if (reply) {
+            freeReplyObject(reply);
+        } else {
+            // Connection lost; drop context so it is recreated next time.
+            closeContext();
+        }
+    }
+}
+
+void RedisPollingWorker::poll()
+{
+    if (m_pollingKeys.isEmpty()) {
         emit keyValuesReceived({});
         return;
     }
@@ -77,41 +121,22 @@ void RedisPollingWorker::readKeys(const QStringList& keys)
         return;
     }
 
-    QVector<QByteArray> commandParts;
-    commandParts.reserve(keys.size() + 1);
-    commandParts.append(QByteArrayLiteral("MGET"));
-    for (const QString& key : keys) {
-        commandParts.append(key.toUtf8());
-    }
-
-    QVector<const char*> argv;
-    QVector<size_t> argvlen;
-    argv.reserve(commandParts.size());
-    argvlen.reserve(commandParts.size());
-    for (const QByteArray& part : commandParts) {
-        argv.append(part.constData());
-        argvlen.append(static_cast<size_t>(part.size()));
-    }
-
-    redisReply* reply = static_cast<redisReply*>(
-        redisCommandArgv(m_context,
-                         commandParts.size(),
-                         argv.data(),
-                         argvlen.data()));
-
-    if (!reply) {
-        closeContext();
-        return;
-    }
-
     QVariantMap values;
-    if (reply->type == REDIS_REPLY_ARRAY) {
-        const size_t count = (std::min)(reply->elements, static_cast<size_t>(keys.size()));
-        for (size_t index = 0; index < count; ++index) {
-            values.insert(keys.at(static_cast<int>(index)), replyToVariantPoll(reply->element[index]));
+    for (const QString& logicalKey : m_pollingKeys) {
+        const QByteArray hashKeyBytes = logicalKey.toUtf8();
+        redisReply* reply = static_cast<redisReply*>(redisCommand(
+            m_context,
+            "HGETALL %b",
+            hashKeyBytes.constData(), static_cast<size_t>(hashKeyBytes.size())));
+
+        if (!reply) {
+            closeContext();
+            return;
         }
+
+        values.insert(logicalKey, replyToHashMapPoll(reply));
+        freeReplyObject(reply);
     }
-    freeReplyObject(reply);
 
     emit keyValuesReceived(values);
 }
@@ -146,6 +171,19 @@ bool RedisPollingWorker::ensureConnected()
 
     redisEnableKeepAlive(m_context);
     redisSetTimeout(m_context, timeout);
+
+    // Select the target database (default DB 0 requires no SELECT).
+    if (m_db != 0) {
+        redisReply* reply = static_cast<redisReply*>(
+            redisCommand(m_context, "SELECT %d", m_db));
+        if (reply) {
+            freeReplyObject(reply);
+        } else {
+            closeContext();
+            return false;
+        }
+    }
+
     return true;
 }
 

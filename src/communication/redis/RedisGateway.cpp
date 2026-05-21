@@ -194,6 +194,48 @@ int RedisGateway::getPort() const
     return m_port;
 }
 
+bool RedisGateway::selectDb(int db)
+{
+    QString errorMessage;
+    bool connectionLost = false;
+
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        if (!m_commandContext) {
+            errorMessage = QStringLiteral("Redis command connection is not connected");
+            connectionLost = true;
+        } else {
+            redisReply* reply = static_cast<redisReply*>(
+                redisCommand(m_commandContext, "SELECT %d", db));
+            if (!reply) {
+                errorMessage = redisErrorMessage(
+                    m_commandContext,
+                    QStringLiteral("Redis SELECT %1 failed").arg(db));
+                clearCommandContextLocked();
+                connectionLost = true;
+            } else {
+                if (reply->type == REDIS_REPLY_ERROR) {
+                    errorMessage = QStringLiteral("Redis SELECT %1 error: %2")
+                        .arg(db)
+                        .arg(replyString(reply));
+                }
+                freeReplyObject(reply);
+            }
+        }
+    }
+
+    if (!errorMessage.isEmpty()) {
+        if (connectionLost) {
+            handleConnectionFailure(errorMessage);
+        } else {
+            emit errorOccurred(errorMessage);
+        }
+        return false;
+    }
+
+    return true;
+}
+
 bool RedisGateway::waitForConnected(int timeoutMs)
 {
     if (m_connectionState == Connected) {

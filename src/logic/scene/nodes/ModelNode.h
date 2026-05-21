@@ -56,6 +56,21 @@ public:
     void setBackfaceCulling(bool enable);
     bool isBackfaceCulling() const;
 
+    void setMaterialAmbient(double ambient);
+    double getMaterialAmbient() const;
+
+    void setMaterialDiffuse(double diffuse);
+    double getMaterialDiffuse() const;
+
+    void setMaterialSpecular(double specular);
+    double getMaterialSpecular() const;
+
+    void setMaterialSpecularPower(double power);
+    double getMaterialSpecularPower() const;
+
+    void setMaterialRoughness(double roughness);
+    double getMaterialRoughness() const;
+
     void setUseScalarColor(bool use);
     bool isUseScalarColor() const;
 
@@ -79,6 +94,11 @@ private:
     double m_edgeColorRGBA[4] = {0.0, 0.0, 0.0, 1.0};
     double m_edgeWidthValue = 1.0;
     bool m_backfaceCullingFlag = false;
+    double m_materialAmbientValue = 0.2;
+    double m_materialDiffuseValue = 0.8;
+    double m_materialSpecularValue = 0.15;
+    double m_materialSpecularPowerValue = 20.0;
+    double m_materialRoughnessValue = 0.4;
     bool m_useScalarColorFlag = false;
     QString m_scalarColorMapName;
 };

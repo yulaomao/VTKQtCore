@@ -143,32 +143,60 @@ StateSample::create(
 
 ---
 
-### 第 3 步：RedisPollingWorker 用 MGET 读 Redis
+### 第 3 步：RedisPollingWorker 用 HGETALL 读 Redis hash
 
 位置：
 
 - `src/communication/redis/RedisPollingWorker.h`
 - `src/communication/redis/RedisPollingWorker.cpp`
 
-`RedisPollingWorker::readKeys(QStringList keys)` 做的事是：
+`RedisPollingWorker::poll()` 做的事是：
 
-- 把所有 key 拼成一条 `MGET`
+- 对配置里的每个顶级 hash key 执行一次 `HGETALL`
 - 调 hiredis 发送请求
-- 把 Redis reply 转成 `QVariantMap`
+- 把 Redis hash reply 转成 `QVariantMap`
+- 交给 `RedisDataCenter` 做 JSON 解码和按 key 的后处理
 
 例如：
 
 ```cpp
 {
-    "plane.vertices": [...],
-    "plane.triangles": [...],
-    "plane.path": [...],
-    "plane.status": "ready",
-    "state.navigation.latest": {...}
+    "state.navigation": {
+        "latest": {...}
+    },
+    "demo:navigation:transform": {
+        "world": {...},
+        "reference": {...},
+        "patient": {...}
+    }
+}
+```
+
+随后 `RedisDataCenter` 会继续把这批数据标准化并按 hash 名自动还原为旧 MGET 结构：
+
+```cpp
+{
+    "state.navigation": {...},
+    "demo:navigation:world": {...},
+    "demo:navigation:reference": {...},
+    "demo:navigation:patient": {...}
 }
 ```
 
 这一步仍然没有模块概念，只有 key 和 value。
+
+这里的“还原”规则不是写死 `transform`，而是：
+
+- 如果某个 hash 只有 `latest` 一个字段，则直接折叠为该字段的值
+- 如果某个 hash 有多字段，并且 hash 名本身还有上级层级，则去掉该 hash key 的最后一层层级，把 field 名拼回去作为旧顶层键
+- 如果某个 hash 名本身没有上级层级，例如 `transform`，则不做层级还原
+
+例如：
+
+- `demo:navigation:transform` + `world` -> `demo:navigation:world`
+- `demo:navigation:transform` + `patient` -> `demo:navigation:patient`
+- `demo:transform` + `tip` -> `demo:tip`
+- `transform` + `tip` -> 保持在 `transform` 这一级，不做层级还原
 
 ---
 

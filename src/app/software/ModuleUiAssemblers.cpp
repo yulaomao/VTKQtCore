@@ -160,8 +160,7 @@ void registerDataGenModuleUi(const ModuleUiAssemblyContext& context)
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
                      page, [page, summaryStatus](const LogicNotification& notification) {
-                         if (notification.eventType != LogicNotification::SceneNodesUpdated &&
-                             notification.eventType != LogicNotification::CustomEvent) {
+                         if (notification.eventType != LogicNotification::SceneNodesUpdated) {
                              return;
                          }
 

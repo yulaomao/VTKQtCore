@@ -38,6 +38,13 @@ public:
     QString getHost() const;
     int getPort() const;
 
+    // Select a Redis database on the command connection.  Must be called after
+    // connectToServer().  One connection stays on one DB for its lifetime.
+    // Returns false and emits errorOccurred() if the command fails.
+    // Note: the subscriber connection uses a separate context; subscriptions in
+    // Redis are server-scoped (not DB-scoped), so SELECT has no effect there.
+    bool selectDb(int db);
+
     void subscribe(const QString& channel);
     void unsubscribe(const QString& channel);
     bool publish(const QString& channel, const QByteArray& message);

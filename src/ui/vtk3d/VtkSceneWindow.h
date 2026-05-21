@@ -13,8 +13,10 @@
 #include <QVector>
 #include <QString>
 #include <QPointF>
+#include <QMouseEvent>
 #include <QShowEvent>
 #include <QTouchEvent>
+#include <QWheelEvent>
 
 #include "display/NodeDisplayManager.h"
 #include "display/BillboardArrowNodeDisplayManager.h"
@@ -22,6 +24,7 @@
 #include "display/PointNodeDisplayManager.h"
 #include "display/LineNodeDisplayManager.h"
 #include "display/ModelNodeDisplayManager.h"
+#include "display/PlaneNodeDisplayManager.h"
 #include "display/TransformNodeDisplayManager.h"
 #include "logic/scene/SceneGraph.h"
 
@@ -48,6 +51,14 @@ public:
     void render();
     void reconcile();
 
+signals:
+    void interactionStarted(VtkSceneWindow* sender,
+                            const QString& windowId,
+                            const QString& inputSource);
+    void interactionFinished(VtkSceneWindow* sender,
+                             const QString& windowId,
+                             const QString& inputSource);
+
 public slots:
     void requestReconcile();
 
@@ -71,6 +82,9 @@ private:
     void renderAfterTouch();
     void resetTouchState();
     bool shouldBlockMouseEvent(QEvent::Type eventType) const;
+    void restartCameraResetTimer();
+    void beginInteraction(const QString& inputSource);
+    void finishInteraction();
     void detachInteractorObserver();
     void teardownRenderWindow();
 
@@ -94,12 +108,14 @@ private:
     unsigned long m_interactionObserverTag = 0;
     bool m_isShuttingDown = false;
     bool m_renderQueued = false;
+    bool m_interactionActive = false;
     bool m_touchSequenceActive = false;
     bool m_isPinching = false;
     bool m_isRotating = false;
     double m_initialPinchDistance = 0.0;
     double m_currentCameraDistance = 0.0;
     double m_currentParallelScale = 1.0;
+    QString m_activeInteractionSource;
     QPointF m_lastPinchCenter;
     QPointF m_lastRotatePos;
 };

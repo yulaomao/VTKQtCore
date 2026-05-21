@@ -9,15 +9,13 @@
 #include <QVector>
 
 #include "contracts/UiAction.h"
-#include "communication/datasource/GlobalPollingPlan.h"
+#include "communication/config/RedisDispatchConfig.h"
 #include "communication/datasource/StateSample.h"
 #include "communication/redis/RedisGateway.h"
 
 class MessageRouter;
-class PollingSource;
-class QThread;
+class PerConnectionPollingBundle;
 class QTimer;
-class RedisPollingWorker;
 class SubscriptionSource;
 
 class CommunicationHub : public QObject
@@ -41,7 +39,12 @@ public:
     void initialize();
     void addRoutingChannel(const QString& channel);
     void addSubscriptionSource(SubscriptionSource* source);
-    void setGlobalPollingPlan(const GlobalPollingPlan& plan);
+
+    // Add a per-connection polling bundle driven by a ConnectionEntry from
+    // RedisDispatchConfig.  Each connection polls its own DB independently.
+    // Multiple connections may be added before start() is called.
+    void addPollingConnection(const RedisDispatchConfig::ConnectionEntry& entry);
+
     void setOutboundChannels(const QString& controlPublishChannel,
                              const QString& ackChannel);
     void sendActionRequest(const UiAction& action, bool loopbackToLocal = true);
@@ -73,8 +76,6 @@ private:
     void connectSource(SubscriptionSource* source);
     void activateTransport();
     void deactivateTransport();
-    void startPollingTransport(bool blocking = false);
-    void stopPollingTransport(bool blocking = false);
     void publishAck(const QString& category, const QVariantMap& payload,
                     const QString& status = QStringLiteral("received"));
     bool publishJson(const QString& channel, const QVariantMap& payload);
@@ -95,15 +96,11 @@ private:
     RedisGateway* m_redisGateway = nullptr;
     MessageRouter* m_messageRouter = nullptr;
     QVector<SubscriptionSource*> m_subscriptionSources;
-    PollingSource* m_pollingSource = nullptr;
-    RedisPollingWorker* m_pollingWorker = nullptr;
-    QThread* m_pollingThread = nullptr;
+    // Per-connection polling bundles (config-driven, one per ConnectionEntry).
+    QVector<PerConnectionPollingBundle*> m_pollingBundles;
     QTimer* m_outboundRetryTimer = nullptr;
     QSet<QString> m_routingChannels;
     bool m_started = false;
-    bool m_pollingTransportRunning = false;
-    bool m_hasActivePollingPlan = false;
-    int m_globalPollingKeyCount = 0;
     RedisGateway::ConnectionState m_lastConnectionState = RedisGateway::Disconnected;
     QString m_controlPublishChannel = QStringLiteral("control.upstream");
     QString m_ackChannel = QStringLiteral("control.ack");

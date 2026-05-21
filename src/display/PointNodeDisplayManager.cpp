@@ -300,17 +300,24 @@ void PointNodeDisplayManager::updateDisplay(const QString& nodeId)
     node->getDefaultPointColor(color);
     if (!entry.hasDisplayColor || !areArraysEqual(entry.cachedDisplayColor, color, 4)) {
         entry.actor->GetProperty()->SetColor(color[0], color[1], color[2]);
-        entry.actor->GetProperty()->SetOpacity(color[3]);
         copyArray(color, entry.cachedDisplayColor, 4);
         entry.hasDisplayColor = true;
     }
 
-    if (entry.actorVisible != visible) {
-        entry.actor->SetVisibility(visible ? 1 : 0);
-        entry.actorVisible = visible;
+    const double effectiveOpacity = color[3] * node->getOpacity();
+    if (!entry.hasEffectiveOpacity || !areScalarsEqual(entry.cachedEffectiveOpacity, effectiveOpacity)) {
+        entry.actor->GetProperty()->SetOpacity(effectiveOpacity);
+        entry.cachedEffectiveOpacity = effectiveOpacity;
+        entry.hasEffectiveOpacity = true;
     }
 
-    bool showLabels = node->isShowPointLabel() && visible;
+    const bool actorVisible = visible && effectiveOpacity > kTolerance;
+    if (entry.actorVisible != actorVisible) {
+        entry.actor->SetVisibility(actorVisible ? 1 : 0);
+        entry.actorVisible = actorVisible;
+    }
+
+    const bool showLabels = node->isShowPointLabel() && visible && effectiveOpacity > kTolerance;
     if (entry.labelVisible != showLabels) {
         entry.labelActor->SetVisibility(showLabels ? 1 : 0);
         entry.labelVisible = showLabels;

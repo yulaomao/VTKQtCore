@@ -104,6 +104,9 @@ VtkSceneWindow::VtkSceneWindow(const QString& windowId, SceneGraph* sceneGraph,
     auto* modelDM = new ModelNodeDisplayManager(
         sceneGraph, windowId,
         m_renderers[0], m_renderers[1], m_renderers[2], this);
+    auto* planeDM = new PlaneNodeDisplayManager(
+        sceneGraph, windowId,
+        m_renderers[0], m_renderers[1], m_renderers[2], this);
     auto* transformDM = new TransformNodeDisplayManager(
         sceneGraph, windowId,
         m_renderers[0], m_renderers[1], m_renderers[2], this);
@@ -113,6 +116,7 @@ VtkSceneWindow::VtkSceneWindow(const QString& windowId, SceneGraph* sceneGraph,
     m_displayManagers.append(billboardArrowDM);
     m_displayManagers.append(lineDM);
     m_displayManagers.append(modelDM);
+    m_displayManagers.append(planeDM);
     m_displayManagers.append(transformDM);
 
         if (m_sceneGraph) {
@@ -126,7 +130,6 @@ VtkSceneWindow::VtkSceneWindow(const QString& windowId, SceneGraph* sceneGraph,
             });
         connect(m_sceneGraph, &SceneGraph::batchModifyEnded,
             this, [this]() {
-                reconcile();
                 scheduleRender();
             });
         }
@@ -252,7 +255,33 @@ void VtkSceneWindow::onInteraction()
         return;
     }
 
-    m_cameraResetTimer->start();
+    beginInteraction(QStringLiteral("mouse"));
+    restartCameraResetTimer();
+}
+
+void VtkSceneWindow::beginInteraction(const QString& inputSource)
+{
+    if (m_isShuttingDown || m_interactionActive) {
+        return;
+    }
+
+    m_interactionActive = true;
+    m_activeInteractionSource = inputSource;
+    emit interactionStarted(this, m_windowId, m_activeInteractionSource);
+}
+
+void VtkSceneWindow::finishInteraction()
+{
+    if (!m_interactionActive) {
+        return;
+    }
+
+    const QString inputSource = m_activeInteractionSource.isEmpty()
+        ? QStringLiteral("unknown")
+        : m_activeInteractionSource;
+    m_interactionActive = false;
+    m_activeInteractionSource.clear();
+    emit interactionFinished(this, m_windowId, inputSource);
 }
 
 void VtkSceneWindow::scheduleRender()
@@ -290,6 +319,7 @@ void VtkSceneWindow::resetCameraToInitial()
     m_camera->SetViewAngle(m_initialViewAngle);
     m_camera->SetClippingRange(m_initialClippingRange);
     m_renderWindow->Render();
+    finishInteraction();
 }
 
 void VtkSceneWindow::detachInteractorObserver()
@@ -344,6 +374,29 @@ bool VtkSceneWindow::eventFilter(QObject* watched, QEvent* event)
         case QEvent::TouchEnd:
         case QEvent::TouchCancel:
             return handleTouchEnd(static_cast<QTouchEvent*>(event));
+        case QEvent::Wheel:
+            beginInteraction(QStringLiteral("mouse"));
+            restartCameraResetTimer();
+            break;
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonRelease: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::RightButton) {
+                if (event->type() == QEvent::MouseButtonPress) {
+                    beginInteraction(QStringLiteral("mouse"));
+                }
+                restartCameraResetTimer();
+            }
+            break;
+        }
+        case QEvent::MouseMove: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->buttons().testFlag(Qt::RightButton)) {
+                beginInteraction(QStringLiteral("mouse"));
+                restartCameraResetTimer();
+            }
+            break;
+        }
         default:
             break;
         }
@@ -365,6 +418,10 @@ bool VtkSceneWindow::handleTouchBegin(QTouchEvent* event)
 
     const QVector<QPointF> positions = extractTouchPositions(event);
     m_touchSequenceActive = !positions.isEmpty();
+
+    if (!positions.isEmpty()) {
+        beginInteraction(QStringLiteral("touch"));
+    }
 
     if (positions.size() == 1) {
         m_isPinching = false;
@@ -624,11 +681,18 @@ void VtkSceneWindow::renderAfterTouch()
         return;
     }
 
-    if (m_cameraResetTimer) {
-        m_cameraResetTimer->start();
-    }
+    restartCameraResetTimer();
 
     m_renderWindow->Render();
+}
+
+void VtkSceneWindow::restartCameraResetTimer()
+{
+    if (m_isShuttingDown || m_cameraResetTimer == nullptr) {
+        return;
+    }
+
+    m_cameraResetTimer->start();
 }
 
 void VtkSceneWindow::resetTouchState()

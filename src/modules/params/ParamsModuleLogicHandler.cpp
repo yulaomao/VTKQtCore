@@ -80,16 +80,24 @@ void ParamsModuleLogicHandler::handleAction(const UiAction& action)
 
 void ParamsModuleLogicHandler::handleStateSample(const StateSample& sample)
 {
-    QVariantMap incomingParameters = sample.data.value(QStringLiteral("parameters")).toMap();
-    if (incomingParameters.isEmpty()) {
-        incomingParameters = sample.data.value(QStringLiteral("value")).toMap();
-    }
+    QVariantMap incomingParameters;
 
-    if (incomingParameters.isEmpty()) {
-        const QString key = sample.data.value(QStringLiteral("key")).toString();
-        const QVariant value = sample.data.value(QStringLiteral("value"));
-        if (!key.isEmpty() && value.isValid()) {
-            incomingParameters.insert(key, value);
+    const QVariantMap values = sample.data.value(QStringLiteral("values")).toMap();
+    if (!values.isEmpty()) {
+        for (auto it = values.cbegin(); it != values.cend(); ++it) {
+            const QVariantMap payload = it.value().toMap();
+            if (payload.isEmpty()) {
+                continue;
+            }
+            for (auto payloadIt = payload.cbegin(); payloadIt != payload.cend(); ++payloadIt) {
+                incomingParameters.insert(payloadIt.key(), payloadIt.value());
+            }
+        }
+    } else {
+        incomingParameters = sample.data.value(QStringLiteral("parameters")).toMap();
+        if (incomingParameters.isEmpty()) {
+            incomingParameters = sample.data;
+            incomingParameters.remove(QStringLiteral("channel"));
         }
     }
 

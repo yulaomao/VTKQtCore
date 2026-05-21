@@ -31,6 +31,15 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS
     ${QT_VERSION_SPECIFIC_COMPONENTS}
 )
 
+set(VTKQTCORE_HAS_QT_MULTIMEDIA OFF)
+find_package(Qt${QT_VERSION_MAJOR} QUIET COMPONENTS Multimedia)
+if(TARGET Qt${QT_VERSION_MAJOR}::Multimedia)
+    set(VTKQTCORE_HAS_QT_MULTIMEDIA ON)
+    message(STATUS "Qt${QT_VERSION_MAJOR} Multimedia found: prompt audio playback enabled")
+else()
+    message(WARNING "Qt${QT_VERSION_MAJOR} Multimedia not found: prompt audio playback will be disabled")
+endif()
+
 # ---------------------------------------------------------------------------
 # hiredis
 # ---------------------------------------------------------------------------
@@ -71,6 +80,13 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 # ---------------------------------------------------------------------------
 add_executable(VTKQtCore ${SOURCES})
 
+set(REDIS_BATCH_READ_SMOKE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/redis_batch_read_smoke.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/communication/redis/RedisPollingWorker.cpp
+)
+
+add_executable(redis_batch_read_smoke ${REDIS_BATCH_READ_SMOKE_SOURCES})
+
 # ---------------------------------------------------------------------------
 # Include directories – src/ and every subdirectory beneath it
 # ---------------------------------------------------------------------------
@@ -86,6 +102,10 @@ list(REMOVE_DUPLICATES INCLUDE_DIRS)
 list(APPEND INCLUDE_DIRS ${hiredis_INCLUDE_DIRS})
 
 target_include_directories(VTKQtCore PRIVATE ${INCLUDE_DIRS})
+target_include_directories(redis_batch_read_smoke PRIVATE ${INCLUDE_DIRS})
+
+target_compile_definitions(VTKQtCore PRIVATE
+    VTKQTCORE_HAS_QT_MULTIMEDIA=$<BOOL:${VTKQTCORE_HAS_QT_MULTIMEDIA}>)
 
 # ---------------------------------------------------------------------------
 # Link libraries
@@ -99,6 +119,15 @@ target_link_libraries(VTKQtCore PRIVATE
     hiredis::hiredis
     ${VTK_LIBRARIES}
 )
+
+target_link_libraries(redis_batch_read_smoke PRIVATE
+    Qt${QT_VERSION_MAJOR}::Core
+    hiredis::hiredis
+)
+
+if(VTKQTCORE_HAS_QT_MULTIMEDIA)
+    target_link_libraries(VTKQtCore PRIVATE Qt${QT_VERSION_MAJOR}::Multimedia)
+endif()
 
 if(QT_VERSION_MAJOR EQUAL 6)
     target_link_libraries(VTKQtCore PRIVATE Qt${QT_VERSION_MAJOR}::OpenGLWidgets)
@@ -127,6 +156,12 @@ if(WIN32)
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             $<TARGET_RUNTIME_DLLS:VTKQtCore>
             $<TARGET_FILE_DIR:VTKQtCore>
+        COMMAND_EXPAND_LISTS)
+
+    add_custom_command(TARGET redis_batch_read_smoke POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:redis_batch_read_smoke>
+            $<TARGET_FILE_DIR:redis_batch_read_smoke>
         COMMAND_EXPAND_LISTS)
 
     add_custom_command(TARGET VTKQtCore POST_BUILD

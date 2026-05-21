@@ -1,12 +1,15 @@
 #include "LogicRuntime.h"
 
 #include "communication/hub/IRedisCommandAccess.h"
+#include "communication/redis/RedisConnectionConfig.h"
 #include "logic/runtime/GlobalPollingSampleParser.h"
+#include "logic/runtime/IPromptAudioService.h"
 #include "scene/SceneGraph.h"
 #include "workflow/ActiveModuleState.h"
 #include "registry/ModuleLogicRegistry.h"
 #include "registry/ModuleLogicHandler.h"
 
+#include <QDebug>
 #include <limits>
 
 namespace {
@@ -134,6 +137,16 @@ ModuleLogicRegistry* LogicRuntime::getModuleLogicRegistry() const
     return m_moduleLogicRegistry;
 }
 
+void LogicRuntime::setPromptAudioService(IPromptAudioService* promptAudioService)
+{
+    m_promptAudioService = promptAudioService;
+}
+
+bool LogicRuntime::hasPromptAudioService() const
+{
+    return m_promptAudioService != nullptr;
+}
+
 void LogicRuntime::setGlobalPollingSampleParser(GlobalPollingSampleParser* parser)
 {
     if (m_globalPollingSampleParser == parser) {
@@ -175,6 +188,38 @@ QVariantMap LogicRuntime::readRedisJsonValue(const QString& key)
     return m_redisCommandAccess ? m_redisCommandAccess->readJsonValue(key) : QVariantMap();
 }
 
+QVariant LogicRuntime::readRedisHashValue(const QString& hashKey, const QString& field)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashValue(hashKey, field) : QVariant();
+}
+
+QString LogicRuntime::readRedisHashStringValue(const QString& hashKey, const QString& field)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashStringValue(hashKey, field)
+                                : QString();
+}
+
+QVariantMap LogicRuntime::readRedisHashJsonValue(const QString& hashKey, const QString& field)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashJsonValue(hashKey, field)
+                                : QVariantMap();
+}
+
+QVariant LogicRuntime::readRedisHashValue(const QStringList& path)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashValue(path) : QVariant();
+}
+
+QString LogicRuntime::readRedisHashStringValue(const QStringList& path)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashStringValue(path) : QString();
+}
+
+QVariantMap LogicRuntime::readRedisHashJsonValue(const QStringList& path)
+{
+    return m_redisCommandAccess ? m_redisCommandAccess->readHashJsonValue(path) : QVariantMap();
+}
+
 bool LogicRuntime::writeRedisValue(const QString& key, const QVariant& value)
 {
     return m_redisCommandAccess && m_redisCommandAccess->writeValue(key, value);
@@ -185,6 +230,16 @@ bool LogicRuntime::writeRedisJsonValue(const QString& key, const QVariantMap& va
     return m_redisCommandAccess && m_redisCommandAccess->writeJsonValue(key, value);
 }
 
+bool LogicRuntime::writeRedisHashValue(const QStringList& path, const QVariant& value)
+{
+    return m_redisCommandAccess && m_redisCommandAccess->writeHashValue(path, value);
+}
+
+bool LogicRuntime::writeRedisHashJsonValue(const QStringList& path, const QVariantMap& value)
+{
+    return m_redisCommandAccess && m_redisCommandAccess->writeHashJsonValue(path, value);
+}
+
 bool LogicRuntime::publishRedisMessage(const QString& channel, const QByteArray& message)
 {
     return m_redisCommandAccess && m_redisCommandAccess->publishMessage(channel, message);
@@ -193,6 +248,45 @@ bool LogicRuntime::publishRedisMessage(const QString& channel, const QByteArray&
 bool LogicRuntime::publishRedisJsonMessage(const QString& channel, const QVariantMap& payload)
 {
     return m_redisCommandAccess && m_redisCommandAccess->publishJsonMessage(channel, payload);
+}
+
+bool LogicRuntime::playPromptAudioPreset(const QString& presetId)
+{
+    if (!m_promptAudioService) {
+        qWarning().noquote() << QStringLiteral("[LogicRuntime] prompt audio service is not configured.");
+        return false;
+    }
+
+    return m_promptAudioService->playPreset(presetId);
+}
+
+bool LogicRuntime::playPromptAudioSource(const QString& source)
+{
+    if (!m_promptAudioService) {
+        qWarning().noquote() << QStringLiteral("[LogicRuntime] prompt audio service is not configured.");
+        return false;
+    }
+
+    return m_promptAudioService->playSource(source);
+}
+
+bool LogicRuntime::registerPromptAudioPreset(const QString& presetId, const QString& source)
+{
+    if (!m_promptAudioService) {
+        qWarning().noquote() << QStringLiteral("[LogicRuntime] prompt audio service is not configured.");
+        return false;
+    }
+
+    return m_promptAudioService->registerPreset(presetId, source);
+}
+
+void LogicRuntime::stopPromptAudio()
+{
+    if (!m_promptAudioService) {
+        return;
+    }
+
+    m_promptAudioService->stopPlayback();
 }
 
 void LogicRuntime::registerModuleHandler(ModuleLogicHandler* handler)
@@ -483,6 +577,65 @@ void LogicRuntime::onStateSampleReceived(const StateSample& sample)
     }
 
     handler->handleStateSample(sample);
+}
+
+// ---------------------------------------------------------------------------
+// Data dispatch from RedisDataCenter
+// ---------------------------------------------------------------------------
+
+void LogicRuntime::onModulePollBatch(const QString& module,
+                                     const QVariantMap& values)
+{
+    if (values.isEmpty()) {
+        return;
+    }
+
+    auto dispatchBatch = [this, &values](const QString& targetModule) {
+        ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(targetModule);
+        if (!handler) {
+            return;
+        }
+
+        QVariantMap data;
+        data.insert(QStringLiteral("values"), values);
+
+        handler->handleStateSample(StateSample::create(
+            QStringLiteral("poll_batch"),
+            targetModule,
+            QStringLiteral("poll_batch"),
+            data));
+    };
+
+    if (module == QLatin1String(RedisConnectionConfig::kGlobalModule)) {
+        const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
+        for (const QString& moduleId : modules) {
+            dispatchBatch(moduleId);
+        }
+        return;
+    }
+
+    dispatchBatch(module);
+}
+
+void LogicRuntime::onModuleSubscription(const QString& module,
+                                         const QString& channel,
+                                         const QVariantMap& payload)
+{
+    if (module == QLatin1String(RedisConnectionConfig::kGlobalModule)) {
+        // Broadcast to every registered module handler.
+        const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
+        for (const QString& moduleId : modules) {
+            if (ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(moduleId)) {
+                handler->handleSubscription(channel, payload);
+            }
+        }
+        return;
+    }
+
+    ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(module);
+    if (handler) {
+        handler->handleSubscription(channel, payload);
+    }
 }
 
 void LogicRuntime::onCommunicationError(const QString& source, const QString& errorMessage)

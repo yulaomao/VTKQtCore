@@ -53,8 +53,10 @@ private:
         bool labelVisible = false;
         bool hasRadius = false;
         bool hasDisplayColor = false;
+        bool hasEffectiveOpacity = false;
         bool hasWorldTransform = false;
         double cachedRadius = 0.0;
+        double cachedEffectiveOpacity = 1.0;
         double cachedDisplayColor[4] = {0.0, 0.0, 0.0, 0.0};
         double cachedWorldMatrix[16] = {0.0};
     };
