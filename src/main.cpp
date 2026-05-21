@@ -49,8 +49,7 @@ QString argumentValue(const QStringList& arguments, const QString& optionName, c
             if (index + 1 >= arguments.size()) {
                 return fallback;
             }
-            const QString value = arguments.at(index + 1).trimmed();
-            return value.startsWith(QStringLiteral("--")) ? fallback : value;
+            return arguments.at(index + 1).trimmed();
         }
     }
     return fallback;

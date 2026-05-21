@@ -45,6 +45,9 @@ LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime,
 
 void LocalLogicGateway::sendAction(const UiAction& action)
 {
+    // In socket mode a disconnected transport must not block local loopback:
+    // UI actions still need to reach LogicRuntime so module state and initial
+    // page activation stay functional while the socket reconnects.
     if (m_connectionState == Disconnected && !m_communicationHub) {
         onRuntimeNotification(createGatewayWarning(
             QStringLiteral("GATEWAY_DISCONNECTED"),

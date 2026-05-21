@@ -91,6 +91,8 @@ void CommunicationHub::setOutboundChannels(const QString& controlPublishChannel,
 
 void CommunicationHub::addRoutingChannel(const QString& channel)
 {
+    // Socket mode receives all messages from one connection, so channel
+    // registration is intentionally kept as a compatibility no-op.
     Q_UNUSED(channel);
 }
 
@@ -167,7 +169,7 @@ void CommunicationHub::start()
             QStringLiteral("SocketClient"),
             QStringLiteral("warning"),
             QStringLiteral("SOCKET_CONNECT_FAILED"),
-            QStringLiteral("Socket connect failed or timed out"),
+            QStringLiteral("Socket is not connected after the connect attempt"),
             {{QStringLiteral("host"), m_host}, {QStringLiteral("port"), m_port}});
     }
 }

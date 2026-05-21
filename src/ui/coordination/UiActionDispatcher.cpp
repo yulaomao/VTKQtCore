@@ -72,6 +72,8 @@ void UiActionDispatcher::sendToTarget(const QString& targetName,
     }
 
     QVariantMap targetedPayload = payload;
+    // targetName is the generic registered-address field; targetModule keeps
+    // compatibility with LogicRuntime's existing module-routing contract.
     targetedPayload.insert(QStringLiteral("targetName"), targetName.trimmed());
     targetedPayload.insert(QStringLiteral("targetModule"), targetName.trimmed());
     sendCommand(command, targetedPayload);

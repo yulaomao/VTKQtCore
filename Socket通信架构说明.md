@@ -28,7 +28,7 @@ UI 仍只负责布局、控件和用户操作采集；业务数据处理、节�
 }
 ```
 
-- `module`：目标注册名。模块名可直接对应 `ModuleLogicRegistry` 中注册的 handler；`global` 会广播给所有模块。
+- `module`：目标注册名。模块名可直接对应 `ModuleLogicRegistry` 中注册的 handler；`global`（大小写不敏感）会广播给所有模块。
 - `type`：消息类型。
 - `value`：业务负载。
 
