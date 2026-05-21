@@ -6,10 +6,10 @@
 
 ```text
 SocketClient 收到 JSON envelope
-    -> CommunicationHub 统一解析
-    -> LogicRuntime 按 module / targetModule 分发
+    -> CommunicationHub / LegacySocketAdapter 兼容旧 module/type/value envelope
+    -> AppMessageCenter 统一转换为模块级消息并按注册名投递
     -> ModuleLogicHandler 更新数据与 SceneGraph
-    -> LogicNotification 更新模块 UI / 全局 UI
+    -> LogicNotification 更新模块 UI / shell / global-ui
 ```
 
 UI 仍只负责布局、控件和用户操作采集；业务数据处理、节点更新和模块间路由集中在 logic 层。
@@ -28,17 +28,17 @@ UI 仍只负责布局、控件和用户操作采集；业务数据处理、节�
 }
 ```
 
-- `module`：目标注册名。模块名可直接对应 `ModuleLogicRegistry` 中注册的 handler；`global`（大小写不敏感）会广播给所有模块。
+- `module`：目标注册名。模块名可直接对应 `ModuleRuntimeRegistry`（当前由 `ModuleLogicRegistry` 承载）中注册的 handler 或 alias；`global`（大小写不敏感）会广播给所有模块。
 - `type`：消息类型。
 - `value`：业务负载。
 
 兼容的控制类型：
 
-- `action` / `action_request` / `ui_action`：转为 `LogicRuntime::onControlMessageReceived()`。
-- `command` / `server_command`：转为 `LogicRuntime::onServerCommandReceived()`。
+- `action` / `action_request` / `ui_action`：由 `LegacySocketAdapter` 保持旧 envelope 兼容，再经 `LogicRuntime::onControlMessageReceived()` 进入 `AppMessageCenter`。
+- `command` / `server_command`：转为 `LogicRuntime::onServerCommandReceived()`，用于 shell 级命令和兼容控制面。
 - `resync_request` / `resync_response`：触发统一重同步处理。
 - `heartbeat`：更新通信健康状态。
-- 其他类型：按 `StateSample` 投递给对应模块。
+- 其他类型：转换为 `StateSample` / `AppMessageKind::ExternalData` 后投递给目标模块。
 
 ## UI 到 logic / socket
 
@@ -60,9 +60,9 @@ UI 仍只负责布局、控件和用户操作采集；业务数据处理、节�
 
 尽量不要改：
 
-- `CommunicationHub`
-- `LogicRuntime`
-- `ModuleLogicRegistry`
+- `CommunicationHub` / `LegacySocketAdapter`
+- `LogicRuntime` / `AppMessageCenter`
+- `ModuleLogicRegistry` 的运行时注册和 alias 规则
 - `SceneGraph`
 - 已稳定的模块 logic 数据处理规则
 

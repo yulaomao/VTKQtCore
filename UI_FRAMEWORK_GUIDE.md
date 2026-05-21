@@ -32,8 +32,8 @@
 
 1. 启动与软件装配层：RedisSoftwareResolver、SoftwareInitializerFactory、BaseSoftwareInitializer、各具体软件初始化类。
 2. UI 层：MainWindow、WorkspaceShell、PageManager、ApplicationCoordinator、ModuleCoordinator 持有并注入的 UiActionDispatcher、GlobalUiManager、各业务主模块 UI、由具体软件自行装配的 shell extension UI。
-3. 契约层：ILogicGateway、UiAction、LogicNotification、ModuleInvokeRequest、ModuleInvokeResult。
-4. 逻辑层：LogicRuntime、IModuleInvoker、ActiveModuleState、ModuleLogicRegistry、SceneGraph、NodeBase、PointNode、LineNode、ModelNode、TransformNode。
+3. 契约层：ILogicGateway、UiAction、AppMessage、LogicNotification、ModuleInvokeRequest、ModuleInvokeResult。
+4. 消息中心与逻辑层：LogicRuntime、AppMessageCenter、IModuleInvoker、ActiveModuleState、ModuleLogicRegistry（承载 Module Runtime Registry 元数据与 alias）、SceneGraph、NodeBase、PointNode、LineNode、ModelNode、TransformNode。
 5. 显示管理层：NodeDisplayManager 及其按节点类型的子类（PointNodeDisplayManager、ModelNodeDisplayManager、LineNodeDisplayManager、TransformNodeDisplayManager）。
 6. 通信层：RedisGateway、RedisPollingWorker、RedisLogicCommandAccess、IRedisCommandAccess、MessageRouter、DataSource、PollingTask、CommunicationHub。
 
@@ -133,12 +133,13 @@ Desktop Client
 3. SceneGraph 更新。
 4. 给 UI 生成需要刷新的结果。
 5. 为模块逻辑间调用提供统一转接，而不是让模块直接持有彼此的具体类型。
+6. 通过 AppMessageCenter 将 UI 意图、socket 数据、模块间事件和 shell/global-ui 消息收敛为按注册名投递的模块级消息。
 
 ### 通信层负责
 
 1. 提供 Redis 连接、订阅分发、遍历轮询与基础读写能力。
 2. 维护控制面和数据面的通信通路。
-3. 负责协议转换、数据解析、重连与健康状态观测。
+3. 负责协议转换、数据解析、重连与健康状态观测；旧 socket `module/type/value` envelope 由 LegacySocketAdapter 适配，内部再交给 AppMessageCenter。
 4. 在启动前提供最小的软件配置读取能力，例如读取 current software key 或 software profile json。
 5. 向 LogicRuntime 和 ModuleLogicHandler 提供独立永久连接的主动 Redis 查询与写入入口；该入口不承担订阅，只负责 command 类读写与 publish。
 
