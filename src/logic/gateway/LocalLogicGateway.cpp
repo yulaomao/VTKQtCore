@@ -45,7 +45,7 @@ LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime,
 
 void LocalLogicGateway::sendAction(const UiAction& action)
 {
-    if (m_connectionState == Disconnected) {
+    if (m_connectionState == Disconnected && !m_communicationHub) {
         onRuntimeNotification(createGatewayWarning(
             QStringLiteral("GATEWAY_DISCONNECTED"),
             QStringLiteral("当前连接已断开，无法发送操作请求。"),
