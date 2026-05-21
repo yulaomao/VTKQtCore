@@ -594,8 +594,8 @@ void LogicRuntime::onModulePollBatch(const QString& module,
     }
 
     auto dispatchBatch = [this, &values](const QString& targetModule) {
-        // The synthetic sourceId and sampleType are both "poll_batch" so
-        // existing module handlers continue to recognize the legacy batch path.
+        // Polling batches use the canonical "poll_batch" sourceId and sampleType
+        // so existing module handlers continue to recognize the legacy batch path.
         m_appMessageCenter->dispatchStateSample(StateSample::create(
             QStringLiteral("poll_batch"),
             targetModule,

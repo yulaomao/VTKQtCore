@@ -6,6 +6,12 @@
 
 namespace {
 
+void registerAppMessageMetaType()
+{
+    static const int typeId = qRegisterMetaType<AppMessage>("AppMessage");
+    Q_UNUSED(typeId);
+}
+
 LogicNotification createMessageError(const QString& errorCode,
                                      const QString& message,
                                      const QVariantMap& context)
@@ -35,7 +41,7 @@ bool isGlobalModuleName(const QString& module)
 AppMessageCenter::AppMessageCenter(QObject* parent)
     : QObject(parent)
 {
-    qRegisterMetaType<AppMessage>("AppMessage");
+    registerAppMessageMetaType();
 }
 
 void AppMessageCenter::setModuleRegistry(ModuleLogicRegistry* registry)
