@@ -2,6 +2,54 @@
 
 namespace {
 
+const QString& heartbeatType()
+{
+    static const QString value = QStringLiteral("heartbeat");
+    return value;
+}
+
+const QString& actionType()
+{
+    static const QString value = QStringLiteral("action");
+    return value;
+}
+
+const QString& actionRequestType()
+{
+    static const QString value = QStringLiteral("action_request");
+    return value;
+}
+
+const QString& uiActionType()
+{
+    static const QString value = QStringLiteral("ui_action");
+    return value;
+}
+
+const QString& commandType()
+{
+    static const QString value = QStringLiteral("command");
+    return value;
+}
+
+const QString& serverCommandType()
+{
+    static const QString value = QStringLiteral("server_command");
+    return value;
+}
+
+const QString& resyncRequestType()
+{
+    static const QString value = QStringLiteral("resync_request");
+    return value;
+}
+
+const QString& resyncResponseType()
+{
+    static const QString value = QStringLiteral("resync_response");
+    return value;
+}
+
 QString normalizeMessageType(const QString& value)
 {
     return value.trimmed().toLower().replace(QLatin1Char('-'), QLatin1Char('_'));
@@ -31,26 +79,26 @@ bool LegacySocketEnvelope::isGlobalTarget() const
 
 bool LegacySocketEnvelope::isHeartbeat() const
 {
-    return type == QStringLiteral("heartbeat");
+    return type == heartbeatType();
 }
 
 bool LegacySocketEnvelope::isControlMessage() const
 {
-    return type == QStringLiteral("action") ||
-        type == QStringLiteral("action_request") ||
-        type == QStringLiteral("ui_action");
+    return type == actionType() ||
+        type == actionRequestType() ||
+        type == uiActionType();
 }
 
 bool LegacySocketEnvelope::isServerCommand() const
 {
-    return type == QStringLiteral("command") ||
-        type == QStringLiteral("server_command");
+    return type == commandType() ||
+        type == serverCommandType();
 }
 
 bool LegacySocketEnvelope::isResyncMessage() const
 {
-    return type == QStringLiteral("resync_request") ||
-        type == QStringLiteral("resync_response");
+    return type == resyncRequestType() ||
+        type == resyncResponseType();
 }
 
 QString LegacySocketEnvelope::commandType() const

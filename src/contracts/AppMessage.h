@@ -114,7 +114,7 @@ struct AppMessage
             return QStringLiteral("error");
         }
 
-        return QStringLiteral("external_data");
+        return QStringLiteral("unknown");
     }
 
     static AppMessageKind kindFromString(const QString& value)

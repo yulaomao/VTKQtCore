@@ -121,9 +121,7 @@ QString ModuleLogicRegistry::resolveModuleId(const QString& moduleIdOrAlias) con
         return resolved;
     }
 
-    return m_handlers.contains(moduleIdOrAlias) || m_descriptors.contains(moduleIdOrAlias)
-        ? moduleIdOrAlias
-        : QString();
+    return m_handlers.contains(key) || m_descriptors.contains(key) ? key : QString();
 }
 
 bool ModuleLogicRegistry::contains(const QString& moduleIdOrAlias) const
