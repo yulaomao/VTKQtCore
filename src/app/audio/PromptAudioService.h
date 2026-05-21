@@ -43,11 +43,14 @@ private:
         QString source;
     };
 
+    QString requestKey(const PlaybackRequest& request) const;
     void queueRequest(const PlaybackRequest& request);
+    void clearActivePlayback();
+    bool isPlaybackActive() const;
     void stopCurrentPlayback();
     void startRequest(const PlaybackRequest& request);
     bool tryPlayWithSoundEffect(const QString& source);
-    void playWithMediaPlayer(const QString& source);
+    bool playWithMediaPlayer(const QString& source);
     QSoundEffect* ensureEffect(const QString& source);
     QString resolvePresetSource(const QString& presetId) const;
     QString normalizePresetId(const QString& presetId) const;
@@ -61,6 +64,7 @@ private:
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     QAudioOutput* m_audioOutput = nullptr;
 #endif
+    QString m_activeRequestKey;
     bool m_playQueued = false;
     PlaybackRequest m_pendingRequest;
 };

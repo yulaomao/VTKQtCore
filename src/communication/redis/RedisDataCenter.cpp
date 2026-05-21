@@ -230,15 +230,17 @@ void RedisDataCenter::onPollBatch(const QString& connectionId,
         const QString& key = it.key();
         const QVariantMap restoredEntries = normalizeEntries(key, it.value());
 
-        const QString module = cfg->moduleForKey(key);
-        if (module.isEmpty()) {
+        const QStringList modules = cfg->modulesForKey(key);
+        if (modules.isEmpty()) {
             // Field not in any group — skip silently.
             continue;
         }
 
         for (auto restoredIt = restoredEntries.cbegin(); restoredIt != restoredEntries.cend(); ++restoredIt) {
             normalizedValues.insert(restoredIt.key(), restoredIt.value());
-            moduleBatches[module].insert(restoredIt.key(), restoredIt.value());
+            for (const QString& module : modules) {
+                moduleBatches[module].insert(restoredIt.key(), restoredIt.value());
+            }
         }
     }
 

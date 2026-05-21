@@ -62,9 +62,9 @@ struct RedisConnectionConfig {
     // Returns all polling keys across all groups.
     QStringList allPollingKeys() const;
 
-    // Returns the module that owns 'key'.
-    // Returns an empty string if no group claims the key.
-    QString moduleForKey(const QString& key) const;
+    // Returns all modules that own 'key'.
+    // Returns an empty list if no group claims the key.
+    QStringList modulesForKey(const QString& key) const;
 
     // Returns the module that owns 'channel'.
     // Returns an empty string if no subscription entry matches.

@@ -23,16 +23,20 @@ QStringList RedisConnectionConfig::allPollingKeys() const
     return keys;
 }
 
-QString RedisConnectionConfig::moduleForKey(const QString& key) const
+QStringList RedisConnectionConfig::modulesForKey(const QString& key) const
 {
+    QStringList modules;
     for (const RedisKeyGroup& group : pollingKeyGroups) {
         for (const QString& configKey : group.keys) {
             if (configKey == key) {
-                return group.module;
+                if (!group.module.isEmpty() && !modules.contains(group.module)) {
+                    modules.append(group.module);
+                }
+                break;
             }
         }
     }
-    return QString();
+    return modules;
 }
 
 QString RedisConnectionConfig::moduleForChannel(const QString& channel) const

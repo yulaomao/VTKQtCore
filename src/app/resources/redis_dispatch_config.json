@@ -8,7 +8,7 @@
       "pollIntervalMs": 16,
       "pollingKeyGroups": [
         { "module": "params",    "keys": ["state.params"] },
-        { "module": "pointpick", "keys": ["state.pointpick"] },
+        { "module": "pointpick", "keys": ["state.pointpick","state.planning"] },
         { "module": "planning",  "keys": ["state.planning"] }
       ],
       "subscriptionChannels": [

@@ -33,8 +33,20 @@ PromptAudioService::PromptAudioService(QObject* parent)
     m_audioOutput = new QAudioOutput(this);
     m_audioOutput->setVolume(1.0);
     m_player->setAudioOutput(m_audioOutput);
+    connect(m_player, &QMediaPlayer::playbackStateChanged, this,
+            [this](QMediaPlayer::PlaybackState state) {
+                if (state == QMediaPlayer::StoppedState) {
+                    clearActivePlayback();
+                }
+            });
 #else
     m_player->setVolume(100);
+    connect(m_player, &QMediaPlayer::stateChanged, this,
+            [this](QMediaPlayer::State state) {
+                if (state == QMediaPlayer::StoppedState) {
+                    clearActivePlayback();
+                }
+            });
 #endif
 #else
     Q_UNUSED(parent);
@@ -117,12 +129,36 @@ void PromptAudioService::processPendingRequest()
     const PlaybackRequest request = m_pendingRequest;
     m_pendingRequest = PlaybackRequest{};
 
-    stopCurrentPlayback();
     if (request.kind == RequestKind::Stop || request.kind == RequestKind::None) {
+        stopCurrentPlayback();
         return;
     }
 
+    const QString nextRequestKey = requestKey(request);
+    if (isPlaybackActive() && !m_activeRequestKey.isEmpty() && m_activeRequestKey == nextRequestKey) {
+        return;
+    }
+
+    if (isPlaybackActive()) {
+        stopCurrentPlayback();
+    }
+
     startRequest(request);
+}
+
+QString PromptAudioService::requestKey(const PlaybackRequest& request) const
+{
+    switch (request.kind) {
+    case RequestKind::Preset:
+        return QStringLiteral("preset:%1").arg(normalizePresetId(request.presetId));
+    case RequestKind::Source:
+        return QStringLiteral("source:%1").arg(normalizeSource(request.source));
+    case RequestKind::Stop:
+        return QStringLiteral("stop");
+    case RequestKind::None:
+    default:
+        return QString();
+    }
 }
 
 void PromptAudioService::queueRequest(const PlaybackRequest& request)
@@ -137,6 +173,33 @@ void PromptAudioService::queueRequest(const PlaybackRequest& request)
                               Qt::QueuedConnection);
 }
 
+void PromptAudioService::clearActivePlayback()
+{
+    m_activeRequestKey.clear();
+    m_activeEffect.clear();
+}
+
+bool PromptAudioService::isPlaybackActive() const
+{
+#if !VTKQTCORE_HAS_QT_MULTIMEDIA
+    return false;
+#else
+    if (m_activeEffect && m_activeEffect->isPlaying()) {
+        return true;
+    }
+
+    if (!m_player) {
+        return false;
+    }
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    return m_player->playbackState() != QMediaPlayer::StoppedState;
+#else
+    return m_player->state() != QMediaPlayer::StoppedState;
+#endif
+#endif
+}
+
 void PromptAudioService::stopCurrentPlayback()
 {
 #if VTKQTCORE_HAS_QT_MULTIMEDIA
@@ -149,6 +212,8 @@ void PromptAudioService::stopCurrentPlayback()
         m_player->stop();
     }
 #endif
+
+    clearActivePlayback();
 }
 
 void PromptAudioService::startRequest(const PlaybackRequest& request)
@@ -165,11 +230,18 @@ void PromptAudioService::startRequest(const PlaybackRequest& request)
         resolvedSource = request.source;
     }
 
+    const QString nextRequestKey = requestKey(request);
     if (tryPlayWithSoundEffect(resolvedSource)) {
+        m_activeRequestKey = nextRequestKey;
         return;
     }
 
-    playWithMediaPlayer(resolvedSource);
+    if (playWithMediaPlayer(resolvedSource)) {
+        m_activeRequestKey = nextRequestKey;
+        return;
+    }
+
+    clearActivePlayback();
 }
 
 bool PromptAudioService::tryPlayWithSoundEffect(const QString& source)
@@ -194,18 +266,18 @@ bool PromptAudioService::tryPlayWithSoundEffect(const QString& source)
 #endif
 }
 
-void PromptAudioService::playWithMediaPlayer(const QString& source)
+bool PromptAudioService::playWithMediaPlayer(const QString& source)
 {
 #if !VTKQTCORE_HAS_QT_MULTIMEDIA
     Q_UNUSED(source);
     qWarning().noquote() << QStringLiteral("[PromptAudio] Qt Multimedia is unavailable, media playback is disabled.");
-    return;
+    return false;
 #else
     const QUrl url = toUrl(source);
     if (!url.isValid()) {
         qWarning().noquote()
             << QStringLiteral("[PromptAudio] invalid audio url for source: %1").arg(source);
-        return;
+        return false;
     }
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -214,6 +286,7 @@ void PromptAudioService::playWithMediaPlayer(const QString& source)
     m_player->setMedia(url);
 #endif
     m_player->play();
+    return true;
 #endif
 }
 
@@ -233,6 +306,11 @@ QSoundEffect* PromptAudioService::ensureEffect(const QString& source)
     effect->setLoopCount(1);
     effect->setVolume(1.0);
     effect->setSource(toUrl(normalizedSource));
+    connect(effect, &QSoundEffect::playingChanged, this, [this, effect]() {
+        if (m_activeEffect == effect && !effect->isPlaying()) {
+            clearActivePlayback();
+        }
+    });
     m_effectCache.insert(normalizedSource, effect);
     return effect;
 #endif
