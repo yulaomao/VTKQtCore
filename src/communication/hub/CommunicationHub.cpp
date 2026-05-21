@@ -158,6 +158,7 @@ void CommunicationHub::start()
     redis_dc::SocketClient::ReconnectOptions reconnectOptions;
     reconnectOptions.enabled = true;
     reconnectOptions.delay = std::chrono::milliseconds(1000);
+    // SocketClient uses 0 as "retry forever" for long-running UI sessions.
     reconnectOptions.maxAttempts = 0;
     m_socketClient->setReconnectOptions(reconnectOptions);
 
@@ -169,7 +170,7 @@ void CommunicationHub::start()
             QStringLiteral("SocketClient"),
             QStringLiteral("warning"),
             QStringLiteral("SOCKET_CONNECT_FAILED"),
-            QStringLiteral("Socket is not connected after the connect attempt"),
+            QStringLiteral("Synchronous socket connect attempt completed without an active connection"),
             {{QStringLiteral("host"), m_host}, {QStringLiteral("port"), m_port}});
     }
 }

@@ -79,6 +79,22 @@ QVariantMap loadSoftwareProfile(const QString& path)
     return doc.object().toVariantMap();
 }
 
+quint16 socketPortFromArguments(const QStringList& arguments)
+{
+    const QString rawPort = argumentValue(
+        arguments,
+        QStringLiteral("--socket-port"),
+        QStringLiteral("9000"));
+    bool ok = false;
+    const ushort port = rawPort.toUShort(&ok);
+    if (!ok || port == 0) {
+        qWarning().noquote()
+            << QStringLiteral("[Startup] invalid --socket-port '%1', using 9000").arg(rawPort);
+        return 9000;
+    }
+    return port;
+}
+
 }
 
 int main(int argc, char* argv[])
@@ -95,7 +111,7 @@ int main(int argc, char* argv[])
     communicationHub.initialize();
     communicationHub.setServerEndpoint(
         argumentValue(arguments, QStringLiteral("--socket-host"), QStringLiteral("127.0.0.1")),
-        argumentValue(arguments, QStringLiteral("--socket-port"), QStringLiteral("9000")).toUShort());
+        socketPortFromArguments(arguments));
 
     LocalLogicGateway gateway(
         &logicRuntime,
