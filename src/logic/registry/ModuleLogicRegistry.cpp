@@ -17,7 +17,7 @@ ModuleRuntimeDescriptor defaultDescriptorFor(ModuleLogicHandler* handler)
 
     descriptor.moduleId = handler->getModuleId();
     descriptor.displayName = descriptor.moduleId;
-    descriptor.capabilities = {
+    descriptor.capabilities = QStringList{
         QStringLiteral("ui_intent"),
         QStringLiteral("external_data"),
         QStringLiteral("module_event")
