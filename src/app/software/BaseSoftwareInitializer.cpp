@@ -107,7 +107,7 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
     QObject::connect(gateway, &ILogicGateway::notificationReceived,
                      m_appCoordinator, &ApplicationCoordinator::onShellNotification);
 
-    if (commHub && getRunMode() == RunMode::Redis) {
+    if (commHub && getRunMode() == RunMode::Socket) {
         QObject::connect(commHub, &CommunicationHub::controlMessageReceived,
                          logicRuntime, &LogicRuntime::onControlMessageReceived);
         QObject::connect(commHub, &CommunicationHub::serverCommandReceived,

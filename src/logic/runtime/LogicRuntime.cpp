@@ -1,7 +1,6 @@
 #include "LogicRuntime.h"
 
 #include "communication/hub/IRedisCommandAccess.h"
-#include "communication/redis/RedisConnectionConfig.h"
 #include "logic/runtime/GlobalPollingSampleParser.h"
 #include "logic/runtime/IPromptAudioService.h"
 #include "scene/SceneGraph.h"
@@ -110,6 +109,11 @@ QString describeAction(const UiAction& action)
 bool isGlobalPollingBatchSample(const StateSample& sample)
 {
     return sample.module.isEmpty() && sample.sampleType == QStringLiteral("global_poll_batch");
+}
+
+bool isGlobalModuleSample(const StateSample& sample)
+{
+    return sample.module.compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0;
 }
 
 } // namespace
@@ -559,6 +563,16 @@ void LogicRuntime::onStateSampleReceived(const StateSample& sample)
         return;
     }
 
+    if (isGlobalModuleSample(sample)) {
+        const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
+        for (const QString& moduleId : modules) {
+            if (ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(moduleId)) {
+                handler->handleStateSample(sample);
+            }
+        }
+        return;
+    }
+
     QString targetModule = sample.module;
     if (targetModule.isEmpty()) {
         targetModule = m_activeModuleState->getCurrentModule();
@@ -606,7 +620,7 @@ void LogicRuntime::onModulePollBatch(const QString& module,
             data));
     };
 
-    if (module == QLatin1String(RedisConnectionConfig::kGlobalModule)) {
+    if (module.compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0) {
         const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
         for (const QString& moduleId : modules) {
             dispatchBatch(moduleId);
@@ -621,7 +635,7 @@ void LogicRuntime::onModuleSubscription(const QString& module,
                                          const QString& channel,
                                          const QVariantMap& payload)
 {
-    if (module == QLatin1String(RedisConnectionConfig::kGlobalModule)) {
+    if (module.compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0) {
         // Broadcast to every registered module handler.
         const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
         for (const QString& moduleId : modules) {

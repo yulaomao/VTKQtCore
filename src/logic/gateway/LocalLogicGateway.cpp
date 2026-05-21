@@ -2,7 +2,6 @@
 
 #include "communication/hub/CommunicationHub.h"
 #include "logic/runtime/LogicRuntime.h"
-#include "communication/redis/RedisGateway.h"
 
 namespace {
 
@@ -27,24 +26,20 @@ LogicNotification createGatewayWarning(const QString& errorCode,
 
 LocalLogicGateway::LocalLogicGateway(LogicRuntime* runtime,
                                      CommunicationHub* communicationHub,
-                                     RedisGateway* redisGateway,
                                      QObject* parent)
     : ILogicGateway(parent)
     , m_runtime(runtime)
     , m_communicationHub(communicationHub)
-    , m_redisGateway(redisGateway)
 {
     if (m_runtime) {
         connect(m_runtime, &LogicRuntime::logicNotification,
                 this, &LocalLogicGateway::onRuntimeNotification);
     }
 
-    if (m_redisGateway) {
-        connect(m_redisGateway, &RedisGateway::connectionStateChanged,
-                this, [this](RedisGateway::ConnectionState state) {
-                    onRedisConnectionStateChanged(static_cast<int>(state));
-                });
-        onRedisConnectionStateChanged(static_cast<int>(m_redisGateway->getConnectionState()));
+    if (m_communicationHub) {
+        connect(m_communicationHub, &CommunicationHub::connectionStateChanged,
+                this, &LocalLogicGateway::onCommunicationConnectionStateChanged);
+        onCommunicationConnectionStateChanged(m_communicationHub->getConnectionStateName());
     }
 }
 
@@ -120,24 +115,20 @@ void LocalLogicGateway::onRuntimeNotification(const LogicNotification& notificat
     }
 }
 
-void LocalLogicGateway::onRedisConnectionStateChanged(int state)
+void LocalLogicGateway::onCommunicationConnectionStateChanged(const QString& state)
 {
-    if (!m_redisGateway) {
+    if (!m_communicationHub) {
         updateConnectionState(Connected);
         return;
     }
 
-    switch (static_cast<RedisGateway::ConnectionState>(state)) {
-    case RedisGateway::Connected:
+    if (state == QStringLiteral("Connected")) {
         updateConnectionState(Connected);
-        break;
-    case RedisGateway::Reconnecting:
+    } else if (state == QStringLiteral("Reconnecting") ||
+               state == QStringLiteral("Degraded")) {
         updateConnectionState(Degraded);
-        break;
-    case RedisGateway::Disconnected:
-    default:
+    } else {
         updateConnectionState(Disconnected);
-        break;
     }
 }
 

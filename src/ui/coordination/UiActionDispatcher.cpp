@@ -57,8 +57,8 @@ void UiActionDispatcher::sendCommand(const QString& command,
 }
 
 void UiActionDispatcher::sendTargetedCommand(const QString& targetModule,
-                                             const QString& command,
-                                             const QVariantMap& payload)
+                                              const QString& command,
+                                              const QVariantMap& payload)
 {
     if (targetModule.trimmed().isEmpty() || command.trimmed().isEmpty()) {
         return;
@@ -67,6 +67,13 @@ void UiActionDispatcher::sendTargetedCommand(const QString& targetModule,
     QVariantMap targetedPayload = payload;
     targetedPayload.insert(QStringLiteral("targetModule"), targetModule);
     sendCommand(command, targetedPayload);
+}
+
+void UiActionDispatcher::sendToTarget(const QString& targetName,
+                                      const QString& command,
+                                      const QVariantMap& payload)
+{
+    sendTargetedCommand(targetName, command, payload);
 }
 
 void UiActionDispatcher::sendModuleUiEvent(const QString& targetModule,
