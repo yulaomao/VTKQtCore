@@ -1,5 +1,6 @@
 #include "CommunicationHub.h"
 
+#include "communication/routing/LegacySocketAdapter.h"
 #include "communication/routing/MessageRouter.h"
 #include "socket/SocketClient.h"
 
@@ -11,35 +12,6 @@
 #include <QUuid>
 
 #include <chrono>
-
-namespace {
-
-QString normalizeMessageType(const QString& value)
-{
-    return value.trimmed().toLower().replace(QLatin1Char('-'), QLatin1Char('_'));
-}
-
-bool isGlobalTarget(const QString& module)
-{
-    return module.trimmed().compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0;
-}
-
-QVariantMap objectPayload(const QVariantMap& envelope)
-{
-    QVariantMap value = envelope.value(QStringLiteral("value")).toMap();
-    if (!value.isEmpty()) {
-        return value;
-    }
-
-    value = envelope.value(QStringLiteral("payload")).toMap();
-    if (!value.isEmpty()) {
-        return value;
-    }
-
-    return envelope;
-}
-
-} // namespace
 
 CommunicationHub::CommunicationHub(QObject* parent)
     : QObject(parent)
@@ -315,68 +287,50 @@ void CommunicationHub::routeEnvelopeMessage(const QVariantMap& envelope, const Q
 {
     Q_UNUSED(rawMessage);
 
-    const QString module = envelope.value(QStringLiteral("module")).toString();
-    const QString type = normalizeMessageType(envelope.value(QStringLiteral("type")).toString());
-    QVariantMap payload = objectPayload(envelope);
-
-    if (type.isEmpty()) {
+    const LegacySocketEnvelope message = LegacySocketAdapter::fromEnvelope(envelope);
+    if (!message.isValid()) {
         ++m_routingErrorCount;
         emitIssue(QStringLiteral("SocketClient"),
                   QStringLiteral("warning"),
-                  QStringLiteral("SOCKET_MESSAGE_TYPE_MISSING"),
-                  QStringLiteral("Socket envelope is missing type"),
+                  message.errorCode,
+                  message.errorMessage,
                   envelope);
         return;
     }
 
-    if (!payload.contains(QStringLiteral("module")) && !module.isEmpty()) {
-        payload.insert(QStringLiteral("module"), module);
-    }
-
-    if (type == QStringLiteral("heartbeat")) {
+    if (message.isHeartbeat()) {
         m_lastHeartbeatMs = QDateTime::currentMSecsSinceEpoch();
         emit heartbeatReceived();
         refreshHealthSnapshot();
         return;
     }
 
-    if (type == QStringLiteral("action") ||
-        type == QStringLiteral("action_request") ||
-        type == QStringLiteral("ui_action")) {
+    if (message.isControlMessage()) {
         m_lastControlMessageMs = QDateTime::currentMSecsSinceEpoch();
         ++m_receivedControlCount;
-        emit controlMessageReceived(isGlobalTarget(module) ? QString() : module, payload);
+        emit controlMessageReceived(message.isGlobalTarget() ? QString() : message.module,
+                                    message.payload);
         refreshHealthSnapshot();
         return;
     }
 
-    if (type == QStringLiteral("command") ||
-        type == QStringLiteral("server_command")) {
+    if (message.isServerCommand()) {
         m_lastControlMessageMs = QDateTime::currentMSecsSinceEpoch();
         ++m_receivedControlCount;
-        QString commandType = payload.value(QStringLiteral("commandType")).toString();
-        if (commandType.isEmpty()) {
-            commandType = payload.value(QStringLiteral("command")).toString();
-        }
-        emit serverCommandReceived(commandType, payload);
+        emit serverCommandReceived(message.commandType(), message.payload);
         refreshHealthSnapshot();
         return;
     }
 
-    if (type == QStringLiteral("resync_request") ||
-        type == QStringLiteral("resync_response")) {
+    if (message.isResyncMessage()) {
         m_lastControlMessageMs = QDateTime::currentMSecsSinceEpoch();
         ++m_receivedControlCount;
-        emit serverCommandReceived(type, payload);
+        emit serverCommandReceived(message.type, message.payload);
         refreshHealthSnapshot();
         return;
     }
 
-    const StateSample sample = StateSample::create(
-        QStringLiteral("socket"),
-        isGlobalTarget(module) ? QStringLiteral("global") : module,
-        type,
-        payload);
+    const StateSample sample = message.toStateSample();
     m_lastStateSampleMs = sample.timestampMs;
     ++m_receivedSampleCount;
     emit stateSampleReceived(sample);
@@ -401,9 +355,7 @@ bool CommunicationHub::sendJson(const QVariantMap& payload)
 bool CommunicationHub::sendEnvelope(const QString& module, const QString& type, const QVariantMap& value)
 {
     QVariantMap envelope;
-    envelope.insert(QStringLiteral("module"), module);
-    envelope.insert(QStringLiteral("type"), type);
-    envelope.insert(QStringLiteral("value"), value);
+    envelope = LegacySocketAdapter::toEnvelope(module, type, value);
     return sendJson(envelope);
 }
 

@@ -2,7 +2,7 @@
 
 这份文档说明当前工程里新增的这套接口：
 
-`模块 A 的按钮 -> UiActionDispatcher::sendModuleUiEvent() -> LogicRuntime 路由 -> 模块 B logic 转发 -> 模块 B widget 更新`
+`模块 A 的按钮 -> UiActionDispatcher::sendModuleUiEvent() -> AppMessageCenter 按注册名路由 -> 模块 B logic 转发 -> 模块 B widget 更新`
 
 它的目标不是让模块 A 直接拿到模块 B 的 widget 指针并调用成员函数，而是提供一条**轻量、可约束、可追踪**的跨模块 UI 事件通道。
 
@@ -159,9 +159,9 @@ m_actionDispatcher->sendModuleUiEvent(
     {{QStringLiteral("text"), text}});
 ```
 
-### 第 2 步：`LogicRuntime` 按 `targetModule` 路由 action
+### 第 2 步：`AppMessageCenter` 按 `targetModule` 路由 action
 
-这一步仍然走现有运行时路由，不需要额外改 `LogicRuntime`。
+`LogicRuntime` 只保留兼容入口和切模块等 shell 级处理，普通模块定向消息会交给 `AppMessageCenter`，由运行时注册表解析 moduleId / alias 后投递给目标模块。
 
 ### 第 3 步：模块 B 的 logic 决定是否转发
 
