@@ -17,6 +17,7 @@ class ModuleLogicHandler;
 class GlobalPollingSampleParser;
 class IRedisCommandAccess;
 class IPromptAudioService;
+class AppMessageCenter;
 
 class LogicRuntime : public QObject, public IModuleInvoker
 {
@@ -28,6 +29,7 @@ public:
     SceneGraph* getSceneGraph() const;
     ActiveModuleState* getActiveModuleState() const;
     ModuleLogicRegistry* getModuleLogicRegistry() const;
+    AppMessageCenter* getAppMessageCenter() const;
     void setGlobalPollingSampleParser(GlobalPollingSampleParser* parser);
     void setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess);
     bool hasRedisCommandAccess() const;
@@ -93,6 +95,7 @@ private:
     SceneGraph* m_sceneGraph;
     ActiveModuleState* m_activeModuleState;
     ModuleLogicRegistry* m_moduleLogicRegistry;
+    AppMessageCenter* m_appMessageCenter;
     GlobalPollingSampleParser* m_globalPollingSampleParser = nullptr;
     IRedisCommandAccess* m_redisCommandAccess = nullptr;
     IPromptAudioService* m_promptAudioService = nullptr;
