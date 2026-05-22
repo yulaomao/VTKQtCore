@@ -10,7 +10,7 @@
 namespace {
 
 void printUsage() {
-    std::cout << "usage: redis_socket_client_example [host] [port] [module] [connectionId] [page] [durationSeconds]\n";
+    std::cout << "usage: socket_client_example [host] [port] [module] [connectionId] [page] [durationSeconds]\n";
 }
 
 }  // namespace
@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
 
     const auto port = static_cast<std::uint16_t>(portValue);
 
-    redis_dc::SocketClient client;
+    socket_dc::SocketClient client;
     std::atomic<std::uint64_t> sequence{1};
 
     client.setReconnectOptions({true, std::chrono::milliseconds(1000), 0});
@@ -43,21 +43,21 @@ int main(int argc, char** argv) {
         std::cout << "connected to " << host << ':' << port << '\n';
 
         const auto helloSequence = sequence.fetch_add(1);
-        const auto helloBody = redis_dc::lite_json_data::JsonValue::makeObject({
-            {"clientName", redis_dc::lite_json_data::JsonValue::makeString("redis-socket-client-example")},
-            {"module", redis_dc::lite_json_data::JsonValue::makeString(module)},
-            {"supportedPages", redis_dc::lite_json_data::JsonValue::makeArray({
-                redis_dc::lite_json_data::JsonValue::makeString(page),
-                redis_dc::lite_json_data::JsonValue::makeString("Status"),
-                redis_dc::lite_json_data::JsonValue::makeString("Command")
+        const auto helloBody = socket_dc::lite_json_data::JsonValue::makeObject({
+            {"clientName", socket_dc::lite_json_data::JsonValue::makeString("socket-client-example")},
+            {"module", socket_dc::lite_json_data::JsonValue::makeString(module)},
+            {"supportedPages", socket_dc::lite_json_data::JsonValue::makeArray({
+                socket_dc::lite_json_data::JsonValue::makeString(page),
+                socket_dc::lite_json_data::JsonValue::makeString("Status"),
+                socket_dc::lite_json_data::JsonValue::makeString("Command")
             })}
         });
         client.sendClientHello(module, connectionId, page, helloBody);
 
-        const auto stateBody = redis_dc::lite_json_data::JsonValue::makeObject({
-            {"page", redis_dc::lite_json_data::JsonValue::makeString(page)},
-            {"status", redis_dc::lite_json_data::JsonValue::makeString("connected")},
-            {"helloSequence", redis_dc::lite_json_data::JsonValue::makeNumber(static_cast<double>(helloSequence))}
+        const auto stateBody = socket_dc::lite_json_data::JsonValue::makeObject({
+            {"page", socket_dc::lite_json_data::JsonValue::makeString(page)},
+            {"status", socket_dc::lite_json_data::JsonValue::makeString("connected")},
+            {"helloSequence", socket_dc::lite_json_data::JsonValue::makeNumber(static_cast<double>(helloSequence))}
         });
         client.sendClientState(module, connectionId, sequence.fetch_add(1), page, stateBody);
     });
@@ -67,8 +67,8 @@ int main(int argc, char** argv) {
     client.setErrorCallback([&](const std::string& message) {
         std::cerr << "socket error: " << message << '\n';
     });
-    client.setJsonMessageCallback([&](const redis_dc::lite_json_data::JsonValue& payload) {
-        std::cout << "recv json: " << redis_dc::lite_json_data::dumpJsonValue(payload) << '\n';
+    client.setJsonMessageCallback([&](const socket_dc::lite_json_data::JsonValue& payload) {
+        std::cout << "recv json: " << socket_dc::lite_json_data::dumpJsonValue(payload) << '\n';
     });
     client.setRawMessageCallback([&](const std::string& payload) {
         std::cout << "recv raw: " << payload << '\n';
@@ -81,10 +81,10 @@ int main(int argc, char** argv) {
     std::this_thread::sleep_for(std::chrono::seconds(durationSeconds));
 
     if (client.isConnected()) {
-        const auto commandBody = redis_dc::lite_json_data::JsonValue::makeObject({
-            {"command", redis_dc::lite_json_data::JsonValue::makeString("example_ping")},
-            {"source", redis_dc::lite_json_data::JsonValue::makeString("redis_socket_client_example")},
-            {"page", redis_dc::lite_json_data::JsonValue::makeString(page)}
+        const auto commandBody = socket_dc::lite_json_data::JsonValue::makeObject({
+            {"command", socket_dc::lite_json_data::JsonValue::makeString("example_ping")},
+            {"source", socket_dc::lite_json_data::JsonValue::makeString("socket_client_example")},
+            {"page", socket_dc::lite_json_data::JsonValue::makeString(page)}
         });
         if (!client.sendModuleCommand(module, connectionId, sequence.fetch_add(1), page, commandBody)) {
             std::cerr << "failed to send module command\n";

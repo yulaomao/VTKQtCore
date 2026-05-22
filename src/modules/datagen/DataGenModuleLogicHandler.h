@@ -32,23 +32,15 @@ private:
 
     void ensureSeedScene();
     void handleCustomCommand(const QVariantMap& payload, const QString& sourceActionId);
-    void persistRedisSnapshot(const QString& changeEvent,
-                              const QString& changedNodePersistId = QString(),
-                              const QString& changedNodeName = QString());
     void playPromptPresetBurst(const QString& presetId, int count, int intervalMs,
                                const QString& sourceActionId = QString());
     void emitState(const QString& statusText,
                    LogicNotification::EventType eventType = LogicNotification::SceneNodesUpdated,
                    const QString& sourceActionId = QString());
     QVariantMap buildState(const QString& statusText) const;
-    QVariantMap buildRedisSnapshot(const QString& changeEvent = QString(),
-                                   const QString& changedNodePersistId = QString(),
-                                   const QString& changedNodeName = QString()) const;
     QVariantList buildNodeSummaries() const;
     QVariantList buildTransformOptions() const;
     QVariantMap buildNodeDetails(NodeBase* node) const;
-    QVariantMap serializeNodeForRedis(NodeBase* node) const;
-    bool restoreFromRedisSnapshot(const QVariantMap& snapshot);
     QVector<NodeBase*> managedNodes() const;
     QVector<TransformNode*> managedTransforms() const;
     NodeBase* nodeById(const QString& nodeId) const;

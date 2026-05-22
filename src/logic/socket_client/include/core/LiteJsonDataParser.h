@@ -16,7 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace redis_dc::lite_json_data {
+namespace socket_dc::lite_json_data {
 
 using Point2D = std::array<double, 2>;
 using Point3D = std::array<double, 3>;
@@ -911,4 +911,4 @@ inline Matrix4D getMatrix4D(const std::string& input, std::string_view path, con
     return getMatrix4D(detail::parseJsonOrLiteral(input), path, defaultValue);
 }
 
-}  // namespace redis_dc::lite_json_data
+}  // namespace socket_dc::lite_json_data

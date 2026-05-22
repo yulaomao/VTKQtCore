@@ -11,7 +11,6 @@
 #include "contracts/LogicNotification.h"
 #include "communication/datasource/StateSample.h"
 
-class IRedisCommandAccess;
 class IModuleInvoker;
 class SceneGraph;
 
@@ -25,12 +24,9 @@ public:
     QString getModuleId() const;
     void setSceneGraph(SceneGraph* scene);
     SceneGraph* getSceneGraph() const;
-    void setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess);
     void setModuleInvoker(IModuleInvoker* moduleInvoker);
 
-    // The connection (and therefore DB) this module should use by default for
-    // direct Redis reads/writes and publishes.  Set during initialisation from
-    // the dispatch config.  Returns an empty string when not configured.
+    // Optional logical connection label for transports that route module data.
     void    setDefaultConnectionId(const QString& connectionId);
     QString getDefaultConnectionId() const;
 
@@ -71,22 +67,6 @@ signals:
     void logicNotification(const LogicNotification& notification);
 
 protected:
-    bool hasRedisCommandAccess() const;
-    QVariant readRedisValue(const QString& key);
-    QString readRedisStringValue(const QString& key);
-    QVariantMap readRedisJsonValue(const QString& key);
-    QVariant readRedisHashValue(const QString& hashKey, const QString& field);
-    QString readRedisHashStringValue(const QString& hashKey, const QString& field);
-    QVariantMap readRedisHashJsonValue(const QString& hashKey, const QString& field);
-    QVariant readRedisHashValue(const QStringList& path);
-    QString readRedisHashStringValue(const QStringList& path);
-    QVariantMap readRedisHashJsonValue(const QStringList& path);
-    bool writeRedisValue(const QString& key, const QVariant& value);
-    bool writeRedisJsonValue(const QString& key, const QVariantMap& value);
-    bool writeRedisHashValue(const QStringList& path, const QVariant& value);
-    bool writeRedisHashJsonValue(const QStringList& path, const QVariantMap& value);
-    bool publishRedisMessage(const QString& channel, const QByteArray& message);
-    bool publishRedisJsonMessage(const QString& channel, const QVariantMap& payload);
     bool playPromptAudioPreset(const QString& presetId);
     bool playPromptAudioSource(const QString& source);
     bool registerPromptAudioPreset(const QString& presetId, const QString& source);
@@ -110,6 +90,5 @@ private:
     const QString m_moduleId;
     QString m_defaultConnectionId;
     SceneGraph* m_sceneGraph = nullptr;
-    IRedisCommandAccess* m_redisCommandAccess = nullptr;
     IModuleInvoker* m_moduleInvoker = nullptr;
 };

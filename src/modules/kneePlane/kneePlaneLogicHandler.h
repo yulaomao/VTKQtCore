@@ -16,7 +16,7 @@ public:
 
     void handleAction(const UiAction& action) override;
 
-    void initAllNodesByRedis(SceneGraph* scene);
+    void initAllNodes(SceneGraph* scene);
 
 private:
     void emitShellError(const QString& errorCode,
@@ -27,6 +27,5 @@ private:
     void initAllTransNode(SceneGraph* scene);
     void initAllPointsNode(SceneGraph* scene);
     void initAllModelNode(SceneGraph* scene);
-    void loadModelFromRedis();
     
 };

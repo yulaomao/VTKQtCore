@@ -1,7 +1,5 @@
 #include "LogicRuntime.h"
 
-#include "communication/hub/IRedisCommandAccess.h"
-#include "logic/runtime/GlobalPollingSampleParser.h"
 #include "logic/runtime/IPromptAudioService.h"
 #include "logic/runtime/AppMessageCenter.h"
 #include "scene/SceneGraph.h"
@@ -107,11 +105,6 @@ QString describeAction(const UiAction& action)
     return command.isEmpty() ? UiAction::toString(action.actionType) : command;
 }
 
-bool isGlobalPollingBatchSample(const StateSample& sample)
-{
-    return sample.module.isEmpty() && sample.sampleType == QStringLiteral("global_poll_batch");
-}
-
 bool isGlobalModuleSample(const StateSample& sample)
 {
     return sample.module.compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0;
@@ -167,109 +160,6 @@ bool LogicRuntime::hasPromptAudioService() const
     return m_promptAudioService != nullptr;
 }
 
-void LogicRuntime::setGlobalPollingSampleParser(GlobalPollingSampleParser* parser)
-{
-    if (m_globalPollingSampleParser == parser) {
-        return;
-    }
-
-    if (m_globalPollingSampleParser) {
-        m_globalPollingSampleParser->deleteLater();
-    }
-
-    m_globalPollingSampleParser = parser;
-    if (m_globalPollingSampleParser && !m_globalPollingSampleParser->parent()) {
-        m_globalPollingSampleParser->setParent(this);
-    }
-}
-
-void LogicRuntime::setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess)
-{
-    m_redisCommandAccess = redisCommandAccess;
-}
-
-bool LogicRuntime::hasRedisCommandAccess() const
-{
-    return m_redisCommandAccess && m_redisCommandAccess->isAvailable();
-}
-
-QVariant LogicRuntime::readRedisValue(const QString& key)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readValue(key) : QVariant();
-}
-
-QString LogicRuntime::readRedisStringValue(const QString& key)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readStringValue(key) : QString();
-}
-
-QVariantMap LogicRuntime::readRedisJsonValue(const QString& key)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readJsonValue(key) : QVariantMap();
-}
-
-QVariant LogicRuntime::readRedisHashValue(const QString& hashKey, const QString& field)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashValue(hashKey, field) : QVariant();
-}
-
-QString LogicRuntime::readRedisHashStringValue(const QString& hashKey, const QString& field)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashStringValue(hashKey, field)
-                                : QString();
-}
-
-QVariantMap LogicRuntime::readRedisHashJsonValue(const QString& hashKey, const QString& field)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashJsonValue(hashKey, field)
-                                : QVariantMap();
-}
-
-QVariant LogicRuntime::readRedisHashValue(const QStringList& path)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashValue(path) : QVariant();
-}
-
-QString LogicRuntime::readRedisHashStringValue(const QStringList& path)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashStringValue(path) : QString();
-}
-
-QVariantMap LogicRuntime::readRedisHashJsonValue(const QStringList& path)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashJsonValue(path) : QVariantMap();
-}
-
-bool LogicRuntime::writeRedisValue(const QString& key, const QVariant& value)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->writeValue(key, value);
-}
-
-bool LogicRuntime::writeRedisJsonValue(const QString& key, const QVariantMap& value)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->writeJsonValue(key, value);
-}
-
-bool LogicRuntime::writeRedisHashValue(const QStringList& path, const QVariant& value)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->writeHashValue(path, value);
-}
-
-bool LogicRuntime::writeRedisHashJsonValue(const QStringList& path, const QVariantMap& value)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->writeHashJsonValue(path, value);
-}
-
-bool LogicRuntime::publishRedisMessage(const QString& channel, const QByteArray& message)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->publishMessage(channel, message);
-}
-
-bool LogicRuntime::publishRedisJsonMessage(const QString& channel, const QVariantMap& payload)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->publishJsonMessage(channel, payload);
-}
-
 bool LogicRuntime::playPromptAudioPreset(const QString& presetId)
 {
     if (!m_promptAudioService) {
@@ -316,7 +206,6 @@ void LogicRuntime::registerModuleHandler(ModuleLogicHandler* handler)
     }
 
     handler->setSceneGraph(m_sceneGraph);
-    handler->setRedisCommandAccess(m_redisCommandAccess);
     handler->setModuleInvoker(this);
     m_moduleLogicRegistry->registerHandler(handler);
 
@@ -561,24 +450,6 @@ void LogicRuntime::onServerCommandReceived(const QString& commandType, const QVa
 
 void LogicRuntime::onStateSampleReceived(const StateSample& sample)
 {
-    if (isGlobalPollingBatchSample(sample)) {
-        if (!m_globalPollingSampleParser) {
-            emit logicNotification(createShellError(
-                QStringLiteral("DATA_GLOBAL_POLLING_PARSER_MISSING"),
-                QStringLiteral("Global polling batch received without a configured parser"),
-                true,
-                QStringLiteral("Configure a GlobalPollingSampleParser before starting Redis mode."),
-                {{QStringLiteral("sampleId"), sample.sampleId}}));
-            return;
-        }
-
-        const QVector<StateSample> routedSamples = m_globalPollingSampleParser->parse(sample);
-        for (const StateSample& routedSample : routedSamples) {
-            onStateSampleReceived(routedSample);
-        }
-        return;
-    }
-
     m_appMessageCenter->dispatchStateSample(sample);
 }
 
@@ -641,7 +512,7 @@ void LogicRuntime::onCommunicationError(const QString& source, const QString& er
         QStringLiteral("COMM_CHANNEL_ERROR"),
         errorMessage,
         true,
-        QStringLiteral("Check Redis connectivity and request resync if needed."),
+        QStringLiteral("Check socket connectivity and request resync if needed."),
         {{QStringLiteral("source"), source}}));
 }
 

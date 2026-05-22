@@ -15,7 +15,7 @@
 
 CommunicationHub::CommunicationHub(QObject* parent)
     : QObject(parent)
-    , m_socketClient(std::make_unique<redis_dc::SocketClient>())
+    , m_socketClient(std::make_unique<socket_dc::SocketClient>())
     , m_messageRouter(new MessageRouter(this))
     , m_clientInstanceId(QUuid::createUuid().toString(QUuid::WithoutBraces))
 {
@@ -127,7 +127,7 @@ void CommunicationHub::start()
         initialize();
     }
 
-    redis_dc::SocketClient::ReconnectOptions reconnectOptions;
+    socket_dc::SocketClient::ReconnectOptions reconnectOptions;
     reconnectOptions.enabled = true;
     reconnectOptions.delay = std::chrono::milliseconds(1000);
     // SocketClient uses 0 as "retry forever" for long-running UI sessions.

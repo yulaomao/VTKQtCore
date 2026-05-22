@@ -2,15 +2,6 @@
 
 #include "ParamsUiCommands.h"
 
-namespace {
-
-QString paramsStateRedisKey()
-{
-    return QStringLiteral("state.params.latest");
-}
-
-}
-
 ParamsModuleLogicHandler::ParamsModuleLogicHandler(QObject* parent)
     : ModuleLogicHandler(QStringLiteral("params"), parent)
 {
@@ -32,8 +23,6 @@ void ParamsModuleLogicHandler::handleAction(const UiAction& action)
         for (auto it = parameters.cbegin(); it != parameters.cend(); ++it) {
             m_parameters.insert(it.key(), it.value());
         }
-
-        writeRedisJsonValue(paramsStateRedisKey(), m_parameters);
 
         const bool ready = !m_parameters.isEmpty();
         const QStringList updatedKeys = parameters.keys();
@@ -62,7 +51,6 @@ void ParamsModuleLogicHandler::handleAction(const UiAction& action)
         return;
 
     m_parameters.insert(key, value);
-    writeRedisJsonValue(paramsStateRedisKey(), m_parameters);
 
     const bool ready = !m_parameters.isEmpty();
     QVariantMap notifPayload;
@@ -119,13 +107,6 @@ void ParamsModuleLogicHandler::handleStateSample(const StateSample& sample)
 
 void ParamsModuleLogicHandler::onModuleActivated()
 {
-    if (m_parameters.isEmpty() && hasRedisCommandAccess()) {
-        const QVariantMap redisSnapshot = readRedisJsonValue(paramsStateRedisKey());
-        if (!redisSnapshot.isEmpty()) {
-            m_parameters = redisSnapshot;
-        }
-    }
-
     QVariantMap payload;
     payload.insert(QStringLiteral("parametersValid"), !m_parameters.isEmpty());
     payload.insert(QStringLiteral("parameterCount"), m_parameters.size());
@@ -142,13 +123,6 @@ void ParamsModuleLogicHandler::onModuleDeactivated()
 
 void ParamsModuleLogicHandler::onResync()
 {
-    if (hasRedisCommandAccess()) {
-        const QVariantMap redisSnapshot = readRedisJsonValue(paramsStateRedisKey());
-        if (!redisSnapshot.isEmpty()) {
-            m_parameters = redisSnapshot;
-        }
-    }
-
     onModuleActivated();
 }
 

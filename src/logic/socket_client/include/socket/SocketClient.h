@@ -16,7 +16,7 @@
 #include <string>
 #include <thread>
 
-namespace redis_dc {
+namespace socket_dc {
 
 class SocketClient {
 public:
@@ -117,4 +117,4 @@ private:
     DisconnectCallback disconnectCallback_;
 };
 
-}  // namespace redis_dc
+}  // namespace socket_dc

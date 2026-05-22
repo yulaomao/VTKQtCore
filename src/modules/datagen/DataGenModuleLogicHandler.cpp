@@ -18,23 +18,12 @@
 #include <vtkTransform.h>
 #include <vtkMatrix4x4.h>
 
-#include <QDateTime>
 #include <QTimer>
 #include <QUuid>
 
 #include <QtMath>
 
 namespace {
-
-QString dataGenStateRedisKey()
-{
-    return QStringLiteral("state.datagen.latest");
-}
-
-QString dataGenStateRedisChannel()
-{
-    return QStringLiteral("state.datagen");
-}
 
 QString persistIdAttributeName()
 {
@@ -72,14 +61,6 @@ QString nodeNameOrFallback(const NodeBase* node)
 QString parentTransformId(const NodeBase* node)
 {
     return node ? node->getFirstReference(NodeBase::parentTransformReferenceRole()) : QString();
-}
-
-void configureColor(double out[4], double r, double g, double b, double a)
-{
-    out[0] = r;
-    out[1] = g;
-    out[2] = b;
-    out[3] = a;
 }
 
 void applyModelMaterialPayload(ModelNode* modelNode, const QVariantMap& payload)
@@ -182,84 +163,6 @@ QString persistIdForNode(const NodeBase* node)
     return node ? node->getAttribute(persistIdAttributeName()).toString() : QString();
 }
 
-QVariantList toPointVariantList(const QVector<std::array<double, 3>>& points)
-{
-    QVariantList result;
-    result.reserve(points.size());
-    for (const auto& point : points) {
-        result.append(QVariantList{point[0], point[1], point[2]});
-    }
-    return result;
-}
-
-QVariantList toTriangleVariantList(const QVector<std::array<int, 3>>& triangles)
-{
-    QVariantList result;
-    result.reserve(triangles.size());
-    for (const auto& triangle : triangles) {
-        result.append(QVariantList{triangle[0], triangle[1], triangle[2]});
-    }
-    return result;
-}
-
-QVariantList toMatrixVariantList(const double matrix[16])
-{
-    QVariantList result;
-    result.reserve(16);
-    for (int index = 0; index < 16; ++index) {
-        result.append(matrix[index]);
-    }
-    return result;
-}
-
-QVector<std::array<double, 3>> fromPointVariantList(const QVariantList& points)
-{
-    QVector<std::array<double, 3>> result;
-    result.reserve(points.size());
-    for (const QVariant& item : points) {
-        const QVariantList point = item.toList();
-        if (point.size() < 3) {
-            continue;
-        }
-        result.push_back({
-            point.at(0).toDouble(),
-            point.at(1).toDouble(),
-            point.at(2).toDouble()
-        });
-    }
-    return result;
-}
-
-QVector<std::array<int, 3>> fromTriangleVariantList(const QVariantList& triangles)
-{
-    QVector<std::array<int, 3>> result;
-    result.reserve(triangles.size());
-    for (const QVariant& item : triangles) {
-        const QVariantList triangle = item.toList();
-        if (triangle.size() < 3) {
-            continue;
-        }
-        result.push_back({
-            triangle.at(0).toInt(),
-            triangle.at(1).toInt(),
-            triangle.at(2).toInt()
-        });
-    }
-    return result;
-}
-
-bool fillMatrixFromVariantList(const QVariantList& values, double out[16])
-{
-    if (values.size() != 16) {
-        return false;
-    }
-
-    for (int index = 0; index < 16; ++index) {
-        out[index] = values.at(index).toDouble();
-    }
-    return true;
-}
-
 }
 
 DataGenModuleLogicHandler::DataGenModuleLogicHandler(QObject* parent)
@@ -312,7 +215,6 @@ ModuleInvokeResult DataGenModuleLogicHandler::handleModuleInvoke(const ModuleInv
 
     if (command == QStringLiteral("seed_demo")) {
         ensureSeedScene();
-        persistRedisSnapshot(QStringLiteral("seed_demo"));
         emitState(QStringLiteral("演示层级已准备完毕。"));
         return ModuleInvokeResult::success(
             {{QStringLiteral("selectedNodeId"), m_selectedNodeId}},
@@ -342,10 +244,6 @@ ModuleInvokeResult DataGenModuleLogicHandler::handleModuleInvoke(const ModuleInv
         }
 
         m_selectedNodeId = created->getNodeId();
-        persistRedisSnapshot(
-            QStringLiteral("node_created"),
-            persistIdForNode(created),
-            nodeNameOrFallback(created));
         emitState(QStringLiteral("已创建 %1。").arg(nodeNameOrFallback(created)));
         return ModuleInvokeResult::success(
             {{QStringLiteral("nodeId"), created->getNodeId()},
@@ -363,32 +261,13 @@ ModuleInvokeResult DataGenModuleLogicHandler::handleModuleInvoke(const ModuleInv
 
 void DataGenModuleLogicHandler::onModuleActivated()
 {
-    bool restored = false;
-    if (managedNodes().isEmpty() && hasRedisCommandAccess()) {
-        restored = restoreFromRedisSnapshot(readRedisJsonValue(dataGenStateRedisKey()));
-    }
-
-    if (!restored) {
-        const bool hadNodes = !managedNodes().isEmpty();
-        ensureSeedScene();
-        if (!hadNodes && !managedNodes().isEmpty()) {
-            persistRedisSnapshot(QStringLiteral("seed_default_scene"));
-        }
-    }
+    ensureSeedScene();
 
     emitState(m_statusText);
 }
 
 void DataGenModuleLogicHandler::onResync()
 {
-    if (hasRedisCommandAccess()) {
-        const QVariantMap snapshot = readRedisJsonValue(dataGenStateRedisKey());
-        if (restoreFromRedisSnapshot(snapshot)) {
-            emitState(QStringLiteral("DataGen 模块已从 Redis 重同步。"));
-            return;
-        }
-    }
-
     emitState(QStringLiteral("DataGen 模块已重同步。"));
 }
 
@@ -556,7 +435,6 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
 
     if (command == QStringLiteral("seed_demo")) {
         ensureSeedScene();
-        persistRedisSnapshot(QStringLiteral("seed_demo"));
         emitState(QStringLiteral("演示层级已准备完毕。"), LogicNotification::SceneNodesUpdated, sourceActionId);
         return;
     }
@@ -584,10 +462,6 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
 
         if (created) {
             m_selectedNodeId = created->getNodeId();
-            persistRedisSnapshot(
-                QStringLiteral("node_created"),
-                persistIdForNode(created),
-                nodeNameOrFallback(created));
             emitState(QStringLiteral("已创建 %1。")
                           .arg(nodeNameOrFallback(created)),
                       LogicNotification::SceneNodesUpdated,
@@ -606,9 +480,7 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
 
     if (command == QStringLiteral("delete_node")) {
         const QString deletedName = nodeNameOrFallback(node);
-        const QString deletedPersistId = persistIdForNode(node);
         if (deleteNode(node->getNodeId())) {
-            persistRedisSnapshot(QStringLiteral("node_deleted"), deletedPersistId, deletedName);
             emitState(QStringLiteral("已删除 %1。").arg(deletedName),
                       LogicNotification::SceneNodesUpdated,
                       sourceActionId);
@@ -618,10 +490,6 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
 
     if (command == QStringLiteral("clear_node_geometry")) {
         clearNodeGeometry(node);
-        persistRedisSnapshot(
-            QStringLiteral("node_geometry_cleared"),
-            persistIdForNode(node),
-            nodeNameOrFallback(node));
         emitState(QStringLiteral("已清空节点数据。"),
                   LogicNotification::SceneNodesUpdated,
                   sourceActionId);
@@ -630,10 +498,6 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
 
     if (command == QStringLiteral("update_display")) {
         updateDisplay(node, payload);
-        persistRedisSnapshot(
-            QStringLiteral("node_display_updated"),
-            persistIdForNode(node),
-            nodeNameOrFallback(node));
         emitState(QStringLiteral("显示属性已更新。"),
                   LogicNotification::SceneNodesUpdated,
                   sourceActionId);
@@ -642,10 +506,6 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
 
     if (command == QStringLiteral("assign_parent")) {
         assignParent(node, payload.value(QStringLiteral("parentTransformId")).toString());
-        persistRedisSnapshot(
-            QStringLiteral("node_parent_updated"),
-            persistIdForNode(node),
-            nodeNameOrFallback(node));
         emitState(QStringLiteral("父变换关系已更新。"),
                   LogicNotification::SceneNodesUpdated,
                   sourceActionId);
@@ -655,10 +515,6 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
     if (command == QStringLiteral("update_transform_pose")) {
         if (auto* transformNode = dynamic_cast<TransformNode*>(node)) {
             updateTransformPose(transformNode, payload);
-            persistRedisSnapshot(
-                QStringLiteral("transform_pose_updated"),
-                persistIdForNode(transformNode),
-                nodeNameOrFallback(transformNode));
             emitState(QStringLiteral("局部变换已更新。"),
                       LogicNotification::SceneNodesUpdated,
                       sourceActionId);
@@ -674,10 +530,6 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
             item.position[1] = payload.value(QStringLiteral("y")).toDouble();
             item.position[2] = payload.value(QStringLiteral("z")).toDouble();
             pointNode->addPoint(item);
-            persistRedisSnapshot(
-                QStringLiteral("point_added"),
-                persistIdForNode(pointNode),
-                nodeNameOrFallback(pointNode));
             emitState(QStringLiteral("已向 PointNode 添加点。"),
                       LogicNotification::SceneNodesUpdated,
                       sourceActionId);
@@ -692,10 +544,6 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
                 payload.value(QStringLiteral("y")).toDouble(),
                 payload.value(QStringLiteral("z")).toDouble()
             });
-            persistRedisSnapshot(
-                QStringLiteral("line_vertex_added"),
-                persistIdForNode(lineNode),
-                nodeNameOrFallback(lineNode));
             emitState(QStringLiteral("已向 LineNode 添加顶点。"),
                       LogicNotification::SceneNodesUpdated,
                       sourceActionId);
@@ -718,10 +566,6 @@ void DataGenModuleLogicHandler::handleCustomCommand(const QVariantMap& payload, 
                 payload.value(QStringLiteral("normalX"), normal[0]).toDouble(),
                 payload.value(QStringLiteral("normalY"), normal[1]).toDouble(),
                 payload.value(QStringLiteral("normalZ"), normal[2]).toDouble());
-            persistRedisSnapshot(
-                QStringLiteral("plane_geometry_updated"),
-                persistIdForNode(planeNode),
-                nodeNameOrFallback(planeNode));
             emitState(QStringLiteral("平面几何已更新。"),
                       LogicNotification::SceneNodesUpdated,
                       sourceActionId);
@@ -767,29 +611,6 @@ QVariantMap DataGenModuleLogicHandler::buildState(const QString& statusText) con
         {QStringLiteral("selectedParentTransformId"), parentTransformId(selectedNode)},
         {QStringLiteral("selectedNodeDetails"), buildNodeDetails(selectedNode)}
     };
-}
-
-QVariantMap DataGenModuleLogicHandler::buildRedisSnapshot(const QString& changeEvent,
-                                                          const QString& changedNodePersistId,
-                                                          const QString& changedNodeName) const
-{
-    QVariantList serializedNodes;
-    const QVector<NodeBase*> nodes = managedNodes();
-    serializedNodes.reserve(nodes.size());
-    for (NodeBase* node : nodes) {
-        serializedNodes.append(serializeNodeForRedis(node));
-    }
-
-    NodeBase* selectedNode = nodeById(m_selectedNodeId);
-    QVariantMap snapshot = buildState(m_statusText);
-    snapshot.insert(QStringLiteral("eventName"), changeEvent);
-    snapshot.insert(QStringLiteral("changedNodePersistId"), changedNodePersistId);
-    snapshot.insert(QStringLiteral("changedNodeName"), changedNodeName);
-    snapshot.insert(QStringLiteral("selectedNodePersistId"), persistIdForNode(selectedNode));
-    snapshot.insert(QStringLiteral("nodes"), serializedNodes);
-    snapshot.insert(QStringLiteral("nodeCount"), serializedNodes.size());
-    snapshot.insert(QStringLiteral("timestampMs"), QDateTime::currentMSecsSinceEpoch());
-    return snapshot;
 }
 
 QVariantList DataGenModuleLogicHandler::buildNodeSummaries() const
@@ -905,415 +726,6 @@ QVariantMap DataGenModuleLogicHandler::buildNodeDetails(NodeBase* node) const
     details.insert(QStringLiteral("green"), color[1]);
     details.insert(QStringLiteral("blue"), color[2]);
     return details;
-}
-
-QVariantMap DataGenModuleLogicHandler::serializeNodeForRedis(NodeBase* node) const
-{
-    if (!node) {
-        return {};
-    }
-
-    const DisplayTarget target = node->getDisplayTargetForWindow(QStringLiteral("datagen_main"));
-    QVariantMap payload{
-        {QStringLiteral("persistId"), persistIdForNode(node)},
-        {QStringLiteral("name"), nodeNameOrFallback(node)},
-        {QStringLiteral("type"), typeKeyForNode(node)},
-        {QStringLiteral("parentPersistId"), persistIdForNode(nodeById(parentTransformId(node)))},
-        {QStringLiteral("display"), QVariantMap{
-            {QStringLiteral("visible"), target.visible},
-            {QStringLiteral("layer"), target.layer}
-        }}
-    };
-
-    if (auto* pointNode = dynamic_cast<PointNode*>(node)) {
-        double defaultColor[4];
-        pointNode->getDefaultPointColor(defaultColor);
-        QVariantList points;
-        points.reserve(pointNode->getPointCount());
-        for (int index = 0; index < pointNode->getPointCount(); ++index) {
-            const PointItem& point = pointNode->getPointByIndex(index);
-            points.append(QVariantMap{
-                {QStringLiteral("label"), point.label},
-                {QStringLiteral("position"), QVariantList{point.position[0], point.position[1], point.position[2]}},
-                {QStringLiteral("selected"), point.selectedFlag},
-                {QStringLiteral("visible"), point.visibleFlag},
-                {QStringLiteral("locked"), point.lockedFlag},
-                {QStringLiteral("associatedNodeId"), point.associatedNodeId},
-                {QStringLiteral("color"), QVariantList{point.colorRGBA[0], point.colorRGBA[1], point.colorRGBA[2], point.colorRGBA[3]}},
-                {QStringLiteral("sizeValue"), point.sizeValue}
-            });
-        }
-
-        payload.insert(QStringLiteral("pointRole"), pointNode->getPointRole());
-        payload.insert(QStringLiteral("showLabels"), pointNode->isShowPointLabel());
-        payload.insert(QStringLiteral("pointLabelFormat"), pointNode->getPointLabelFormat());
-        payload.insert(QStringLiteral("selectedPointIndex"), pointNode->getSelectedPointIndex());
-        payload.insert(QStringLiteral("opacity"), pointNode->getOpacity());
-        payload.insert(QStringLiteral("defaultPointSize"), pointNode->getDefaultPointSize());
-        payload.insert(QStringLiteral("defaultPointColor"), QVariantList{defaultColor[0], defaultColor[1], defaultColor[2], defaultColor[3]});
-        payload.insert(QStringLiteral("points"), points);
-    } else if (auto* lineNode = dynamic_cast<LineNode*>(node)) {
-        double color[4];
-        lineNode->getColor(color);
-        payload.insert(QStringLiteral("lineRole"), lineNode->getLineRole());
-        payload.insert(QStringLiteral("closed"), lineNode->isClosed());
-        payload.insert(QStringLiteral("renderMode"), lineNode->getRenderMode());
-        payload.insert(QStringLiteral("dashed"), lineNode->isDashed());
-        payload.insert(QStringLiteral("opacity"), lineNode->getOpacity());
-        payload.insert(QStringLiteral("lineWidth"), lineNode->getLineWidth());
-        payload.insert(QStringLiteral("color"), QVariantList{color[0], color[1], color[2], color[3]});
-        QVariantList vertices;
-        vertices.reserve(lineNode->getVertexCount());
-        for (int index = 0; index < lineNode->getVertexCount(); ++index) {
-            const auto vertex = lineNode->getVertex(index);
-            vertices.append(QVariantList{vertex[0], vertex[1], vertex[2]});
-        }
-        payload.insert(QStringLiteral("vertices"), vertices);
-    } else if (auto* modelNode = dynamic_cast<ModelNode*>(node)) {
-        double color[4];
-        double edgeColor[4];
-        modelNode->getColor(color);
-        modelNode->getEdgeColor(edgeColor);
-        payload.insert(QStringLiteral("modelRole"), modelNode->getModelRole());
-        payload.insert(QStringLiteral("geometryPreset"), modelNode->getAttribute(QStringLiteral("geometryPreset")).toString());
-        payload.insert(QStringLiteral("renderMode"), modelNode->getRenderMode());
-        payload.insert(QStringLiteral("opacity"), modelNode->getOpacity());
-        payload.insert(QStringLiteral("showEdges"), modelNode->isShowEdges());
-        payload.insert(QStringLiteral("ambient"), modelNode->getMaterialAmbient());
-        payload.insert(QStringLiteral("diffuse"), modelNode->getMaterialDiffuse());
-        payload.insert(QStringLiteral("specular"), modelNode->getMaterialSpecular());
-        payload.insert(QStringLiteral("specularPower"), modelNode->getMaterialSpecularPower());
-        payload.insert(QStringLiteral("roughness"), modelNode->getMaterialRoughness());
-        payload.insert(QStringLiteral("edgeWidth"), modelNode->getEdgeWidth());
-        payload.insert(QStringLiteral("backfaceCulling"), modelNode->isBackfaceCulling());
-        payload.insert(QStringLiteral("useScalarColor"), modelNode->isUseScalarColor());
-        payload.insert(QStringLiteral("scalarColorMap"), modelNode->getScalarColorMap());
-        payload.insert(QStringLiteral("color"), QVariantList{color[0], color[1], color[2], color[3]});
-        payload.insert(QStringLiteral("edgeColor"), QVariantList{edgeColor[0], edgeColor[1], edgeColor[2], edgeColor[3]});
-        payload.insert(QStringLiteral("vertices"), toPointVariantList(modelNode->getVertices()));
-        payload.insert(QStringLiteral("triangles"), toTriangleVariantList(modelNode->getIndices()));
-    } else if (auto* planeNode = dynamic_cast<PlaneNode*>(node)) {
-        double color[4];
-        double borderColor[4];
-        const std::array<double, 3> center = planeNode->getCenter();
-        const std::array<double, 3> normal = planeNode->getNormal();
-        planeNode->getPlaneColor(color);
-        planeNode->getBorderColor(borderColor);
-        payload.insert(QStringLiteral("opacity"), planeNode->getPlaneOpacity());
-        payload.insert(QStringLiteral("width"), planeNode->getPlaneWidth());
-        payload.insert(QStringLiteral("height"), planeNode->getPlaneHeight());
-        payload.insert(QStringLiteral("center"), QVariantList{center[0], center[1], center[2]});
-        payload.insert(QStringLiteral("normal"), QVariantList{normal[0], normal[1], normal[2]});
-        payload.insert(QStringLiteral("color"), QVariantList{color[0], color[1], color[2], color[3]});
-        payload.insert(QStringLiteral("borderColor"), QVariantList{borderColor[0], borderColor[1], borderColor[2], borderColor[3]});
-        payload.insert(QStringLiteral("borderOpacity"), planeNode->getBorderOpacity());
-        payload.insert(QStringLiteral("borderWidth"), planeNode->getBorderWidth());
-    } else if (auto* transformNode = dynamic_cast<TransformNode*>(node)) {
-        double matrix[16];
-        double colorX[4];
-        double colorY[4];
-        double colorZ[4];
-        transformNode->getMatrixTransformToParent(matrix);
-        transformNode->getAxesColorX(colorX);
-        transformNode->getAxesColorY(colorY);
-        transformNode->getAxesColorZ(colorZ);
-        payload.insert(QStringLiteral("transformKind"), transformNode->getTransformKind());
-        payload.insert(QStringLiteral("sourceSpace"), transformNode->getSourceSpace());
-        payload.insert(QStringLiteral("targetSpace"), transformNode->getTargetSpace());
-        payload.insert(QStringLiteral("showAxes"), transformNode->isShowAxes());
-        payload.insert(QStringLiteral("axesLength"), transformNode->getAxesLength());
-        payload.insert(QStringLiteral("axesColorX"), QVariantList{colorX[0], colorX[1], colorX[2], colorX[3]});
-        payload.insert(QStringLiteral("axesColorY"), QVariantList{colorY[0], colorY[1], colorY[2], colorY[3]});
-        payload.insert(QStringLiteral("axesColorZ"), QVariantList{colorZ[0], colorZ[1], colorZ[2], colorZ[3]});
-        payload.insert(QStringLiteral("matrix"), toMatrixVariantList(matrix));
-        payload.insert(QStringLiteral("pose"), QVariantMap{
-            {QStringLiteral("tx"), attributeAsDouble(node, QStringLiteral("poseTx"))},
-            {QStringLiteral("ty"), attributeAsDouble(node, QStringLiteral("poseTy"))},
-            {QStringLiteral("tz"), attributeAsDouble(node, QStringLiteral("poseTz"))},
-            {QStringLiteral("rx"), attributeAsDouble(node, QStringLiteral("poseRx"))},
-            {QStringLiteral("ry"), attributeAsDouble(node, QStringLiteral("poseRy"))},
-            {QStringLiteral("rz"), attributeAsDouble(node, QStringLiteral("poseRz"))}
-        });
-    }
-
-    return payload;
-}
-
-bool DataGenModuleLogicHandler::restoreFromRedisSnapshot(const QVariantMap& snapshot)
-{
-    const QVariantList serializedNodes = snapshot.value(QStringLiteral("nodes")).toList();
-    SceneGraph* scene = getSceneGraph();
-    if (!scene || serializedNodes.isEmpty()) {
-        return false;
-    }
-
-    const QVector<NodeBase*> existingNodes = managedNodes();
-    for (NodeBase* existingNode : existingNodes) {
-        scene->removeNode(existingNode->getNodeId());
-    }
-
-    QMap<QString, NodeBase*> createdByPersistId;
-    QList<QPair<NodeBase*, QString>> pendingParents;
-
-    for (const QVariant& item : serializedNodes) {
-        const QVariantMap nodeMap = item.toMap();
-        const QString nodeType = nodeMap.value(QStringLiteral("type")).toString();
-        const QVariantMap displayMap = nodeMap.value(QStringLiteral("display")).toMap();
-        const int layer = displayMap.value(QStringLiteral("layer"), 1).toInt();
-        NodeBase* createdNode = nullptr;
-
-        if (nodeType == QStringLiteral("point")) {
-            auto* pointNode = new PointNode(scene);
-            setManagedDefaults(pointNode, layer);
-            pointNode->setName(nodeMap.value(QStringLiteral("name")).toString());
-            pointNode->setAttribute(persistIdAttributeName(), nodeMap.value(QStringLiteral("persistId")).toString());
-            pointNode->setPointRole(nodeMap.value(QStringLiteral("pointRole")).toString());
-            pointNode->setPointLabelFormat(nodeMap.value(QStringLiteral("pointLabelFormat"), QStringLiteral("%1")).toString());
-            pointNode->setShowPointLabel(nodeMap.value(QStringLiteral("showLabels"), false).toBool());
-            pointNode->setSelectedPointIndex(nodeMap.value(QStringLiteral("selectedPointIndex"), -1).toInt());
-            const QVariantList defaultColor = nodeMap.value(QStringLiteral("defaultPointColor")).toList();
-            double color[4] = {1.0, 0.0, 0.0, 1.0};
-            bool hasDefaultColor = false;
-            if (defaultColor.size() == 4) {
-                const double importedColor[4] = {
-                    defaultColor.at(0).toDouble(),
-                    defaultColor.at(1).toDouble(),
-                    defaultColor.at(2).toDouble(),
-                    defaultColor.at(3).toDouble()
-                };
-                copyArray(importedColor, color, 4);
-                hasDefaultColor = true;
-            }
-            if (nodeMap.contains(QStringLiteral("opacity"))) {
-                pointNode->setOpacity(nodeMap.value(QStringLiteral("opacity"), 1.0).toDouble());
-            } else if (hasDefaultColor) {
-                pointNode->setOpacity(color[3]);
-                color[3] = 1.0;
-            }
-            if (hasDefaultColor) {
-                pointNode->setDefaultPointColor(color);
-            }
-            pointNode->setDefaultPointSize(nodeMap.value(QStringLiteral("defaultPointSize"), 8.0).toDouble());
-            for (const QVariant& pointValue : nodeMap.value(QStringLiteral("points")).toList()) {
-                const QVariantMap pointMap = pointValue.toMap();
-                PointItem pointItem;
-                pointItem.label = pointMap.value(QStringLiteral("label")).toString();
-                const QVariantList pos = pointMap.value(QStringLiteral("position")).toList();
-                if (pos.size() >= 3) {
-                    pointItem.position[0] = pos.at(0).toDouble();
-                    pointItem.position[1] = pos.at(1).toDouble();
-                    pointItem.position[2] = pos.at(2).toDouble();
-                }
-                pointItem.selectedFlag = pointMap.value(QStringLiteral("selected"), false).toBool();
-                pointItem.visibleFlag = pointMap.value(QStringLiteral("visible"), true).toBool();
-                pointItem.lockedFlag = pointMap.value(QStringLiteral("locked"), false).toBool();
-                pointItem.associatedNodeId = pointMap.value(QStringLiteral("associatedNodeId")).toString();
-                const QVariantList pointColor = pointMap.value(QStringLiteral("color")).toList();
-                if (pointColor.size() == 4) {
-                    for (int index = 0; index < 4; ++index) {
-                        pointItem.colorRGBA[index] = pointColor.at(index).toDouble();
-                    }
-                }
-                pointItem.sizeValue = pointMap.value(QStringLiteral("sizeValue"), -1.0).toDouble();
-                pointNode->addPoint(pointItem);
-            }
-            createdNode = pointNode;
-        } else if (nodeType == QStringLiteral("line")) {
-            auto* lineNode = new LineNode(scene);
-            setManagedDefaults(lineNode, layer);
-            lineNode->setName(nodeMap.value(QStringLiteral("name")).toString());
-            lineNode->setAttribute(persistIdAttributeName(), nodeMap.value(QStringLiteral("persistId")).toString());
-            lineNode->setLineRole(nodeMap.value(QStringLiteral("lineRole")).toString());
-            const QVariantList color = nodeMap.value(QStringLiteral("color")).toList();
-            if (color.size() == 4) {
-                const double rgba[4] = {
-                    color.at(0).toDouble(),
-                    color.at(1).toDouble(),
-                    color.at(2).toDouble(),
-                    color.at(3).toDouble()
-                };
-                lineNode->setColor(rgba);
-            }
-            lineNode->setOpacity(nodeMap.value(QStringLiteral("opacity"), 1.0).toDouble());
-            lineNode->setLineWidth(nodeMap.value(QStringLiteral("lineWidth"), 4.0).toDouble());
-            lineNode->setRenderMode(nodeMap.value(QStringLiteral("renderMode"), QStringLiteral("surface")).toString());
-            lineNode->setDashed(nodeMap.value(QStringLiteral("dashed"), false).toBool());
-            lineNode->setClosed(nodeMap.value(QStringLiteral("closed"), false).toBool());
-            lineNode->setPolyline(fromPointVariantList(nodeMap.value(QStringLiteral("vertices")).toList()));
-            createdNode = lineNode;
-        } else if (nodeType == QStringLiteral("model")) {
-            auto* modelNode = new ModelNode(scene);
-            setManagedDefaults(modelNode, layer);
-            modelNode->setName(nodeMap.value(QStringLiteral("name")).toString());
-            modelNode->setAttribute(persistIdAttributeName(), nodeMap.value(QStringLiteral("persistId")).toString());
-            modelNode->setModelRole(nodeMap.value(QStringLiteral("modelRole")).toString());
-            modelNode->setAttribute(QStringLiteral("geometryPreset"), nodeMap.value(QStringLiteral("geometryPreset")).toString());
-            const QVariantList color = nodeMap.value(QStringLiteral("color")).toList();
-            if (color.size() == 4) {
-                const double rgba[4] = {
-                    color.at(0).toDouble(),
-                    color.at(1).toDouble(),
-                    color.at(2).toDouble(),
-                    color.at(3).toDouble()
-                };
-                modelNode->setColor(rgba);
-            }
-            const QVariantList edgeColor = nodeMap.value(QStringLiteral("edgeColor")).toList();
-            if (edgeColor.size() == 4) {
-                const double rgba[4] = {
-                    edgeColor.at(0).toDouble(),
-                    edgeColor.at(1).toDouble(),
-                    edgeColor.at(2).toDouble(),
-                    edgeColor.at(3).toDouble()
-                };
-                modelNode->setEdgeColor(rgba);
-            }
-            modelNode->setOpacity(nodeMap.value(QStringLiteral("opacity"), 1.0).toDouble());
-            modelNode->setRenderMode(nodeMap.value(QStringLiteral("renderMode"), QStringLiteral("surface")).toString());
-            modelNode->setShowEdges(nodeMap.value(QStringLiteral("showEdges"), false).toBool());
-            applyModelMaterialPayload(modelNode, nodeMap);
-            modelNode->setEdgeWidth(nodeMap.value(QStringLiteral("edgeWidth"), 1.0).toDouble());
-            modelNode->setBackfaceCulling(nodeMap.value(QStringLiteral("backfaceCulling"), false).toBool());
-            modelNode->setUseScalarColor(nodeMap.value(QStringLiteral("useScalarColor"), false).toBool());
-            modelNode->setScalarColorMap(nodeMap.value(QStringLiteral("scalarColorMap")).toString());
-            modelNode->setMeshData(
-                fromPointVariantList(nodeMap.value(QStringLiteral("vertices")).toList()),
-                fromTriangleVariantList(nodeMap.value(QStringLiteral("triangles")).toList()));
-            createdNode = modelNode;
-        } else if (nodeType == QStringLiteral("plane")) {
-            auto* planeNode = new PlaneNode(scene);
-            setManagedDefaults(planeNode, layer);
-            planeNode->setName(nodeMap.value(QStringLiteral("name")).toString());
-            planeNode->setAttribute(persistIdAttributeName(), nodeMap.value(QStringLiteral("persistId")).toString());
-            const QVariantList color = nodeMap.value(QStringLiteral("color")).toList();
-            if (color.size() == 4) {
-                const double rgba[4] = {
-                    color.at(0).toDouble(),
-                    color.at(1).toDouble(),
-                    color.at(2).toDouble(),
-                    color.at(3).toDouble()
-                };
-                planeNode->setPlaneColor(rgba);
-            }
-            const QVariantList borderColor = nodeMap.value(QStringLiteral("borderColor")).toList();
-            if (borderColor.size() == 4) {
-                const double rgba[4] = {
-                    borderColor.at(0).toDouble(),
-                    borderColor.at(1).toDouble(),
-                    borderColor.at(2).toDouble(),
-                    borderColor.at(3).toDouble()
-                };
-                planeNode->setBorderColor(rgba);
-            }
-            const QVariantList center = nodeMap.value(QStringLiteral("center")).toList();
-            if (center.size() >= 3) {
-                planeNode->setCenter(center.at(0).toDouble(),
-                                     center.at(1).toDouble(),
-                                     center.at(2).toDouble());
-            }
-            const QVariantList normal = nodeMap.value(QStringLiteral("normal")).toList();
-            if (normal.size() >= 3) {
-                planeNode->setNormal(normal.at(0).toDouble(),
-                                     normal.at(1).toDouble(),
-                                     normal.at(2).toDouble());
-            }
-            planeNode->setPlaneSize(
-                nodeMap.value(QStringLiteral("width"), 36.0).toDouble(),
-                nodeMap.value(QStringLiteral("height"), 24.0).toDouble());
-            planeNode->setPlaneOpacity(nodeMap.value(QStringLiteral("opacity"), 0.35).toDouble());
-            planeNode->setBorderOpacity(nodeMap.value(QStringLiteral("borderOpacity"), 1.0).toDouble());
-            planeNode->setBorderWidth(nodeMap.value(QStringLiteral("borderWidth"), 2.0).toDouble());
-            createdNode = planeNode;
-        } else if (nodeType == QStringLiteral("transform")) {
-            auto* transformNode = new TransformNode(scene);
-            setManagedDefaults(transformNode, layer);
-            transformNode->setName(nodeMap.value(QStringLiteral("name")).toString());
-            transformNode->setAttribute(persistIdAttributeName(), nodeMap.value(QStringLiteral("persistId")).toString());
-            transformNode->setTransformKind(nodeMap.value(QStringLiteral("transformKind")).toString());
-            transformNode->setSourceSpace(nodeMap.value(QStringLiteral("sourceSpace")).toString());
-            transformNode->setTargetSpace(nodeMap.value(QStringLiteral("targetSpace")).toString());
-            transformNode->setShowAxes(nodeMap.value(QStringLiteral("showAxes"), true).toBool());
-            transformNode->setAxesLength(nodeMap.value(QStringLiteral("axesLength"), 60.0).toDouble());
-            const QVariantList axesColorX = nodeMap.value(QStringLiteral("axesColorX")).toList();
-            const QVariantList axesColorY = nodeMap.value(QStringLiteral("axesColorY")).toList();
-            const QVariantList axesColorZ = nodeMap.value(QStringLiteral("axesColorZ")).toList();
-            if (axesColorX.size() == 4) {
-                const double rgba[4] = {
-                    axesColorX.at(0).toDouble(),
-                    axesColorX.at(1).toDouble(),
-                    axesColorX.at(2).toDouble(),
-                    axesColorX.at(3).toDouble()
-                };
-                transformNode->setAxesColorX(rgba);
-            }
-            if (axesColorY.size() == 4) {
-                const double rgba[4] = {
-                    axesColorY.at(0).toDouble(),
-                    axesColorY.at(1).toDouble(),
-                    axesColorY.at(2).toDouble(),
-                    axesColorY.at(3).toDouble()
-                };
-                transformNode->setAxesColorY(rgba);
-            }
-            if (axesColorZ.size() == 4) {
-                const double rgba[4] = {
-                    axesColorZ.at(0).toDouble(),
-                    axesColorZ.at(1).toDouble(),
-                    axesColorZ.at(2).toDouble(),
-                    axesColorZ.at(3).toDouble()
-                };
-                transformNode->setAxesColorZ(rgba);
-            }
-            double matrix[16];
-            if (fillMatrixFromVariantList(nodeMap.value(QStringLiteral("matrix")).toList(), matrix)) {
-                transformNode->setMatrixTransformToParent(matrix);
-            }
-            const QVariantMap poseMap = nodeMap.value(QStringLiteral("pose")).toMap();
-            transformNode->setAttribute(QStringLiteral("poseTx"), poseMap.value(QStringLiteral("tx"), 0.0));
-            transformNode->setAttribute(QStringLiteral("poseTy"), poseMap.value(QStringLiteral("ty"), 0.0));
-            transformNode->setAttribute(QStringLiteral("poseTz"), poseMap.value(QStringLiteral("tz"), 0.0));
-            transformNode->setAttribute(QStringLiteral("poseRx"), poseMap.value(QStringLiteral("rx"), 0.0));
-            transformNode->setAttribute(QStringLiteral("poseRy"), poseMap.value(QStringLiteral("ry"), 0.0));
-            transformNode->setAttribute(QStringLiteral("poseRz"), poseMap.value(QStringLiteral("rz"), 0.0));
-            createdNode = transformNode;
-        }
-
-        if (!createdNode) {
-            continue;
-        }
-
-        DisplayTarget displayTarget;
-        displayTarget.visible = displayMap.value(QStringLiteral("visible"), true).toBool();
-        displayTarget.layer = qBound(1, displayMap.value(QStringLiteral("layer"), 1).toInt(), 3);
-        createdNode->setWindowDisplayTarget(QStringLiteral("datagen_main"), displayTarget);
-        scene->addNode(createdNode);
-
-        const QString persistId = nodeMap.value(QStringLiteral("persistId")).toString();
-        createdByPersistId.insert(persistId, createdNode);
-        pendingParents.append({createdNode, nodeMap.value(QStringLiteral("parentPersistId")).toString()});
-    }
-
-    for (const auto& pending : pendingParents) {
-        if (!pending.first || pending.second.isEmpty()) {
-            continue;
-        }
-        NodeBase* parentNode = createdByPersistId.value(pending.second, nullptr);
-        if (parentNode) {
-            assignParent(pending.first, parentNode->getNodeId());
-        }
-    }
-
-    const QString selectedPersistId = snapshot.value(QStringLiteral("selectedNodePersistId")).toString();
-    m_selectedNodeId = createdByPersistId.contains(selectedPersistId)
-        ? createdByPersistId.value(selectedPersistId)->getNodeId()
-        : QString();
-    selectFallbackNode();
-
-    const QString restoredStatusText = snapshot.value(QStringLiteral("statusText")).toString();
-    if (!restoredStatusText.isEmpty()) {
-        m_statusText = restoredStatusText;
-    }
-    return !createdByPersistId.isEmpty();
 }
 
 QVector<NodeBase*> DataGenModuleLogicHandler::managedNodes() const
@@ -1729,20 +1141,4 @@ bool DataGenModuleLogicHandler::deleteNode(const QString& nodeId)
     const bool removed = scene->removeNode(nodeId);
     selectFallbackNode();
     return removed;
-}
-
-void DataGenModuleLogicHandler::persistRedisSnapshot(const QString& changeEvent,
-                                                     const QString& changedNodePersistId,
-                                                     const QString& changedNodeName)
-{
-    if (!hasRedisCommandAccess()) {
-        return;
-    }
-
-    const QVariantMap snapshot = buildRedisSnapshot(
-        changeEvent,
-        changedNodePersistId,
-        changedNodeName);
-    writeRedisJsonValue(dataGenStateRedisKey(), snapshot);
-    publishRedisJsonMessage(dataGenStateRedisChannel(), snapshot);
 }

@@ -12,7 +12,7 @@
 class MessageRouter;
 class QTimer;
 
-namespace redis_dc {
+namespace socket_dc {
 class SocketClient;
 }
 
@@ -66,7 +66,7 @@ private:
                    const QVariantMap& context = {});
     void refreshHealthSnapshot();
 
-    std::unique_ptr<redis_dc::SocketClient> m_socketClient;
+    std::unique_ptr<socket_dc::SocketClient> m_socketClient;
     MessageRouter* m_messageRouter = nullptr;
     QString m_host = QStringLiteral("127.0.0.1");
     quint16 m_port = 9000;

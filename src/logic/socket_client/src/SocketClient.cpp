@@ -7,7 +7,7 @@
 #include <memory>
 #include <utility>
 
-namespace redis_dc {
+namespace socket_dc {
 namespace {
 
 std::string buildSocketEnvelope(const std::string& module,
@@ -516,4 +516,4 @@ std::uint64_t SocketClient::currentTimestampMs() {
     return static_cast<std::uint64_t>(now.time_since_epoch().count());
 }
 
-}  // namespace redis_dc
+}  // namespace socket_dc

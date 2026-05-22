@@ -305,6 +305,6 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
         commHub->addRoutingChannel(routingChannel);
     }
 
-    // Socket mode does not need Redis polling/subscription sources; all inbound
-    // messages arrive through CommunicationHub and are routed after receipt.
+    // Socket mode receives all inbound messages through CommunicationHub and
+    // routes them after receipt.
 }

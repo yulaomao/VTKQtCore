@@ -201,6 +201,7 @@ ModuleUiEventBinding::bind(
 - 这个 widget 已经拿到了自己的 `UiActionDispatcher*`
 
 示例：
+for
 
 ```cpp
 void SenderWidget::sendPreview()
@@ -208,6 +209,7 @@ void SenderWidget::sendPreview()
     if (!m_actionDispatcher) {
         return;
     }
+
 
     const QString text = m_input->text().trimmed();
     if (text.isEmpty()) {
@@ -225,7 +227,7 @@ void SenderWidget::sendPreview()
 
 1. `eventName` 用模块自己定义的常量，不要到处写裸字符串
 2. payload 只传 widget 真正需要的数据
-3. 如果这是临时 UI 展示，不要顺手写 Redis 或持久状态
+3. 如果这是临时 UI 展示，不要顺手写入外部持久状态
 
 ---
 

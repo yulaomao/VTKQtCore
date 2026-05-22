@@ -1,6 +1,5 @@
 #include "ModuleLogicHandler.h"
 
-#include "communication/hub/IRedisCommandAccess.h"
 #include "communication/datasource/StateSample.h"
 #include "ModuleUiEvent.h"
 #include "logic/runtime/IModuleInvoker.h"
@@ -28,11 +27,6 @@ SceneGraph* ModuleLogicHandler::getSceneGraph() const
     return m_sceneGraph;
 }
 
-void ModuleLogicHandler::setRedisCommandAccess(IRedisCommandAccess* redisCommandAccess)
-{
-    m_redisCommandAccess = redisCommandAccess;
-}
-
 void ModuleLogicHandler::setModuleInvoker(IModuleInvoker* moduleInvoker)
 {
     m_moduleInvoker = moduleInvoker;
@@ -46,88 +40,6 @@ void ModuleLogicHandler::setDefaultConnectionId(const QString& connectionId)
 QString ModuleLogicHandler::getDefaultConnectionId() const
 {
     return m_defaultConnectionId;
-}
-
-bool ModuleLogicHandler::hasRedisCommandAccess() const
-{
-    return m_redisCommandAccess && m_redisCommandAccess->isAvailable();
-}
-
-QVariant ModuleLogicHandler::readRedisValue(const QString& key)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readValue(key) : QVariant();
-}
-
-QString ModuleLogicHandler::readRedisStringValue(const QString& key)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readStringValue(key) : QString();
-}
-
-QVariantMap ModuleLogicHandler::readRedisJsonValue(const QString& key)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readJsonValue(key) : QVariantMap();
-}
-
-QVariant ModuleLogicHandler::readRedisHashValue(const QString& hashKey, const QString& field)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashValue(hashKey, field) : QVariant();
-}
-
-QString ModuleLogicHandler::readRedisHashStringValue(const QString& hashKey, const QString& field)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashStringValue(hashKey, field)
-                                : QString();
-}
-
-QVariantMap ModuleLogicHandler::readRedisHashJsonValue(const QString& hashKey, const QString& field)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashJsonValue(hashKey, field)
-                                : QVariantMap();
-}
-
-QVariant ModuleLogicHandler::readRedisHashValue(const QStringList& path)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashValue(path) : QVariant();
-}
-
-QString ModuleLogicHandler::readRedisHashStringValue(const QStringList& path)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashStringValue(path) : QString();
-}
-
-QVariantMap ModuleLogicHandler::readRedisHashJsonValue(const QStringList& path)
-{
-    return m_redisCommandAccess ? m_redisCommandAccess->readHashJsonValue(path) : QVariantMap();
-}
-
-bool ModuleLogicHandler::writeRedisValue(const QString& key, const QVariant& value)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->writeValue(key, value);
-}
-
-bool ModuleLogicHandler::writeRedisJsonValue(const QString& key, const QVariantMap& value)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->writeJsonValue(key, value);
-}
-
-bool ModuleLogicHandler::writeRedisHashValue(const QStringList& path, const QVariant& value)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->writeHashValue(path, value);
-}
-
-bool ModuleLogicHandler::writeRedisHashJsonValue(const QStringList& path, const QVariantMap& value)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->writeHashJsonValue(path, value);
-}
-
-bool ModuleLogicHandler::publishRedisMessage(const QString& channel, const QByteArray& message)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->publishMessage(channel, message);
-}
-
-bool ModuleLogicHandler::publishRedisJsonMessage(const QString& channel, const QVariantMap& payload)
-{
-    return m_redisCommandAccess && m_redisCommandAccess->publishJsonMessage(channel, payload);
 }
 
 bool ModuleLogicHandler::playPromptAudioPreset(const QString& presetId)

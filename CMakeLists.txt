@@ -43,7 +43,7 @@ endif()
 # ---------------------------------------------------------------------------
 # VTK
 # ---------------------------------------------------------------------------
-set(VTK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirtyPart/vtk/lib/cmake/vtk-9.4")
+set(VTK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirtyPart/vtk/lib/cmake/vtk-9.2")
 find_package(VTK REQUIRED COMPONENTS
     GUISupportQt
     RenderingOpenGL2
@@ -68,19 +68,16 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.qrc
 )
 
-list(FILTER SOURCES EXCLUDE REGEX ".*/src/communication/redis/.*")
-list(FILTER SOURCES EXCLUDE REGEX ".*/src/communication/datasource/.*\\.cpp$")
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/logic/socket_client/.*")
-list(FILTER SOURCES EXCLUDE REGEX ".*/src/app/software/RedisSoftwareResolver\\.(h|cpp)$")
-list(APPEND SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/communication/datasource/StateSample.cpp
-)
 
 # ---------------------------------------------------------------------------
 # Executable
 # ---------------------------------------------------------------------------
-set(REDIS_SOCKET_CLIENT_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
-set(REDIS_SOCKET_CLIENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SOCKET_CLIENT_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+set(SOCKET_CLIENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SOCKET_CLIENT_ASIO_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/thirtyPart/asio-src/asio/include"
+    CACHE PATH "Path to the Asio include directory containing asio.hpp" FORCE)
 add_subdirectory(src/logic/socket_client)
 
 add_executable(VTKQtCore ${SOURCES})
@@ -111,7 +108,7 @@ target_link_libraries(VTKQtCore PRIVATE
     Qt${QT_VERSION_MAJOR}::Gui
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::OpenGL
-    redis_dc::socket_client
+    socket_dc::socket_client
     ${VTK_LIBRARIES}
 )
 

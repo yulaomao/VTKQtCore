@@ -81,16 +81,7 @@ void KneePlaneLogicHandler::initAllModelNode(SceneGraph* scene)
     // ensureModelNode(scene, QStringLiteral("kneePlaneModel"));
 }
 
-void KneePlaneLogicHandler::loadModelFromRedis(){
-    // Load model data from Redis and update the scene graph accordingly
-    // For example:
-    // QVariantMap modelData = readRedisJsonValue(kneePlaneModelRedisKey());
-    // if (!modelData.isEmpty()) {
-    //     updateModelNodeFromData(modelData);
-    // }
-}
-
-void KneePlaneLogicHandler::initAllNodesByRedis(SceneGraph* scene)
+void KneePlaneLogicHandler::initAllNodes(SceneGraph* scene)
 {
     if (!scene) {
         return;
@@ -99,5 +90,4 @@ void KneePlaneLogicHandler::initAllNodesByRedis(SceneGraph* scene)
     initAllTransNode(scene);
     initAllPointsNode(scene);
     initAllModelNode(scene);
-    loadModelFromRedis();
 }

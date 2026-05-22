@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-namespace redis_dc::socket_client_tests {
+namespace socket_dc::socket_client_tests {
 
 using SocketClientId = std::uint64_t;
 
@@ -276,4 +276,4 @@ private:
     MessageCallback messageCallback_;
 };
 
-}  // namespace redis_dc::socket_client_tests
+}  // namespace socket_dc::socket_client_tests

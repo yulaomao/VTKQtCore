@@ -2,7 +2,7 @@
 
 ## 目标
 
-当前应用运行路径已从 Redis 轮询/订阅切换为 socket 消息驱动：
+当前应用运行路径采用 socket 消息驱动：
 
 ```text
 SocketClient 收到 JSON envelope

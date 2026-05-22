@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace redis_dc {
+namespace socket_dc {
 
 inline std::string encodeLengthPrefixedFrame(std::string_view payload) {
     if (payload.size() > 0xFFFFFFFFu) {
@@ -29,4 +29,4 @@ inline std::uint32_t decodeLengthPrefix(const unsigned char bytes[4]) {
            static_cast<std::uint32_t>(bytes[3]);
 }
 
-}  // namespace redis_dc
+}  // namespace socket_dc
