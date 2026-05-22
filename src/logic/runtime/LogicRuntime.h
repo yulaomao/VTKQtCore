@@ -9,15 +9,15 @@
 #include "contracts/UiAction.h"
 #include "contracts/LogicNotification.h"
 #include "IModuleInvoker.h"
+#include "logic/runtime/ILogicRuntimePort.h"
 
 class SceneGraph;
 class ActiveModuleState;
 class ModuleLogicRegistry;
 class ModuleLogicHandler;
 class IPromptAudioService;
-class AppMessageCenter;
 
-class LogicRuntime : public QObject, public IModuleInvoker
+class LogicRuntime : public QObject, public IModuleInvoker, public ILogicRuntimePort
 {
     Q_OBJECT
 
@@ -27,8 +27,8 @@ public:
     SceneGraph* getSceneGraph() const;
     ActiveModuleState* getActiveModuleState() const;
     ModuleLogicRegistry* getModuleLogicRegistry() const;
-    AppMessageCenter* getAppMessageCenter() const;
     ModuleInvokeResult invokeModule(const ModuleInvokeRequest& request) override;
+    void sendAction(const UiAction& action) override;
     void setPromptAudioService(IPromptAudioService* promptAudioService);
     bool hasPromptAudioService() const;
     bool playPromptAudioPreset(const QString& presetId) override;
@@ -75,7 +75,6 @@ private:
     SceneGraph* m_sceneGraph;
     ActiveModuleState* m_activeModuleState;
     ModuleLogicRegistry* m_moduleLogicRegistry;
-    AppMessageCenter* m_appMessageCenter;
     IPromptAudioService* m_promptAudioService = nullptr;
     QMap<QString, qint64> m_lastInboundSeqByStream;
 };

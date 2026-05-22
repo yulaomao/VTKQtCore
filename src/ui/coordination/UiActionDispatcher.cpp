@@ -1,7 +1,7 @@
 #include "UiActionDispatcher.h"
 
 #include "ModuleUiEvent.h"
-#include "logic/gateway/ILogicGateway.h"
+#include "logic/runtime/ILogicRuntimePort.h"
 
 namespace {
 
@@ -21,11 +21,11 @@ QVariantMap withCommandPayload(const QString& command,
 }
 
 UiActionDispatcher::UiActionDispatcher(const QString& sourceModule,
-                                       ILogicGateway* gateway,
+                                       ILogicRuntimePort* runtimePort,
                                        QObject* parent)
     : QObject(parent)
     , m_sourceModule(sourceModule)
-    , m_gateway(gateway)
+    , m_runtimePort(runtimePort)
 {
 }
 
@@ -36,8 +36,8 @@ QString UiActionDispatcher::getSourceModule() const
 
 void UiActionDispatcher::sendAction(const UiAction& action)
 {
-    if (m_gateway) {
-        m_gateway->sendAction(action);
+    if (m_runtimePort) {
+        m_runtimePort->sendAction(action);
     }
 
     emit actionDispatched(action);
@@ -103,9 +103,11 @@ void UiActionDispatcher::requestModuleSwitch(const QString& targetModule)
         {{QStringLiteral("targetModule"), targetModule}});
 }
 
-void UiActionDispatcher::requestResync(const QString& reason) const
+void UiActionDispatcher::requestResync(const QString& reason)
 {
-    if (m_gateway) {
-        m_gateway->requestResync(reason);
+    if (m_runtimePort) {
+        m_runtimePort->requestResync(reason);
     }
+
+    emit resyncRequested(reason);
 }

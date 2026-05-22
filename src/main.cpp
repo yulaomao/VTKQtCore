@@ -7,10 +7,11 @@
 #include <QVTKOpenGLNativeWidget.h>
 #include <QStringList>
 
+#include <memory>
+
 #include "app/software/BaseSoftwareInitializer.h"
 #include "app/software/SoftwareInitializerFactory.h"
 #include "communication/hub/CommunicationHub.h"
-#include "logic/gateway/LocalLogicGateway.h"
 #include "logic/runtime/LogicRuntime.h"
 #include "shell/MainWindow.h"
 #include "ui/globalui/AppStyleManager.h"
@@ -107,15 +108,14 @@ int main(int argc, char* argv[])
     const RunMode runMode = useLocalMode ? RunMode::Local : RunMode::Socket;
 
     LogicRuntime logicRuntime;
-    CommunicationHub communicationHub;
-    communicationHub.initialize();
-    communicationHub.setServerEndpoint(
-        argumentValue(arguments, QStringLiteral("--socket-host"), QStringLiteral("127.0.0.1")),
-        socketPortFromArguments(arguments));
-
-    LocalLogicGateway gateway(
-        &logicRuntime,
-        useLocalMode ? nullptr : &communicationHub);
+    std::unique_ptr<CommunicationHub> communicationHub;
+    if (runMode == RunMode::Socket) {
+        communicationHub = std::make_unique<CommunicationHub>();
+        communicationHub->initialize();
+        communicationHub->setServerEndpoint(
+            argumentValue(arguments, QStringLiteral("--socket-host"), QStringLiteral("127.0.0.1")),
+            socketPortFromArguments(arguments));
+    }
 
     QVariantMap softwareProfile = loadSoftwareProfile(
         argumentValue(arguments, QStringLiteral("--software-profile")));
@@ -149,17 +149,17 @@ int main(int argc, char* argv[])
     BaseSoftwareInitializer* initializer =
         SoftwareInitializerFactory::create(softwareType, runMode, &app);
     initializer->setSoftwareProfile(softwareProfile);
-    initializer->initialize(&mainWindow, &logicRuntime, &gateway, &communicationHub);
+    initializer->initialize(&mainWindow, &logicRuntime, &logicRuntime, communicationHub.get());
 
-    if (!useLocalMode) {
-        communicationHub.start();
+    if (communicationHub) {
+        communicationHub->start();
     }
 
     mainWindow.show();
     const int exitCode = app.exec();
 
-    if (!useLocalMode) {
-        communicationHub.stop();
+    if (communicationHub) {
+        communicationHub->stop();
     }
 
     return exitCode;

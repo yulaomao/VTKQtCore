@@ -9,7 +9,7 @@
 ```text
 MainWindow / WorkspaceShell
     -> ApplicationCoordinator / ModuleCoordinator
-    -> LogicRuntime / AppMessageCenter / ModuleLogicHandler
+  -> UiActionDispatcher / ILogicRuntimePort / LogicRuntime / ModuleLogicHandler
     -> SceneGraph / DisplayManager
     -> CommunicationHub / LegacySocketAdapter / SocketClient
 ```
@@ -49,7 +49,7 @@ MainWindow / WorkspaceShell
 - `sendTargetedCommand()` 发给指定模块。
 - `sendModuleUiEvent()` 发模块间 UI 意图。
 
-`LocalLogicGateway` 会把动作送入 `CommunicationHub`，再通过本地 loopback 进入 `LogicRuntime`，让用户操作在无服务端回包时也能完成本地状态更新。
+当前实现中，`UiActionDispatcher` 会通过 `ILogicRuntimePort` 直接把动作送入 `LogicRuntime`。如果运行在 socket 模式，同一个 dispatcher 还会把 action / resync 镜像发送到 `CommunicationHub`，用于可选外部协议兼容，但本地 UI 主路径不再依赖 loopback。
 
 ## Logic 到 UI
 
@@ -82,7 +82,7 @@ MainWindow / WorkspaceShell
 尽量不要改：
 
 - `CommunicationHub` / `LegacySocketAdapter`
-- `LogicRuntime` / `AppMessageCenter`
+- `LogicRuntime` 的核心路由与 `ModuleLogicRegistry` 别名规则
 - `ModuleLogicRegistry` 的注册和 alias 规则
 - 已稳定的 SceneGraph 节点基础类型
 

@@ -3,7 +3,7 @@
 #include "MainWindow.h"
 #include "shell/WorkspaceShell.h"
 #include "LogicRuntime.h"
-#include "ILogicGateway.h"
+#include "logic/runtime/ILogicRuntimePort.h"
 #include "PageManager.h"
 #include "ApplicationCoordinator.h"
 #include "GlobalUiManager.h"
@@ -15,6 +15,7 @@
 #include "PointPickStatusPanel.h"
 #include "PlanningPage.h"
 #include "NavigationPage.h"
+#include "ReconstructionPage.h"
 #include "ui/vtk3d/VtkSceneWindow.h"
 
 #include <QFrame>
@@ -53,7 +54,7 @@ QWidget* createModuleSummaryPanel(const QString& title,
 bool isContextValid(const ModuleUiAssemblyContext& context)
 {
     return context.mainWindow && context.applicationCoordinator &&
-           context.gateway && context.pageManager;
+           context.runtimePort && context.pageManager;
 }
 
 SceneGraph* sceneGraphFromContext(const ModuleUiAssemblyContext& context)
@@ -72,7 +73,7 @@ void registerParamsModuleUi(const ModuleUiAssemblyContext& context)
     QLabel* summaryStatus = nullptr;
     auto* coordinator = new ModuleCoordinator(
         QStringLiteral("params"),
-        context.gateway,
+        context.runtimePort,
         context.applicationCoordinator);
     auto* page = new ParamsPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
@@ -116,7 +117,7 @@ void registerDataGenModuleUi(const ModuleUiAssemblyContext& context)
     QLabel* summaryStatus = nullptr;
     auto* coordinator = new ModuleCoordinator(
         QStringLiteral("datagen"),
-        context.gateway,
+        context.runtimePort,
         context.applicationCoordinator);
     auto* page = new DataGenPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
@@ -186,7 +187,7 @@ void registerPointPickModuleUi(const ModuleUiAssemblyContext& context)
 
     auto* coordinator = new ModuleCoordinator(
         QStringLiteral("pointpick"),
-        context.gateway,
+        context.runtimePort,
         context.applicationCoordinator);
     auto* page = new PointPickPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
@@ -234,7 +235,7 @@ void registerPlanningModuleUi(const ModuleUiAssemblyContext& context)
     QLabel* summaryStatus = nullptr;
     auto* coordinator = new ModuleCoordinator(
         QStringLiteral("planning"),
-        context.gateway,
+        context.runtimePort,
         context.applicationCoordinator);
     auto* page = new PlanningPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
@@ -328,7 +329,7 @@ void registerNavigationModuleUi(const ModuleUiAssemblyContext& context)
     QLabel* summaryStatus = nullptr;
     auto* coordinator = new ModuleCoordinator(
         QStringLiteral("navigation"),
-        context.gateway,
+        context.runtimePort,
         context.applicationCoordinator);
     auto* page = new NavigationPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
@@ -401,6 +402,50 @@ void registerNavigationModuleUi(const ModuleUiAssemblyContext& context)
                                      .arg(notification.payload.value(
                                          QStringLiteral("status"),
                                          QStringLiteral("等待导航")).toString()));
+                         }
+                     });
+}
+
+void registerReconstructionModuleUi(const ModuleUiAssemblyContext& context)
+{
+    if (!isContextValid(context)) {
+        return;
+    }
+
+    QLabel* summaryStatus = nullptr;
+    auto* coordinator = new ModuleCoordinator(
+        QStringLiteral("reconstruction"),
+        context.runtimePort,
+        context.applicationCoordinator);
+    auto* page = new ReconstructionPage();
+    page->setActionDispatcher(coordinator->getActionDispatcher());
+    coordinator->addAuxiliaryWidget(
+        createModuleSummaryPanel(
+            QStringLiteral("Reconstruction"),
+            QStringLiteral("执行数据重建操作并显示重建状态。"),
+            &summaryStatus,
+            context.mainWindow->getWorkspaceShell()),
+        ModuleCoordinator::AuxiliaryRegion::Right);
+    coordinator->setMainPage(page);
+    context.pageManager->registerPage(QStringLiteral("reconstruction"), page);
+    context.applicationCoordinator->registerModuleCoordinator(coordinator);
+
+    QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
+                     page, [page, summaryStatus](const LogicNotification& notification) {
+                         if (notification.eventType != LogicNotification::StageChanged) {
+                             return;
+                         }
+
+                         if (notification.payload.contains(QStringLiteral("status"))) {
+                             const QString status = notification.payload.value(
+                                 QStringLiteral("status")).toString();
+                             const bool done = notification.payload.value(
+                                 QStringLiteral("reconstructionDone"), false).toBool();
+                             page->setReconstructionStatus(status, done);
+                             if (summaryStatus) {
+                                 summaryStatus->setText(
+                                     QStringLiteral("重建状态: %1").arg(status));
+                             }
                          }
                      });
 }

@@ -26,7 +26,7 @@ public:
 public slots:
     void setCurrentModule(const QString& moduleId);
     void setConnectionState(const QString& state);
-    void onGatewayNotification(const LogicNotification& notification);
+    void onLogicNotification(const LogicNotification& notification);
 
 private:
     void rebuildButtons();

@@ -9,7 +9,7 @@
 #include "contracts/UiAction.h"
 #include "contracts/LogicNotification.h"
 
-class ILogicGateway;
+class ILogicRuntimePort;
 class UiActionDispatcher;
 
 class ModuleCoordinator : public QObject
@@ -22,7 +22,7 @@ public:
         Bottom
     };
 
-    ModuleCoordinator(const QString& moduleId, ILogicGateway* gateway,
+    ModuleCoordinator(const QString& moduleId, ILogicRuntimePort* runtimePort,
                       QObject* parent = nullptr);
     ~ModuleCoordinator() override = default;
 
@@ -48,7 +48,6 @@ signals:
 
 private:
     QString m_moduleId;
-    ILogicGateway* m_gateway;
     UiActionDispatcher* m_actionDispatcher;
     QWidget* m_mainPage;
     QVector<QWidget*> m_rightAuxiliaryWidgets;

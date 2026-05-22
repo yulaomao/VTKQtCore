@@ -3,18 +3,18 @@
 #include <utility>
 
 #include "ModuleUiEvent.h"
-#include "logic/gateway/ILogicGateway.h"
 
 namespace ModuleUiEventBinding {
 
-template <typename Receiver, typename Handler>
-QMetaObject::Connection bind(ILogicGateway* gateway,
+template <typename Sender, typename Receiver, typename Handler>
+QMetaObject::Connection bind(Sender* notificationSource,
+                             void (Sender::*notificationSignal)(const LogicNotification&),
                              const QString& moduleId,
                              const QString& eventName,
                              Receiver* receiver,
                              Handler&& handler)
 {
-    if (!gateway || !receiver) {
+    if (!notificationSource || !receiver) {
         return QMetaObject::Connection();
     }
 
@@ -22,8 +22,8 @@ QMetaObject::Connection bind(ILogicGateway* gateway,
     const QString normalizedEventName = eventName.trimmed();
 
     return QObject::connect(
-        gateway,
-        &ILogicGateway::notificationReceived,
+        notificationSource,
+        notificationSignal,
         receiver,
         [normalizedModuleId,
          normalizedEventName,

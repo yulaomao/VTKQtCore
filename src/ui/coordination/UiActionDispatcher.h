@@ -6,7 +6,7 @@
 
 #include "contracts/UiAction.h"
 
-class ILogicGateway;
+class ILogicRuntimePort;
 
 class UiActionDispatcher : public QObject
 {
@@ -14,7 +14,7 @@ class UiActionDispatcher : public QObject
 
 public:
     explicit UiActionDispatcher(const QString& sourceModule,
-                                ILogicGateway* gateway,
+                                ILogicRuntimePort* runtimePort,
                                 QObject* parent = nullptr);
 
     QString getSourceModule() const;
@@ -32,12 +32,13 @@ public:
                            const QString& eventName,
                            const QVariantMap& payload = {});
     void requestModuleSwitch(const QString& targetModule);
-    void requestResync(const QString& reason) const;
+    void requestResync(const QString& reason);
 
 signals:
     void actionDispatched(const UiAction& action);
+    void resyncRequested(const QString& reason);
 
 private:
     QString m_sourceModule;
-    ILogicGateway* m_gateway = nullptr;
+    ILogicRuntimePort* m_runtimePort = nullptr;
 };

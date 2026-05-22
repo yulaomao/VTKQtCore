@@ -1,0 +1,1 @@
+{"delay_ms": 0, "message": {"module": "shell", "type": "server_command", "value": {"commandType": "switch_module", "targetModule": "planning"}}}

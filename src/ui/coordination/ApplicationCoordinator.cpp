@@ -3,20 +3,19 @@
 #include "ui/pages/PageManager.h"
 #include "ui/globalui/GlobalUiManager.h"
 #include "shell/WorkspaceShell.h"
-#include "logic/gateway/ILogicGateway.h"
+#include "logic/runtime/ILogicRuntimePort.h"
 #include "UiActionDispatcher.h"
 
-ApplicationCoordinator::ApplicationCoordinator(ILogicGateway* gateway,
+ApplicationCoordinator::ApplicationCoordinator(ILogicRuntimePort* runtimePort,
                                                PageManager* pageMgr,
                                                GlobalUiManager* globalUiMgr,
                                                WorkspaceShell* workspaceShell,
                                                QObject* parent)
     : QObject(parent)
-    , m_gateway(gateway)
     , m_pageManager(pageMgr)
     , m_globalUiManager(globalUiMgr)
     , m_workspaceShell(workspaceShell)
-    , m_actionDispatcher(new UiActionDispatcher(QStringLiteral("shell"), gateway, this))
+    , m_actionDispatcher(new UiActionDispatcher(QStringLiteral("shell"), runtimePort, this))
 {
     connect(m_actionDispatcher, &UiActionDispatcher::actionDispatched,
             this, [this](const UiAction& action) {

@@ -3,10 +3,10 @@
 #include "ModuleUiAssemblers.h"
 #include "SoftwareInitializerFactory.h"
 #include "ApplicationCoordinator.h"
-#include "ILogicGateway.h"
 #include "LogicRuntime.h"
 #include "MainWindow.h"
 #include "communication/hub/CommunicationHub.h"
+#include "logic/runtime/ILogicRuntimePort.h"
 #include "logic/registry/ModuleLogicHandler.h"
 #include "logic/registry/ModuleLogicRegistry.h"
 #include "modules/intermoduletest/InterModuleReceiverLogicHandler.h"
@@ -24,6 +24,7 @@
 #include "PointPickModuleLogicHandler.h"
 #include "PlanningModuleLogicHandler.h"
 #include "NavigationModuleLogicHandler.h"
+#include "ReconstructionModuleLogicHandler.h"
 
 #include <QDebug>
 #include <QHBoxLayout>
@@ -96,18 +97,11 @@ QString ackChannelFromProfile(const QVariantMap& profile)
         defaultAckChannel());
 }
 
-QString gatewayStateName(ILogicGateway* gateway)
+QString initialConnectionStateName(RunMode mode)
 {
-    if (!gateway) {
-        return QStringLiteral("Disconnected");
-    }
-
-    switch (gateway->getConnectionState()) {
-    case ILogicGateway::Connected:
+    switch (mode) {
+    case RunMode::Local:
         return QStringLiteral("Connected");
-    case ILogicGateway::Degraded:
-        return QStringLiteral("Degraded");
-    case ILogicGateway::Disconnected:
     default:
         return QStringLiteral("Disconnected");
     }
@@ -187,13 +181,13 @@ void DefaultSoftwareInitializer::registerModuleLogicHandlers(LogicRuntime* runti
 void DefaultSoftwareInitializer::registerModuleUIs(MainWindow* mainWindow,
                                                    LogicRuntime* runtime,
                                                    ApplicationCoordinator* appCoord,
-                                                   ILogicGateway* gateway)
+                                                   ILogicRuntimePort* runtimePort)
 {
     const ModuleUiAssemblyContext context{
         mainWindow,
         runtime,
         appCoord,
-        gateway,
+        runtimePort,
         m_pageManager,
         m_globalUiManager
     };
@@ -218,11 +212,9 @@ void DefaultSoftwareInitializer::registerModuleUIs(MainWindow* mainWindow,
 void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
                                                       LogicRuntime* runtime,
                                                       ApplicationCoordinator* appCoord,
-                                                      ILogicGateway* gateway)
+                                                      ILogicRuntimePort* runtimePort)
 {
-    Q_UNUSED(runtime);
-
-    if (!mainWindow || !appCoord || !gateway) {
+    if (!mainWindow || !runtime || !appCoord || !runtimePort) {
         return;
     }
 
@@ -234,26 +226,27 @@ void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
     workspaceShell->getRightWidget()->setFixedWidth(320);
 
     const QStringList workflowSequence = configuredModuleDisplayOrder();
+    const QString initialConnectionState = initialConnectionStateName(getRunMode());
 
     auto* workflowMenu = new ModuleNavigationModule(workspaceShell);
     workflowMenu->setModuleDisplayOrder(workflowSequence);
-    workflowMenu->setConnectionState(gatewayStateName(gateway));
+    workflowMenu->setConnectionState(initialConnectionState);
     workflowMenu->setActionDispatcher(appCoord->getActionDispatcher());
 
     auto* statusBar = new ModuleStatusBarModule(workspaceShell);
     statusBar->setModuleDisplayOrder(workflowSequence);
-    statusBar->setConnectionState(gatewayStateName(gateway));
+    statusBar->setConnectionState(initialConnectionState);
     statusBar->setActionDispatcher(appCoord->getActionDispatcher());
 
     auto* interModuleSenderDispatcher = new UiActionDispatcher(
         InterModuleTest::senderModuleId(),
-        gateway,
+        runtimePort,
         workspaceShell);
 
     auto* topSenderWidget = new InterModuleSenderWidget(
         interModuleSenderDispatcher,
         workspaceShell->getTopWidget());
-    auto* topReceiverWidget = new InterModuleReceiverWidget(gateway, workspaceShell->getTopWidget());
+    auto* topReceiverWidget = new InterModuleReceiverWidget(runtime, workspaceShell->getTopWidget());
 
     if (auto* topLayout = qobject_cast<QHBoxLayout*>(workspaceShell->getTopWidget()->layout())) {
         topLayout->addWidget(topSenderWidget, 0, Qt::AlignLeft | Qt::AlignVCenter);
@@ -279,8 +272,8 @@ void DefaultSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
                      statusBar, &ModuleStatusBarModule::setConnectionState);
     QObject::connect(appCoord, &ApplicationCoordinator::healthSnapshotChanged,
                      statusBar, &ModuleStatusBarModule::setHealthSnapshot);
-    QObject::connect(gateway, &ILogicGateway::notificationReceived,
-                     workflowMenu, &ModuleNavigationModule::onGatewayNotification);
+    QObject::connect(runtime, &LogicRuntime::logicNotification,
+                     workflowMenu, &ModuleNavigationModule::onLogicNotification);
 }
 
 void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runtime)

@@ -4,7 +4,7 @@
 
 #include "contracts/LogicNotification.h"
 
-class ILogicGateway;
+class LogicRuntime;
 class QLabel;
 
 class InterModuleReceiverWidget : public QFrame
@@ -12,10 +12,10 @@ class InterModuleReceiverWidget : public QFrame
     Q_OBJECT
 
 public:
-    explicit InterModuleReceiverWidget(ILogicGateway* gateway, QWidget* parent = nullptr);
+    explicit InterModuleReceiverWidget(LogicRuntime* runtime, QWidget* parent = nullptr);
 
 public slots:
-    void onGatewayNotification(const LogicNotification& notification);
+    void onLogicNotification(const LogicNotification& notification);
 
 private:
     void setPreviewText(const QString& text);

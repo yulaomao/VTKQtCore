@@ -1,13 +1,12 @@
 #include "ModuleCoordinator.h"
-#include "logic/gateway/ILogicGateway.h"
+#include "logic/runtime/ILogicRuntimePort.h"
 #include "UiActionDispatcher.h"
 
-ModuleCoordinator::ModuleCoordinator(const QString& moduleId, ILogicGateway* gateway,
+ModuleCoordinator::ModuleCoordinator(const QString& moduleId, ILogicRuntimePort* runtimePort,
                                      QObject* parent)
     : QObject(parent)
     , m_moduleId(moduleId)
-    , m_gateway(gateway)
-    , m_actionDispatcher(new UiActionDispatcher(moduleId, gateway, this))
+    , m_actionDispatcher(new UiActionDispatcher(moduleId, runtimePort, this))
     , m_mainPage(nullptr)
 {
     connect(m_actionDispatcher, &UiActionDispatcher::actionDispatched,

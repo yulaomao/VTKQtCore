@@ -16,10 +16,10 @@ public:
     void registerModuleLogicHandlers(LogicRuntime* runtime) override;
     void registerModuleUIs(MainWindow* mainWindow, LogicRuntime* runtime,
                            ApplicationCoordinator* appCoord,
-                           ILogicGateway* gateway) override;
+                           ILogicRuntimePort* runtimePort) override;
     void registerShellModules(MainWindow* mainWindow, LogicRuntime* runtime,
                               ApplicationCoordinator* appCoord,
-                              ILogicGateway* gateway) override;
+                              ILogicRuntimePort* runtimePort) override;
     void configureAdditionalSettings(LogicRuntime* runtime) override;
     void registerCommunicationSources(CommunicationHub* commHub) override;
 };

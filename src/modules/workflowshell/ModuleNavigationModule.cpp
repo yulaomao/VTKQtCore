@@ -322,7 +322,7 @@ void ModuleNavigationModule::setConnectionState(const QString& state)
     refreshModuleSummary();
 }
 
-void ModuleNavigationModule::onGatewayNotification(const LogicNotification& notification)
+void ModuleNavigationModule::onLogicNotification(const LogicNotification& notification)
 {
     if (notification.eventType != LogicNotification::CustomEvent) {
         return;

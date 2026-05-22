@@ -1,7 +1,7 @@
 #include "BaseSoftwareInitializer.h"
 #include "MainWindow.h"
 #include "LogicRuntime.h"
-#include "ILogicGateway.h"
+#include "logic/runtime/ILogicRuntimePort.h"
 #include "CommunicationHub.h"
 #include "ApplicationCoordinator.h"
 #include "PageManager.h"
@@ -31,6 +31,23 @@ QStringList variantToStringList(const QVariant& value)
     return result;
 }
 
+void connectDispatcherToCommunicationHub(UiActionDispatcher* dispatcher,
+                                         CommunicationHub* commHub)
+{
+    if (!dispatcher || !commHub) {
+        return;
+    }
+
+    QObject::connect(dispatcher, &UiActionDispatcher::actionDispatched,
+                     commHub, [commHub](const UiAction& action) {
+                         commHub->sendActionRequest(action, false);
+                     });
+    QObject::connect(dispatcher, &UiActionDispatcher::resyncRequested,
+                     commHub, [commHub](const QString& reason) {
+                         commHub->sendResyncRequest(reason, false);
+                     });
+}
+
 }
 
 BaseSoftwareInitializer::BaseSoftwareInitializer(const QString& softwareType, RunMode mode, QObject* parent)
@@ -51,7 +68,7 @@ QVariantMap BaseSoftwareInitializer::getSoftwareProfile() const
 }
 
 void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* logicRuntime,
-                                         ILogicGateway* gateway, CommunicationHub* commHub)
+                                         ILogicRuntimePort* runtimePort, CommunicationHub* commHub)
 {
     const QStringList moduleDisplayOrder = configuredModuleDisplayOrder();
     const QString initialModule = configuredInitialModule();
@@ -67,7 +84,7 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
 
     // 3. Create ApplicationCoordinator
     m_appCoordinator = new ApplicationCoordinator(
-        gateway,
+        runtimePort,
         m_pageManager,
         m_globalUiManager,
         mainWindow->getWorkspaceShell(),
@@ -92,19 +109,28 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
     registerModuleLogicHandlers(logicRuntime);
 
     // 6. Register module UIs
-    registerModuleUIs(mainWindow, logicRuntime, m_appCoordinator, gateway);
+    registerModuleUIs(mainWindow, logicRuntime, m_appCoordinator, runtimePort);
 
     // 7. Register optional shell modules
-    registerShellModules(mainWindow, logicRuntime, m_appCoordinator, gateway);
+    registerShellModules(mainWindow, logicRuntime, m_appCoordinator, runtimePort);
 
     // 8. Configure additional settings
     configureAdditionalSettings(logicRuntime);
 
+    if (commHub && getRunMode() == RunMode::Socket) {
+        for (UiActionDispatcher* dispatcher : findChildren<UiActionDispatcher*>()) {
+            connectDispatcherToCommunicationHub(dispatcher, commHub);
+        }
+        for (UiActionDispatcher* dispatcher : mainWindow->findChildren<UiActionDispatcher*>()) {
+            connectDispatcherToCommunicationHub(dispatcher, commHub);
+        }
+    }
+
     // 8.1 Register communication sources once module selection has been resolved
     registerCommunicationSources(commHub);
 
-    // 9. Connect gateway notifications back into the UI coordination layer
-    QObject::connect(gateway, &ILogicGateway::notificationReceived,
+    // 9. Connect runtime notifications back into the UI coordination layer
+    QObject::connect(logicRuntime, &LogicRuntime::logicNotification,
                      m_appCoordinator, &ApplicationCoordinator::onShellNotification);
 
     if (commHub && getRunMode() == RunMode::Socket) {
@@ -135,12 +161,12 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
 void BaseSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
                                                    LogicRuntime* runtime,
                                                    ApplicationCoordinator* appCoord,
-                                                   ILogicGateway* gateway)
+                                                   ILogicRuntimePort* runtimePort)
 {
     Q_UNUSED(mainWindow);
     Q_UNUSED(runtime);
     Q_UNUSED(appCoord);
-    Q_UNUSED(gateway);
+    Q_UNUSED(runtimePort);
 }
 
 void BaseSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)

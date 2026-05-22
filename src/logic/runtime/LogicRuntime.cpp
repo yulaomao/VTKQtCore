@@ -1,7 +1,6 @@
 #include "LogicRuntime.h"
 
 #include "logic/runtime/IPromptAudioService.h"
-#include "logic/runtime/AppMessageCenter.h"
 #include "scene/SceneGraph.h"
 #include "workflow/ActiveModuleState.h"
 #include "registry/ModuleLogicRegistry.h"
@@ -105,6 +104,35 @@ QString describeAction(const UiAction& action)
     return command.isEmpty() ? UiAction::toString(action.actionType) : command;
 }
 
+QString resolveActionTargetModule(const UiAction& action,
+                                  const ActiveModuleState* activeModuleState)
+{
+    QString targetModule = action.payload.value(QStringLiteral("targetModule")).toString().trimmed();
+    if (targetModule.isEmpty()) {
+        targetModule = action.payload.value(QStringLiteral("targetName")).toString().trimmed();
+    }
+    if (targetModule.isEmpty()) {
+        targetModule = action.module.trimmed();
+    }
+    if (targetModule.compare(QStringLiteral("shell"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("shell");
+    }
+    if (targetModule.isEmpty() && activeModuleState) {
+        targetModule = activeModuleState->getCurrentModule();
+    }
+    return targetModule.trimmed();
+}
+
+QString resolveSampleTargetModule(const StateSample& sample,
+                                  const ActiveModuleState* activeModuleState)
+{
+    QString targetModule = sample.module.trimmed();
+    if (targetModule.isEmpty() && activeModuleState) {
+        targetModule = activeModuleState->getCurrentModule();
+    }
+    return targetModule.trimmed();
+}
+
 bool isGlobalModuleSample(const StateSample& sample)
 {
     return sample.module.compare(QStringLiteral("global"), Qt::CaseInsensitive) == 0;
@@ -122,12 +150,7 @@ LogicRuntime::LogicRuntime(QObject* parent)
     , m_sceneGraph(new SceneGraph(this))
     , m_activeModuleState(new ActiveModuleState(this))
     , m_moduleLogicRegistry(new ModuleLogicRegistry(this))
-    , m_appMessageCenter(new AppMessageCenter(this))
 {
-    m_appMessageCenter->setModuleRegistry(m_moduleLogicRegistry);
-    m_appMessageCenter->setActiveModuleState(m_activeModuleState);
-    connect(m_appMessageCenter, &AppMessageCenter::logicNotification,
-            this, &LogicRuntime::logicNotification);
 }
 
 SceneGraph* LogicRuntime::getSceneGraph() const
@@ -143,11 +166,6 @@ ActiveModuleState* LogicRuntime::getActiveModuleState() const
 ModuleLogicRegistry* LogicRuntime::getModuleLogicRegistry() const
 {
     return m_moduleLogicRegistry;
-}
-
-AppMessageCenter* LogicRuntime::getAppMessageCenter() const
-{
-    return m_appMessageCenter;
 }
 
 void LogicRuntime::setPromptAudioService(IPromptAudioService* promptAudioService)
@@ -235,6 +253,11 @@ ModuleInvokeResult LogicRuntime::invokeModule(const ModuleInvokeRequest& request
     }
 
     return handler->handleModuleInvoke(request);
+}
+
+void LogicRuntime::sendAction(const UiAction& action)
+{
+    onActionReceived(action);
 }
 
 void LogicRuntime::onActionReceived(const UiAction& action)
@@ -450,7 +473,48 @@ void LogicRuntime::onServerCommandReceived(const QString& commandType, const QVa
 
 void LogicRuntime::onStateSampleReceived(const StateSample& sample)
 {
-    m_appMessageCenter->dispatchStateSample(sample);
+    if (isGlobalModuleSample(sample)) {
+        const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
+        for (const QString& moduleId : modules) {
+            if (ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(moduleId)) {
+                handler->handleStateSample(sample);
+            }
+        }
+        return;
+    }
+
+    const QString requestedTarget = resolveSampleTargetModule(sample, m_activeModuleState);
+    const QString resolvedTarget = m_moduleLogicRegistry->resolveModuleId(requestedTarget);
+    if (resolvedTarget.isEmpty()) {
+        emit logicNotification(createShellError(
+            QStringLiteral("APP_MESSAGE_DATA_TARGET_UNREGISTERED"),
+            QStringLiteral("No module handler registered for state sample target '%1'")
+                .arg(requestedTarget),
+            true,
+            QStringLiteral("Check module registration or active module state before routing samples."),
+            {{QStringLiteral("sampleId"), sample.sampleId},
+             {QStringLiteral("sampleType"), sample.sampleType},
+             {QStringLiteral("targetModule"), requestedTarget}}));
+        return;
+    }
+
+    ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(resolvedTarget);
+    if (!handler) {
+        emit logicNotification(createShellError(
+            QStringLiteral("APP_MESSAGE_DATA_TARGET_UNREGISTERED"),
+            QStringLiteral("No module handler registered for state sample target '%1'")
+                .arg(resolvedTarget),
+            true,
+            QStringLiteral("Check module registration or active module state before routing samples."),
+            {{QStringLiteral("sampleId"), sample.sampleId},
+             {QStringLiteral("sampleType"), sample.sampleType},
+             {QStringLiteral("targetModule"), resolvedTarget}}));
+        return;
+    }
+
+    StateSample routedSample = sample;
+    routedSample.module = resolvedTarget;
+    handler->handleStateSample(routedSample);
 }
 
 // ---------------------------------------------------------------------------
@@ -464,25 +528,13 @@ void LogicRuntime::onModulePollBatch(const QString& module,
         return;
     }
 
-    auto dispatchBatch = [this, &values](const QString& targetModule) {
-        // Polling batches use the canonical "poll_batch" sourceId and sampleType
-        // so existing module handlers continue to recognize the legacy batch path.
-        m_appMessageCenter->dispatchStateSample(StateSample::create(
-            QStringLiteral("poll_batch"),
-            targetModule,
-            QStringLiteral("poll_batch"),
-            {{QStringLiteral("values"), values}}));
-    };
-
-    if (isGlobalModuleName(module)) {
-        const QStringList modules = m_moduleLogicRegistry->getRegisteredModules();
-        for (const QString& moduleId : modules) {
-            dispatchBatch(moduleId);
-        }
-        return;
-    }
-
-    dispatchBatch(module);
+    // Polling batches keep the existing sampleType/sourceId contract so
+    // module handlers continue to recognize the legacy batch path.
+    onStateSampleReceived(StateSample::create(
+        QStringLiteral("poll_batch"),
+        module,
+        QStringLiteral("poll_batch"),
+        {{QStringLiteral("values"), values}}));
 }
 
 void LogicRuntime::onModuleSubscription(const QString& module,
@@ -630,7 +682,65 @@ void LogicRuntime::switchToModule(const QString& targetModule, const QString& so
 
 void LogicRuntime::routeToModuleHandler(const UiAction& action)
 {
-    m_appMessageCenter->dispatchUiIntent(action);
+    const QString requestedTarget = resolveActionTargetModule(action, m_activeModuleState);
+    if (requestedTarget.isEmpty()) {
+        LogicNotification notification = createShellError(
+            QStringLiteral("APP_MESSAGE_TARGET_EMPTY"),
+            QStringLiteral("No module target is available for action '%1'")
+                .arg(describeAction(action)),
+            true,
+            QStringLiteral("Specify payload.targetModule or activate a module before dispatching the action."),
+            {{QStringLiteral("actionId"), action.actionId},
+             {QStringLiteral("sourceModule"), action.module}});
+        notification.setSourceActionId(action.actionId);
+        emit logicNotification(notification);
+        return;
+    }
+
+    if (requestedTarget.compare(QStringLiteral("shell"), Qt::CaseInsensitive) == 0) {
+        LogicNotification notification = createShellError(
+            QStringLiteral("APP_MESSAGE_TARGET_EMPTY"),
+            QStringLiteral("Unsupported shell-level action '%1'").arg(describeAction(action)),
+            true,
+            QStringLiteral("Use dedicated shell commands such as switch_module or requestResync."),
+            {{QStringLiteral("actionId"), action.actionId},
+             {QStringLiteral("sourceModule"), action.module}});
+        notification.setSourceActionId(action.actionId);
+        emit logicNotification(notification);
+        return;
+    }
+
+    const QString resolvedTarget = m_moduleLogicRegistry->resolveModuleId(requestedTarget);
+    if (resolvedTarget.isEmpty()) {
+        LogicNotification notification = createShellError(
+            QStringLiteral("APP_MESSAGE_TARGET_UNREGISTERED"),
+            QStringLiteral("No module handler registered for app message target '%1'")
+                .arg(requestedTarget),
+            true,
+            QStringLiteral("Check module registration and the requested targetModule."),
+            {{QStringLiteral("targetModule"), requestedTarget},
+             {QStringLiteral("actionId"), action.actionId}});
+        notification.setSourceActionId(action.actionId);
+        emit logicNotification(notification);
+        return;
+    }
+
+    ModuleLogicHandler* handler = m_moduleLogicRegistry->getHandler(resolvedTarget);
+    if (!handler) {
+        LogicNotification notification = createShellError(
+            QStringLiteral("APP_MESSAGE_TARGET_UNREGISTERED"),
+            QStringLiteral("No module handler registered for app message target '%1'")
+                .arg(resolvedTarget),
+            true,
+            QStringLiteral("Check module registration and the requested targetModule."),
+            {{QStringLiteral("targetModule"), resolvedTarget},
+             {QStringLiteral("actionId"), action.actionId}});
+        notification.setSourceActionId(action.actionId);
+        emit logicNotification(notification);
+        return;
+    }
+
+    handler->handleAction(action);
 }
 
 bool LogicRuntime::acceptIncomingSequence(const QString& streamKey,

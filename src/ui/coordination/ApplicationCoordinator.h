@@ -9,7 +9,7 @@
 #include "contracts/UiAction.h"
 #include "contracts/LogicNotification.h"
 
-class ILogicGateway;
+class ILogicRuntimePort;
 class PageManager;
 class GlobalUiManager;
 class ModuleCoordinator;
@@ -21,7 +21,7 @@ class ApplicationCoordinator : public QObject
     Q_OBJECT
 
 public:
-    ApplicationCoordinator(ILogicGateway* gateway, PageManager* pageMgr,
+    ApplicationCoordinator(ILogicRuntimePort* runtimePort, PageManager* pageMgr,
                            GlobalUiManager* globalUiMgr,
                            WorkspaceShell* workspaceShell,
                            QObject* parent = nullptr);
@@ -46,7 +46,6 @@ signals:
     void healthSnapshotChanged(const QVariantMap& snapshot);
 
 private:
-    ILogicGateway* m_gateway;
     PageManager* m_pageManager;
     GlobalUiManager* m_globalUiManager;
     WorkspaceShell* m_workspaceShell;

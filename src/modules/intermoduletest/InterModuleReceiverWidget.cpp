@@ -1,7 +1,7 @@
 #include "InterModuleReceiverWidget.h"
 
 #include "InterModuleTestConstants.h"
-#include "logic/gateway/ILogicGateway.h"
+#include "logic/runtime/LogicRuntime.h"
 #include "ui/coordination/ModuleUiEventBinding.h"
 
 #include <QHBoxLayout>
@@ -62,7 +62,7 @@ bool isReceiverTargeted(const LogicNotification& notification)
 
 }
 
-InterModuleReceiverWidget::InterModuleReceiverWidget(ILogicGateway* gateway, QWidget* parent)
+InterModuleReceiverWidget::InterModuleReceiverWidget(LogicRuntime* runtime, QWidget* parent)
     : QFrame(parent)
 {
     setObjectName(QStringLiteral("interModuleReceiverWidget"));
@@ -101,17 +101,18 @@ InterModuleReceiverWidget::InterModuleReceiverWidget(ILogicGateway* gateway, QWi
 
     layout->addLayout(contentLayout);
 
-    if (gateway) {
+    if (runtime) {
         ModuleUiEventBinding::bind(
-            gateway,
+            runtime,
+            &LogicRuntime::logicNotification,
             InterModuleTest::receiverModuleId(),
             InterModuleTest::previewTextEvent(),
             this,
             [this](const QVariantMap& payload) {
                 setPreviewText(payload.value(QStringLiteral("text")).toString());
             });
-        connect(gateway, &ILogicGateway::notificationReceived,
-                this, &InterModuleReceiverWidget::onGatewayNotification);
+        connect(runtime, &LogicRuntime::logicNotification,
+                this, &InterModuleReceiverWidget::onLogicNotification);
     }
 }
 
@@ -133,7 +134,7 @@ void InterModuleReceiverWidget::setCommittedText(const QString& text)
     m_messageLabel->setText(text);
 }
 
-void InterModuleReceiverWidget::onGatewayNotification(const LogicNotification& notification)
+void InterModuleReceiverWidget::onLogicNotification(const LogicNotification& notification)
 {
     if (!m_messageLabel || notification.eventType != LogicNotification::CustomEvent) {
         return;

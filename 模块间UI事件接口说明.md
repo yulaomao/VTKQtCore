@@ -2,7 +2,7 @@
 
 这份文档说明当前工程里新增的这套接口：
 
-`模块 A 的按钮 -> UiActionDispatcher::sendModuleUiEvent() -> AppMessageCenter 按注册名路由 -> 模块 B logic 转发 -> 模块 B widget 更新`
+`模块 A 的按钮 -> UiActionDispatcher::sendModuleUiEvent() -> LogicRuntime 按 targetModule 直路由 -> 模块 B logic 转发 -> 模块 B widget 更新`
 
 它的目标不是让模块 A 直接拿到模块 B 的 widget 指针并调用成员函数，而是提供一条**轻量、可约束、可追踪**的跨模块 UI 事件通道。
 
@@ -128,7 +128,8 @@ void emitModuleUiEvent(const QString& eventName,
 
 ```cpp
 ModuleUiEventBinding::bind(
-    gateway,
+    notificationSource,
+    &LogicRuntime::logicNotification,
     moduleId,
     eventName,
     receiver,
@@ -159,9 +160,9 @@ m_actionDispatcher->sendModuleUiEvent(
     {{QStringLiteral("text"), text}});
 ```
 
-### 第 2 步：`AppMessageCenter` 按 `targetModule` 路由 action
+### 第 2 步：`LogicRuntime` 按 `targetModule` 直接路由 action
 
-`LogicRuntime` 只保留兼容入口和切模块等 shell 级处理，普通模块定向消息会交给 `AppMessageCenter`，由运行时注册表解析 moduleId / alias 后投递给目标模块。
+当前实现里，`UiActionDispatcher` 会通过 `ILogicRuntimePort` 直接把 action 送进 `LogicRuntime`。`LogicRuntime` 负责解析 `targetModule`、复用 `ModuleLogicRegistry` 做 moduleId / alias 解析，并把动作投递给目标模块 handler。
 
 ### 第 3 步：模块 B 的 logic 决定是否转发
 
@@ -180,7 +181,8 @@ void ModuleBLogicHandler::handleAction(const UiAction& action)
 
 ```cpp
 ModuleUiEventBinding::bind(
-    gateway,
+    runtime,
+    &LogicRuntime::logicNotification,
     QStringLiteral("module_b"),
     QStringLiteral("preview_text"),
     this,
