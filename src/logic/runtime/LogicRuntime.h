@@ -29,6 +29,7 @@ public:
     ModuleLogicRegistry* getModuleLogicRegistry() const;
     ModuleInvokeResult invokeModule(const ModuleInvokeRequest& request) override;
     void sendAction(const UiAction& action) override;
+    void initializeActiveModule(const QString& moduleId);
     void setPromptAudioService(IPromptAudioService* promptAudioService);
     bool hasPromptAudioService() const;
     bool playPromptAudioPreset(const QString& presetId) override;

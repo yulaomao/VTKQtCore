@@ -1,10 +1,7 @@
 #include "ModuleUiAssemblers.h"
 
-#include "MainWindow.h"
-#include "shell/WorkspaceShell.h"
 #include "LogicRuntime.h"
 #include "logic/runtime/ILogicRuntimePort.h"
-#include "PageManager.h"
 #include "ApplicationCoordinator.h"
 #include "GlobalUiManager.h"
 #include "ui/coordination/ModuleCoordinator.h"
@@ -15,7 +12,7 @@
 #include "PointPickStatusPanel.h"
 #include "PlanningPage.h"
 #include "NavigationPage.h"
-#include "ReconstructionPage.h"
+#include "modules/reconstruction/ReconstructionPage.h"
 #include "ui/vtk3d/VtkSceneWindow.h"
 
 #include <QFrame>
@@ -53,8 +50,7 @@ QWidget* createModuleSummaryPanel(const QString& title,
 
 bool isContextValid(const ModuleUiAssemblyContext& context)
 {
-    return context.mainWindow && context.applicationCoordinator &&
-           context.runtimePort && context.pageManager;
+    return context.applicationCoordinator && context.runtimePort;
 }
 
 SceneGraph* sceneGraphFromContext(const ModuleUiAssemblyContext& context)
@@ -77,15 +73,13 @@ void registerParamsModuleUi(const ModuleUiAssemblyContext& context)
         context.applicationCoordinator);
     auto* page = new ParamsPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
-    coordinator->addAuxiliaryWidget(
+    coordinator->addSupplementaryView(
         createModuleSummaryPanel(
             QStringLiteral("Parameters"),
             QStringLiteral("维护当前流程的参数有效性与数量概况。"),
             &summaryStatus,
-            context.mainWindow->getWorkspaceShell()),
-        ModuleCoordinator::AuxiliaryRegion::Right);
+            nullptr));
     coordinator->setMainPage(page);
-    context.pageManager->registerPage(QStringLiteral("params"), page);
     context.applicationCoordinator->registerModuleCoordinator(coordinator);
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
@@ -121,13 +115,12 @@ void registerDataGenModuleUi(const ModuleUiAssemblyContext& context)
         context.applicationCoordinator);
     auto* page = new DataGenPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
-    coordinator->addAuxiliaryWidget(
+    coordinator->addSupplementaryView(
         createModuleSummaryPanel(
             QStringLiteral("Data Generator"),
             QStringLiteral("创建 Point/Line/Model/Transform 节点，维护显示属性与父子变换。"),
             &summaryStatus,
-            context.mainWindow->getWorkspaceShell()),
-        ModuleCoordinator::AuxiliaryRegion::Right);
+            nullptr));
 
     auto* dataGenWindow = new VtkSceneWindow(
         QStringLiteral("datagen_main"),
@@ -153,7 +146,6 @@ void registerDataGenModuleUi(const ModuleUiAssemblyContext& context)
     }
 
     coordinator->setMainPage(page);
-    context.pageManager->registerPage(QStringLiteral("datagen"), page);
     context.applicationCoordinator->registerModuleCoordinator(coordinator);
 
     QObject::connect(coordinator, &ModuleCoordinator::activated,
@@ -191,12 +183,9 @@ void registerPointPickModuleUi(const ModuleUiAssemblyContext& context)
         context.applicationCoordinator);
     auto* page = new PointPickPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
-    auto* statusPanel = new PointPickStatusPanel(context.mainWindow->getWorkspaceShell());
-    coordinator->addAuxiliaryWidget(
-        statusPanel,
-        ModuleCoordinator::AuxiliaryRegion::Right);
+    auto* statusPanel = new PointPickStatusPanel(nullptr);
+    coordinator->addSupplementaryView(statusPanel);
     coordinator->setMainPage(page);
-    context.pageManager->registerPage(QStringLiteral("pointpick"), page);
     context.applicationCoordinator->registerModuleCoordinator(coordinator);
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,
@@ -239,13 +228,12 @@ void registerPlanningModuleUi(const ModuleUiAssemblyContext& context)
         context.applicationCoordinator);
     auto* page = new PlanningPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
-    coordinator->addAuxiliaryWidget(
+    coordinator->addSupplementaryView(
         createModuleSummaryPanel(
             QStringLiteral("Planning"),
             QStringLiteral("显示规划状态与当前 3D 视图工作摘要。"),
             &summaryStatus,
-            context.mainWindow->getWorkspaceShell()),
-        ModuleCoordinator::AuxiliaryRegion::Right);
+            nullptr));
 
     auto* planningWindow = new VtkSceneWindow(
         QStringLiteral("planning_main"),
@@ -293,7 +281,6 @@ void registerPlanningModuleUi(const ModuleUiAssemblyContext& context)
     }
 
     coordinator->setMainPage(page);
-    context.pageManager->registerPage(QStringLiteral("planning"), page);
     context.applicationCoordinator->registerModuleCoordinator(coordinator);
 
     QObject::connect(coordinator, &ModuleCoordinator::activated,
@@ -333,13 +320,12 @@ void registerNavigationModuleUi(const ModuleUiAssemblyContext& context)
         context.applicationCoordinator);
     auto* page = new NavigationPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
-    coordinator->addAuxiliaryWidget(
+    coordinator->addSupplementaryView(
         createModuleSummaryPanel(
             QStringLiteral("Navigation"),
             QStringLiteral("展示导航运行状态与实时位姿摘要。"),
             &summaryStatus,
-            context.mainWindow->getWorkspaceShell()),
-        ModuleCoordinator::AuxiliaryRegion::Right);
+            nullptr));
 
     auto* navigationWindow = new VtkSceneWindow(
         QStringLiteral("navigation_main"),
@@ -365,7 +351,6 @@ void registerNavigationModuleUi(const ModuleUiAssemblyContext& context)
     }
 
     coordinator->setMainPage(page);
-    context.pageManager->registerPage(QStringLiteral("navigation"), page);
     context.applicationCoordinator->registerModuleCoordinator(coordinator);
 
     QObject::connect(coordinator, &ModuleCoordinator::activated,
@@ -419,15 +404,13 @@ void registerReconstructionModuleUi(const ModuleUiAssemblyContext& context)
         context.applicationCoordinator);
     auto* page = new ReconstructionPage();
     page->setActionDispatcher(coordinator->getActionDispatcher());
-    coordinator->addAuxiliaryWidget(
+    coordinator->addSupplementaryView(
         createModuleSummaryPanel(
             QStringLiteral("Reconstruction"),
             QStringLiteral("执行数据重建操作并显示重建状态。"),
             &summaryStatus,
-            context.mainWindow->getWorkspaceShell()),
-        ModuleCoordinator::AuxiliaryRegion::Right);
+            nullptr));
     coordinator->setMainPage(page);
-    context.pageManager->registerPage(QStringLiteral("reconstruction"), page);
     context.applicationCoordinator->registerModuleCoordinator(coordinator);
 
     QObject::connect(coordinator, &ModuleCoordinator::notificationForPage,

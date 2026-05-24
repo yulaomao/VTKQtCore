@@ -260,6 +260,26 @@ void LogicRuntime::sendAction(const UiAction& action)
     onActionReceived(action);
 }
 
+void LogicRuntime::initializeActiveModule(const QString& moduleId)
+{
+    const QString targetModule = moduleId.trimmed();
+    if (targetModule.isEmpty()) {
+        return;
+    }
+
+    if (!m_moduleLogicRegistry->getHandler(targetModule)) {
+        emit logicNotification(createShellError(
+            QStringLiteral("LOGIC_INITIAL_MODULE_UNREGISTERED"),
+            QStringLiteral("No module handler registered for initial module '%1'").arg(targetModule),
+            true,
+            QStringLiteral("Check module registration and the configured initial module."),
+            {{QStringLiteral("targetModule"), targetModule}}));
+        return;
+    }
+
+    switchToModule(targetModule, QString());
+}
+
 void LogicRuntime::onActionReceived(const UiAction& action)
 {
     const QString command = actionCommand(action.payload);

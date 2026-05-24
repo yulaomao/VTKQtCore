@@ -1,20 +1,14 @@
 #include "ApplicationCoordinator.h"
 #include "ModuleCoordinator.h"
-#include "ui/pages/PageManager.h"
 #include "ui/globalui/GlobalUiManager.h"
-#include "shell/WorkspaceShell.h"
 #include "logic/runtime/ILogicRuntimePort.h"
 #include "UiActionDispatcher.h"
 
 ApplicationCoordinator::ApplicationCoordinator(ILogicRuntimePort* runtimePort,
-                                               PageManager* pageMgr,
                                                GlobalUiManager* globalUiMgr,
-                                               WorkspaceShell* workspaceShell,
                                                QObject* parent)
     : QObject(parent)
-    , m_pageManager(pageMgr)
     , m_globalUiManager(globalUiMgr)
-    , m_workspaceShell(workspaceShell)
     , m_actionDispatcher(new UiActionDispatcher(QStringLiteral("shell"), runtimePort, this))
 {
     connect(m_actionDispatcher, &UiActionDispatcher::actionDispatched,
@@ -41,7 +35,7 @@ UiActionDispatcher* ApplicationCoordinator::getActionDispatcher() const
     return m_actionDispatcher;
 }
 
-void ApplicationCoordinator::setCurrentModule(const QString& moduleId)
+void ApplicationCoordinator::updateCurrentModule(const QString& moduleId)
 {
     if (moduleId == m_currentModuleId) {
         return;
@@ -53,29 +47,10 @@ void ApplicationCoordinator::setCurrentModule(const QString& moduleId)
         oldCoord->deactivate();
     }
 
-    if (m_workspaceShell) {
-        m_workspaceShell->clearRightAuxiliary();
-        m_workspaceShell->clearBottomAuxiliary();
-    }
-
     m_currentModuleId = moduleId;
 
-    // Switch page
-    if (m_pageManager) {
-        m_pageManager->switchToPage(moduleId);
-    }
-
-    // Activate new module
     auto* newCoord = m_moduleCoordinators.value(moduleId, nullptr);
     if (newCoord) {
-        if (m_workspaceShell) {
-            for (QWidget* widget : newCoord->getAuxiliaryWidgets(ModuleCoordinator::AuxiliaryRegion::Right)) {
-                m_workspaceShell->mountRightAuxiliary(widget);
-            }
-            for (QWidget* widget : newCoord->getAuxiliaryWidgets(ModuleCoordinator::AuxiliaryRegion::Bottom)) {
-                m_workspaceShell->mountBottomAuxiliary(widget);
-            }
-        }
         newCoord->activate();
     }
 
@@ -85,17 +60,6 @@ void ApplicationCoordinator::setCurrentModule(const QString& moduleId)
 QString ApplicationCoordinator::getCurrentModule() const
 {
     return m_currentModuleId;
-}
-
-void ApplicationCoordinator::requestSwitchModule(const QString& moduleId)
-{
-    if (moduleId.isEmpty()) {
-        return;
-    }
-
-    if (m_actionDispatcher) {
-        m_actionDispatcher->requestModuleSwitch(moduleId);
-    }
 }
 
 void ApplicationCoordinator::requestResync(const QString& reason)
@@ -111,7 +75,7 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
     case LogicNotification::ModuleChanged: {
         QString newModuleId = notification.payload.value("newModule").toString();
         if (!newModuleId.isEmpty()) {
-            setCurrentModule(newModuleId);
+            updateCurrentModule(newModuleId);
         }
         break;
     }
@@ -138,7 +102,7 @@ void ApplicationCoordinator::onShellNotification(const LogicNotification& notifi
             const QString moduleId = notification.payload.value(
                 QStringLiteral("currentModule")).toString();
             if (!moduleId.isEmpty() && moduleId != m_currentModuleId) {
-                setCurrentModule(moduleId);
+                updateCurrentModule(moduleId);
             }
         }
         break;

@@ -1,20 +1,18 @@
 #pragma once
 
-class MainWindow;
 class LogicRuntime;
 class ApplicationCoordinator;
 class ILogicRuntimePort;
-class PageManager;
 class GlobalUiManager;
+class GlobalWidgetRegistry;
 
 struct ModuleUiAssemblyContext
 {
-    MainWindow* mainWindow = nullptr;
     LogicRuntime* runtime = nullptr;
     ApplicationCoordinator* applicationCoordinator = nullptr;
     ILogicRuntimePort* runtimePort = nullptr;
-    PageManager* pageManager = nullptr;
     GlobalUiManager* globalUiManager = nullptr;
+    GlobalWidgetRegistry* globalWidgetRegistry = nullptr;
 };
 
 void registerParamsModuleUi(const ModuleUiAssemblyContext& context);

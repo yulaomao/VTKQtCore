@@ -1,5 +1,4 @@
 #include "MainWindow.h"
-#include "WorkspaceShell.h"
 
 #include "ui_MainWindow.h"
 
@@ -14,10 +13,6 @@ MainWindow::MainWindow(QWidget* parent)
     setMinimumSize(1024, 768);
     setWindowIcon(QIcon(QStringLiteral(":/mainwindow/resources/app-window-icon.svg")));
 
-    m_workspaceShell = new WorkspaceShell(m_ui->rootStack);
-    m_ui->rootStack->addWidget(m_workspaceShell);
-    m_ui->rootStack->setCurrentWidget(m_workspaceShell);
-
     m_ui->globalOverlayLayer->raise();
     m_ui->globalOverlayLayer->hide();
     m_ui->globalToolHost->raise();
@@ -27,11 +22,6 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow()
 {
     delete m_ui;
-}
-
-WorkspaceShell* MainWindow::getWorkspaceShell() const
-{
-    return m_workspaceShell;
 }
 
 QStackedWidget* MainWindow::getRootStack() const
@@ -47,6 +37,44 @@ QWidget* MainWindow::getGlobalOverlayLayer() const
 QWidget* MainWindow::getGlobalToolHost() const
 {
     return m_ui->globalToolHost;
+}
+
+QWidget* MainWindow::getWorkspaceRootWidget() const
+{
+    return m_workspaceRootWidget;
+}
+
+void MainWindow::setWorkspaceRootWidget(QWidget* workspaceRootWidget)
+{
+    if (!workspaceRootWidget) {
+        return;
+    }
+
+    if (m_workspaceRootWidget == workspaceRootWidget) {
+        m_ui->rootStack->setCurrentWidget(workspaceRootWidget);
+        return;
+    }
+
+    if (m_workspaceRootWidget) {
+        m_ui->rootStack->removeWidget(m_workspaceRootWidget);
+        m_workspaceRootWidget->deleteLater();
+    }
+
+    m_workspaceRootWidget = workspaceRootWidget;
+    if (m_ui->rootStack->indexOf(workspaceRootWidget) < 0) {
+        m_ui->rootStack->addWidget(workspaceRootWidget);
+    }
+    m_ui->rootStack->setCurrentWidget(workspaceRootWidget);
+}
+
+GlobalWidgetRegistry* MainWindow::getGlobalWidgetRegistry() const
+{
+    return m_globalWidgetRegistry;
+}
+
+void MainWindow::setGlobalWidgetRegistry(GlobalWidgetRegistry* globalWidgetRegistry)
+{
+    m_globalWidgetRegistry = globalWidgetRegistry;
 }
 
 void MainWindow::addFullPage(const QString& pageId, QWidget* page)
@@ -69,7 +97,9 @@ void MainWindow::switchToPage(const QString& pageId)
 
 void MainWindow::switchToWorkspace()
 {
-    m_ui->rootStack->setCurrentWidget(m_workspaceShell);
+    if (m_workspaceRootWidget) {
+        m_ui->rootStack->setCurrentWidget(m_workspaceRootWidget);
+    }
 }
 
 void MainWindow::resizeEvent(QResizeEvent* event)

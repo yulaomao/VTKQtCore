@@ -17,11 +17,6 @@ class ModuleCoordinator : public QObject
     Q_OBJECT
 
 public:
-    enum class AuxiliaryRegion {
-        Right,
-        Bottom
-    };
-
     ModuleCoordinator(const QString& moduleId, ILogicRuntimePort* runtimePort,
                       QObject* parent = nullptr);
     ~ModuleCoordinator() override = default;
@@ -30,9 +25,8 @@ public:
     void setMainPage(QWidget* page);
     QWidget* getMainPage() const;
     UiActionDispatcher* getActionDispatcher() const;
-    void addAuxiliaryWidget(QWidget* widget,
-                            AuxiliaryRegion region = AuxiliaryRegion::Right);
-    QVector<QWidget*> getAuxiliaryWidgets(AuxiliaryRegion region) const;
+    void addSupplementaryView(QWidget* widget);
+    QVector<QWidget*> getSupplementaryViews() const;
 
     void activate();
     void deactivate();
@@ -50,6 +44,5 @@ private:
     QString m_moduleId;
     UiActionDispatcher* m_actionDispatcher;
     QWidget* m_mainPage;
-    QVector<QWidget*> m_rightAuxiliaryWidgets;
-    QVector<QWidget*> m_bottomAuxiliaryWidgets;
+    QVector<QWidget*> m_supplementaryViews;
 };

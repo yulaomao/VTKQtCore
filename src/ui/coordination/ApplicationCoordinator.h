@@ -10,31 +10,26 @@
 #include "contracts/LogicNotification.h"
 
 class ILogicRuntimePort;
-class PageManager;
 class GlobalUiManager;
 class ModuleCoordinator;
 class UiActionDispatcher;
-class WorkspaceShell;
 
 class ApplicationCoordinator : public QObject
 {
     Q_OBJECT
 
 public:
-    ApplicationCoordinator(ILogicRuntimePort* runtimePort, PageManager* pageMgr,
+    ApplicationCoordinator(ILogicRuntimePort* runtimePort,
                            GlobalUiManager* globalUiMgr,
-                           WorkspaceShell* workspaceShell,
                            QObject* parent = nullptr);
     ~ApplicationCoordinator() override = default;
 
     void registerModuleCoordinator(ModuleCoordinator* coordinator);
     ModuleCoordinator* getModuleCoordinator(const QString& moduleId) const;
     UiActionDispatcher* getActionDispatcher() const;
-    void setCurrentModule(const QString& moduleId);
     QString getCurrentModule() const;
 
 public slots:
-    void requestSwitchModule(const QString& moduleId);
     void requestResync(const QString& reason = QStringLiteral("manual"));
 
     void onShellNotification(const LogicNotification& notification);
@@ -46,9 +41,9 @@ signals:
     void healthSnapshotChanged(const QVariantMap& snapshot);
 
 private:
-    PageManager* m_pageManager;
+    void updateCurrentModule(const QString& moduleId);
+
     GlobalUiManager* m_globalUiManager;
-    WorkspaceShell* m_workspaceShell;
     UiActionDispatcher* m_actionDispatcher;
     QMap<QString, ModuleCoordinator*> m_moduleCoordinators;
     QString m_currentModuleId;

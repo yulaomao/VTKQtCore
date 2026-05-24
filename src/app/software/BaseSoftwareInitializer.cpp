@@ -4,12 +4,11 @@
 #include "logic/runtime/ILogicRuntimePort.h"
 #include "CommunicationHub.h"
 #include "ApplicationCoordinator.h"
-#include "PageManager.h"
 #include "GlobalUiManager.h"
+#include "ui/globalui/GlobalWidgetRegistry.h"
 #include "ActiveModuleState.h"
 #include "app/audio/PromptAudioService.h"
 #include "contracts/PromptAudioPresetIds.h"
-#include "WorkspaceShell.h"
 #include "ui/coordination/UiActionDispatcher.h"
 
 namespace {
@@ -70,32 +69,27 @@ QVariantMap BaseSoftwareInitializer::getSoftwareProfile() const
 void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* logicRuntime,
                                          ILogicRuntimePort* runtimePort, CommunicationHub* commHub)
 {
-    const QStringList moduleDisplayOrder = configuredModuleDisplayOrder();
     const QString initialModule = configuredInitialModule();
 
-    // 1. Create PageManager and set its stack widget
-    m_pageManager = new PageManager(this);
-    m_pageManager->setStackWidget(mainWindow->getWorkspaceShell()->getCenterStack());
-
-    // 2. Create GlobalUiManager, set overlay and tool host
+    // 1. Create global UI services.
     m_globalUiManager = new GlobalUiManager(this);
     m_globalUiManager->setOverlayLayer(mainWindow->getGlobalOverlayLayer());
     m_globalUiManager->setToolHost(mainWindow->getGlobalToolHost());
+    m_globalWidgetRegistry = new GlobalWidgetRegistry(this);
+    mainWindow->setGlobalWidgetRegistry(m_globalWidgetRegistry);
 
-    // 3. Create ApplicationCoordinator
+    // 2. Create application coordination without a built-in shell host.
     m_appCoordinator = new ApplicationCoordinator(
         runtimePort,
-        m_pageManager,
         m_globalUiManager,
-        mainWindow->getWorkspaceShell(),
         this);
 
-    // 4. Configure the runtime-owned active-module state
+    // 3. Configure the runtime-owned active-module state.
     m_activeModuleState = logicRuntime->getActiveModuleState();
     m_activeModuleState->setInitialModule(initialModule);
     m_activeModuleState->setCurrentModule(QString());
 
-    // 4.1 Create the application-wide prompt audio service before any module logic is registered.
+    // 3.1 Create the application-wide prompt audio service before any module logic is registered.
     auto* promptAudioService = new PromptAudioService(this);
     logicRuntime->setPromptAudioService(promptAudioService);
     logicRuntime->registerPromptAudioPreset(
@@ -105,16 +99,21 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
         PromptAudioPresetIds::pollingAttention(),
         QStringLiteral(":/audio/prompts/news_anchor_female.wav"));
 
-    // 5. Register module logic handlers
+    // 4. Register module logic handlers.
     registerModuleLogicHandlers(logicRuntime);
 
-    // 6. Register module UIs
+    // 5. Register module UIs and global widget factories.
     registerModuleUIs(mainWindow, logicRuntime, m_appCoordinator, runtimePort);
+    registerGlobalWidgetFactories(mainWindow, logicRuntime, m_appCoordinator,
+                                  runtimePort, m_globalWidgetRegistry);
 
-    // 7. Register optional shell modules
-    registerShellModules(mainWindow, logicRuntime, m_appCoordinator, runtimePort);
+    // 6. Let the concrete initializer provide the product root widget tree.
+    if (QWidget* productRoot = buildProductUi(mainWindow, logicRuntime,
+                                              m_appCoordinator, runtimePort)) {
+        mainWindow->setWorkspaceRootWidget(productRoot);
+    }
 
-    // 8. Configure additional settings
+    // 7. Configure additional settings.
     configureAdditionalSettings(logicRuntime);
 
     if (commHub && getRunMode() == RunMode::Socket) {
@@ -126,10 +125,10 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
         }
     }
 
-    // 8.1 Register communication sources once module selection has been resolved
+    // 8. Register communication sources once module selection has been resolved.
     registerCommunicationSources(commHub);
 
-    // 9. Connect runtime notifications back into the UI coordination layer
+    // 9. Connect runtime notifications back into the UI coordination layer.
     QObject::connect(logicRuntime, &LogicRuntime::logicNotification,
                      m_appCoordinator, &ApplicationCoordinator::onShellNotification);
 
@@ -152,21 +151,21 @@ void BaseSoftwareInitializer::initialize(MainWindow* mainWindow, LogicRuntime* l
         logicRuntime->onConnectionStateChanged(commHub->getConnectionStateName());
     }
 
-    // 10. Enter the initial module through the standard action path
-    if (m_appCoordinator && m_appCoordinator->getActionDispatcher()) {
-        m_appCoordinator->getActionDispatcher()->requestModuleSwitch(initialModule);
-    }
+    // 10. Enter the initial module through direct runtime activation.
+    logicRuntime->initializeActiveModule(initialModule);
 }
 
-void BaseSoftwareInitializer::registerShellModules(MainWindow* mainWindow,
-                                                   LogicRuntime* runtime,
-                                                   ApplicationCoordinator* appCoord,
-                                                   ILogicRuntimePort* runtimePort)
+void BaseSoftwareInitializer::registerGlobalWidgetFactories(MainWindow* mainWindow,
+                                                            LogicRuntime* runtime,
+                                                            ApplicationCoordinator* appCoord,
+                                                            ILogicRuntimePort* runtimePort,
+                                                            GlobalWidgetRegistry* globalWidgetRegistry)
 {
     Q_UNUSED(mainWindow);
     Q_UNUSED(runtime);
     Q_UNUSED(appCoord);
     Q_UNUSED(runtimePort);
+    Q_UNUSED(globalWidgetRegistry);
 }
 
 void BaseSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)

@@ -5,7 +5,7 @@
 #include <QMap>
 #include <QString>
 
-class WorkspaceShell;
+class GlobalWidgetRegistry;
 
 namespace Ui {
 class MainWindow;
@@ -19,10 +19,14 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
 
-    WorkspaceShell* getWorkspaceShell() const;
     QStackedWidget* getRootStack() const;
     QWidget* getGlobalOverlayLayer() const;
     QWidget* getGlobalToolHost() const;
+    QWidget* getWorkspaceRootWidget() const;
+    void setWorkspaceRootWidget(QWidget* workspaceRootWidget);
+
+    GlobalWidgetRegistry* getGlobalWidgetRegistry() const;
+    void setGlobalWidgetRegistry(GlobalWidgetRegistry* globalWidgetRegistry);
 
     void addFullPage(const QString& pageId, QWidget* page);
     void switchToPage(const QString& pageId);
@@ -33,6 +37,7 @@ protected:
 
 private:
     Ui::MainWindow* m_ui = nullptr;
-    WorkspaceShell* m_workspaceShell = nullptr;
+    QWidget* m_workspaceRootWidget = nullptr;
+    GlobalWidgetRegistry* m_globalWidgetRegistry = nullptr;
     QMap<QString, QWidget*> m_fullPages;
 };

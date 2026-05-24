@@ -17,9 +17,13 @@ public:
     void registerModuleUIs(MainWindow* mainWindow, LogicRuntime* runtime,
                            ApplicationCoordinator* appCoord,
                            ILogicRuntimePort* runtimePort) override;
-    void registerShellModules(MainWindow* mainWindow, LogicRuntime* runtime,
-                              ApplicationCoordinator* appCoord,
-                              ILogicRuntimePort* runtimePort) override;
+    void registerGlobalWidgetFactories(MainWindow* mainWindow, LogicRuntime* runtime,
+                                       ApplicationCoordinator* appCoord,
+                                       ILogicRuntimePort* runtimePort,
+                                       GlobalWidgetRegistry* globalWidgetRegistry) override;
+    QWidget* buildProductUi(MainWindow* mainWindow, LogicRuntime* runtime,
+                            ApplicationCoordinator* appCoord,
+                            ILogicRuntimePort* runtimePort) override;
     void configureAdditionalSettings(LogicRuntime* runtime) override;
     void registerCommunicationSources(CommunicationHub* commHub) override;
 };

@@ -35,25 +35,18 @@ UiActionDispatcher* ModuleCoordinator::getActionDispatcher() const
     return m_actionDispatcher;
 }
 
-void ModuleCoordinator::addAuxiliaryWidget(QWidget* widget,
-                                           AuxiliaryRegion region)
+void ModuleCoordinator::addSupplementaryView(QWidget* widget)
 {
     if (!widget) {
         return;
     }
 
-    if (region == AuxiliaryRegion::Bottom) {
-        m_bottomAuxiliaryWidgets.append(widget);
-    } else {
-        m_rightAuxiliaryWidgets.append(widget);
-    }
+    m_supplementaryViews.append(widget);
 }
 
-QVector<QWidget*> ModuleCoordinator::getAuxiliaryWidgets(AuxiliaryRegion region) const
+QVector<QWidget*> ModuleCoordinator::getSupplementaryViews() const
 {
-    return region == AuxiliaryRegion::Bottom
-        ? m_bottomAuxiliaryWidgets
-        : m_rightAuxiliaryWidgets;
+    return m_supplementaryViews;
 }
 
 void ModuleCoordinator::activate()
@@ -61,10 +54,7 @@ void ModuleCoordinator::activate()
     if (m_mainPage) {
         m_mainPage->show();
     }
-    for (auto* w : m_rightAuxiliaryWidgets) {
-        w->show();
-    }
-    for (auto* w : m_bottomAuxiliaryWidgets) {
+    for (auto* w : m_supplementaryViews) {
         w->show();
     }
     emit activated();
@@ -75,10 +65,7 @@ void ModuleCoordinator::deactivate()
     if (m_mainPage) {
         m_mainPage->hide();
     }
-    for (auto* w : m_rightAuxiliaryWidgets) {
-        w->hide();
-    }
-    for (auto* w : m_bottomAuxiliaryWidgets) {
+    for (auto* w : m_supplementaryViews) {
         w->hide();
     }
     emit deactivated();

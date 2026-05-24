@@ -10,9 +10,10 @@ class LogicRuntime;
 class ILogicRuntimePort;
 class CommunicationHub;
 class ApplicationCoordinator;
-class PageManager;
 class GlobalUiManager;
+class GlobalWidgetRegistry;
 class ActiveModuleState;
+class QWidget;
 
 enum class RunMode { Local, Socket };
 
@@ -36,9 +37,13 @@ public:
     virtual void registerModuleUIs(MainWindow* mainWindow, LogicRuntime* runtime,
                                    ApplicationCoordinator* appCoord,
                                               ILogicRuntimePort* runtimePort) = 0;
-    virtual void registerShellModules(MainWindow* mainWindow, LogicRuntime* runtime,
-                                      ApplicationCoordinator* appCoord,
-                                                  ILogicRuntimePort* runtimePort);
+    virtual void registerGlobalWidgetFactories(MainWindow* mainWindow, LogicRuntime* runtime,
+                                               ApplicationCoordinator* appCoord,
+                                               ILogicRuntimePort* runtimePort,
+                                               GlobalWidgetRegistry* globalWidgetRegistry);
+    virtual QWidget* buildProductUi(MainWindow* mainWindow, LogicRuntime* runtime,
+                                    ApplicationCoordinator* appCoord,
+                                    ILogicRuntimePort* runtimePort) = 0;
     virtual void registerCommunicationSources(CommunicationHub* commHub);
     virtual void configureAdditionalSettings(LogicRuntime* runtime);
 
@@ -52,8 +57,8 @@ protected:
     bool isModuleEnabled(const QString& moduleId) const;
 
     ApplicationCoordinator* m_appCoordinator = nullptr;
-    PageManager* m_pageManager = nullptr;
     GlobalUiManager* m_globalUiManager = nullptr;
+    GlobalWidgetRegistry* m_globalWidgetRegistry = nullptr;
     ActiveModuleState* m_activeModuleState = nullptr;
 
 private:
