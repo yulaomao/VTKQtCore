@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/products/default">
+        <file>product.json</file>
+        <file>resources/app-window-icon.svg</file>
+    </qresource>
+</RCC>

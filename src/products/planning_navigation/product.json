@@ -1,0 +1,22 @@
+{
+  "softwareType": "planning_navigation",
+  "styleTheme": "clinical-light",
+  "enabledModules": [
+    "params",
+    "planning",
+    "navigation"
+  ],
+  "moduleDisplayOrder": [
+    "params",
+    "planning",
+    "navigation"
+  ],
+  "initialModule": "params",
+  "communication": {
+    "routingChannels": [
+      "control.downstream"
+    ],
+    "controlPublishChannel": "control.upstream",
+    "ackChannel": "control.ack"
+  }
+}

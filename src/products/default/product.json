@@ -1,0 +1,26 @@
+{
+  "softwareType": "default",
+  "styleTheme": "clinical-light",
+  "enabledModules": [
+    "datagen",
+    "params",
+    "pointpick",
+    "planning",
+    "navigation"
+  ],
+  "moduleDisplayOrder": [
+    "datagen",
+    "params",
+    "pointpick",
+    "planning",
+    "navigation"
+  ],
+  "initialModule": "datagen",
+  "communication": {
+    "routingChannels": [
+      "control.downstream"
+    ],
+    "controlPublishChannel": "control.upstream",
+    "ackChannel": "control.ack"
+  }
+}

@@ -1,16 +1,14 @@
-#include "DefaultSoftwareInitializer.h"
+#include "ProductSoftwareInitializer.h"
 
+#include "app/bootstrap/ProductDefinition.h"
 #include "app/modules/ModulePack.h"
 #include "app/modules/ModulePackRegistry.h"
-#include "ModuleUiAssemblers.h"
-#include "SoftwareInitializerFactory.h"
+#include "app/modules/ModuleUiAssemblyContext.h"
 #include "ApplicationCoordinator.h"
 #include "LogicRuntime.h"
 #include "MainWindow.h"
 #include "communication/hub/CommunicationHub.h"
 #include "logic/runtime/ILogicRuntimePort.h"
-#include "logic/registry/ModuleLogicHandler.h"
-#include "logic/registry/ModuleLogicRegistry.h"
 #include "ui/globalui/GlobalWidgetRegistry.h"
 #include "modules/intermoduletest/InterModuleReceiverLogicHandler.h"
 #include "modules/intermoduletest/InterModuleReceiverWidget.h"
@@ -21,13 +19,6 @@
 #include "modules/workflowshell/ModuleStatusBarModule.h"
 #include "ui/coordination/ModuleCoordinator.h"
 #include "ui/coordination/UiActionDispatcher.h"
-
-#include "ParamsModuleLogicHandler.h"
-#include "DataGenModuleLogicHandler.h"
-#include "PointPickModuleLogicHandler.h"
-#include "PlanningModuleLogicHandler.h"
-#include "NavigationModuleLogicHandler.h"
-#include "modules/reconstruction/ReconstructionModuleLogicHandler.h"
 
 #include <QDebug>
 #include <QFrame>
@@ -43,26 +34,6 @@ QString stringFromVariantOrDefault(const QVariant& value, const QString& fallbac
 {
     const QString text = value.toString().trimmed();
     return text.isEmpty() ? fallback : text;
-}
-
-QString defaultControlRoutingChannel()
-{
-    return QStringLiteral("control.downstream");
-}
-
-QString defaultControlPublishChannel()
-{
-    return QStringLiteral("control.upstream");
-}
-
-QString defaultAckChannel()
-{
-    return QStringLiteral("control.ack");
-}
-
-QVariantMap communicationProfile(const QVariantMap& profile)
-{
-    return profile.value(QStringLiteral("communication")).toMap();
 }
 
 QStringList stringListFromVariant(const QVariant& value)
@@ -84,154 +55,74 @@ QStringList stringListFromVariant(const QVariant& value)
 
 QStringList routingChannelsFromProfile(const QVariantMap& profile)
 {
+    const QVariantMap communication = profile.value(QStringLiteral("communication")).toMap();
     const QStringList channels = stringListFromVariant(
-        communicationProfile(profile).value(QStringLiteral("routingChannels")));
-    return channels.isEmpty() ? QStringList{defaultControlRoutingChannel()} : channels;
+        communication.value(QStringLiteral("routingChannels")));
+    return channels.isEmpty()
+        ? QStringList{QStringLiteral("control.downstream")}
+        : channels;
 }
 
 QString outboundControlChannelFromProfile(const QVariantMap& profile)
 {
+    const QVariantMap communication = profile.value(QStringLiteral("communication")).toMap();
     return stringFromVariantOrDefault(
-        communicationProfile(profile).value(QStringLiteral("controlPublishChannel")),
-        defaultControlPublishChannel());
+        communication.value(QStringLiteral("controlPublishChannel")),
+        QStringLiteral("control.upstream"));
 }
 
 QString ackChannelFromProfile(const QVariantMap& profile)
 {
+    const QVariantMap communication = profile.value(QStringLiteral("communication")).toMap();
     return stringFromVariantOrDefault(
-        communicationProfile(profile).value(QStringLiteral("ackChannel")),
-        defaultAckChannel());
+        communication.value(QStringLiteral("ackChannel")),
+        QStringLiteral("control.ack"));
+}
+
+QStringList productEnabledModules(const ProductDefinition& productDefinition,
+                                  const QVariantMap& defaultProfile)
+{
+    const QStringList configured = stringListFromVariant(
+        defaultProfile.value(QStringLiteral("enabledModules")));
+    return configured.isEmpty() ? productDefinition.defaultEnabledModules : configured;
+}
+
+QStringList productModuleDisplayOrder(const ProductDefinition& productDefinition,
+                                      const QVariantMap& defaultProfile)
+{
+    QStringList configured = stringListFromVariant(
+        defaultProfile.value(QStringLiteral("moduleDisplayOrder")));
+    if (configured.isEmpty()) {
+        configured = stringListFromVariant(defaultProfile.value(QStringLiteral("workflowSequence")));
+    }
+    return configured.isEmpty() ? productDefinition.moduleDisplayOrder : configured;
+}
+
+QString productInitialModule(const ProductDefinition& productDefinition,
+                             const QVariantMap& defaultProfile)
+{
+    const QString configured = defaultProfile.value(QStringLiteral("initialModule")).toString().trimmed();
+    if (!configured.isEmpty()) {
+        return configured;
+    }
+    if (!productDefinition.initialModule.trimmed().isEmpty()) {
+        return productDefinition.initialModule;
+    }
+
+    const QStringList displayOrder = productModuleDisplayOrder(productDefinition, defaultProfile);
+    return displayOrder.isEmpty() ? QString() : displayOrder.first();
 }
 
 QString initialConnectionStateName(RunMode mode)
 {
-    switch (mode) {
-    case RunMode::Local:
-        return QStringLiteral("Connected");
-    default:
-        return QStringLiteral("Disconnected");
-    }
+    return mode == RunMode::Local
+        ? QStringLiteral("Connected")
+        : QStringLiteral("Disconnected");
 }
 
 bool layoutHasVisibleWidgets(const QLayout* layout)
 {
     return layout && layout->count() > 0;
-}
-
-ModulePack createDataGenModulePack()
-{
-    ModulePack modulePack;
-    modulePack.moduleId = QStringLiteral("datagen");
-    modulePack.registerLogic = [](LogicRuntime* runtime) {
-        if (runtime) {
-            runtime->registerModuleHandler(new DataGenModuleLogicHandler(runtime));
-        }
-    };
-    modulePack.registerUi = [](const ModuleUiAssemblyContext& context) {
-        registerDataGenModuleUi(context);
-    };
-    return modulePack;
-}
-
-ModulePack createParamsModulePack()
-{
-    ModulePack modulePack;
-    modulePack.moduleId = QStringLiteral("params");
-    modulePack.registerLogic = [](LogicRuntime* runtime) {
-        if (runtime) {
-            runtime->registerModuleHandler(new ParamsModuleLogicHandler(runtime));
-        }
-    };
-    modulePack.registerUi = [](const ModuleUiAssemblyContext& context) {
-        registerParamsModuleUi(context);
-    };
-    return modulePack;
-}
-
-ModulePack createPointPickModulePack()
-{
-    ModulePack modulePack;
-    modulePack.moduleId = QStringLiteral("pointpick");
-    modulePack.registerLogic = [](LogicRuntime* runtime) {
-        if (runtime) {
-            runtime->registerModuleHandler(new PointPickModuleLogicHandler(runtime));
-        }
-    };
-    modulePack.registerUi = [](const ModuleUiAssemblyContext& context) {
-        registerPointPickModuleUi(context);
-    };
-    return modulePack;
-}
-
-ModulePack createPlanningModulePack()
-{
-    ModulePack modulePack;
-    modulePack.moduleId = QStringLiteral("planning");
-    modulePack.registerLogic = [](LogicRuntime* runtime) {
-        if (runtime) {
-            runtime->registerModuleHandler(new PlanningModuleLogicHandler(runtime));
-        }
-    };
-    modulePack.registerUi = [](const ModuleUiAssemblyContext& context) {
-        registerPlanningModuleUi(context);
-    };
-    return modulePack;
-}
-
-ModulePack createNavigationModulePack()
-{
-    ModulePack modulePack;
-    modulePack.moduleId = QStringLiteral("navigation");
-    modulePack.registerLogic = [](LogicRuntime* runtime) {
-        if (runtime) {
-            runtime->registerModuleHandler(new NavigationModuleLogicHandler(runtime));
-        }
-    };
-    modulePack.registerUi = [](const ModuleUiAssemblyContext& context) {
-        registerNavigationModuleUi(context);
-    };
-    return modulePack;
-}
-
-ModulePack createReconstructionModulePack()
-{
-    ModulePack modulePack;
-    modulePack.moduleId = QStringLiteral("reconstruction");
-    modulePack.registerLogic = [](LogicRuntime* runtime) {
-        if (runtime) {
-            runtime->registerModuleHandler(new ReconstructionModuleLogicHandler(runtime));
-        }
-    };
-    modulePack.registerUi = [](const ModuleUiAssemblyContext& context) {
-        registerReconstructionModuleUi(context);
-    };
-    return modulePack;
-}
-
-void registerKnownModulePacks()
-{
-    ModulePackRegistry::registerPack(createDataGenModulePack());
-    ModulePackRegistry::registerPack(createParamsModulePack());
-    ModulePackRegistry::registerPack(createPointPickModulePack());
-    ModulePackRegistry::registerPack(createPlanningModulePack());
-    ModulePackRegistry::registerPack(createNavigationModulePack());
-    ModulePackRegistry::registerPack(createReconstructionModulePack());
-}
-
-void registerConfiguredModuleLogicPack(const QString& moduleId, LogicRuntime* runtime)
-{
-    const ModulePack modulePack = ModulePackRegistry::findPack(moduleId);
-    if (modulePack.registerLogic) {
-        modulePack.registerLogic(runtime);
-    }
-}
-
-void registerConfiguredModuleUiPack(const QString& moduleId, const ModuleUiAssemblyContext& context)
-{
-    const ModulePack modulePack = ModulePackRegistry::findPack(moduleId);
-    if (modulePack.registerUi) {
-        modulePack.registerUi(context);
-    }
 }
 
 void clearLayoutWithoutDeletingWidgets(QLayout* layout)
@@ -246,6 +137,28 @@ void clearLayoutWithoutDeletingWidgets(QLayout* layout)
         }
         delete item;
     }
+}
+
+void registerConfiguredModuleLogicPack(const QString& moduleId, LogicRuntime* runtime)
+{
+    const ModulePack modulePack = ModulePackRegistry::findPack(moduleId);
+    if (modulePack.registerLogic) {
+        modulePack.registerLogic(runtime);
+        return;
+    }
+
+    qWarning().noquote() << QStringLiteral("[Product] missing logic module pack: %1").arg(moduleId);
+}
+
+void registerConfiguredModuleUiPack(const QString& moduleId, const ModuleUiAssemblyContext& context)
+{
+    const ModulePack modulePack = ModulePackRegistry::findPack(moduleId);
+    if (modulePack.registerUi) {
+        modulePack.registerUi(context);
+        return;
+    }
+
+    qWarning().noquote() << QStringLiteral("[Product] missing UI module pack: %1").arg(moduleId);
 }
 
 class DefaultProductRoot final : public QWidget
@@ -309,25 +222,10 @@ public:
         refreshVisibility();
     }
 
-    QStackedWidget* pageStack() const
-    {
-        return m_pageStack;
-    }
-
-    QHBoxLayout* topLayout() const
-    {
-        return m_topLayout;
-    }
-
-    QVBoxLayout* staticSideLayout() const
-    {
-        return m_staticSideLayout;
-    }
-
-    QHBoxLayout* bottomLayout() const
-    {
-        return m_bottomLayout;
-    }
+    QStackedWidget* pageStack() const { return m_pageStack; }
+    QHBoxLayout* topLayout() const { return m_topLayout; }
+    QVBoxLayout* staticSideLayout() const { return m_staticSideLayout; }
+    QHBoxLayout* bottomLayout() const { return m_bottomLayout; }
 
     void showSupplementaryViews(const QVector<QWidget*>& widgets)
     {
@@ -364,53 +262,34 @@ private:
     QHBoxLayout* m_bottomLayout = nullptr;
 };
 
-const bool s_registered = [] {
-    registerKnownModulePacks();
-    SoftwareInitializerFactory::registerInitializer(
-        QStringLiteral("default"),
-        [](const QString& softwareType, RunMode mode, QObject* parent) -> BaseSoftwareInitializer* {
-            return new DefaultSoftwareInitializer(softwareType, mode, parent);
-        });
-    return true;
-}();
-
 }
 
-DefaultSoftwareInitializer::DefaultSoftwareInitializer(const QString& softwareType,
+ProductSoftwareInitializer::ProductSoftwareInitializer(const ProductDefinition& productDefinition,
+                                                       const QVariantMap& defaultProfile,
                                                        RunMode mode,
                                                        QObject* parent)
-    : BaseSoftwareInitializer(softwareType, mode, parent)
+    : BaseSoftwareInitializer(productDefinition.softwareType, mode, parent)
+    , m_productDefinition(productDefinition)
+    , m_defaultProfile(defaultProfile)
 {
 }
 
-QStringList DefaultSoftwareInitializer::getEnabledModules() const
+QStringList ProductSoftwareInitializer::getEnabledModules() const
 {
-    return {
-        QStringLiteral("datagen"),
-        QStringLiteral("params"),
-        QStringLiteral("pointpick"),
-        QStringLiteral("planning"),
-        QStringLiteral("navigation")
-    };
+    return productEnabledModules(m_productDefinition, m_defaultProfile);
 }
 
-QStringList DefaultSoftwareInitializer::getModuleDisplayOrder() const
+QStringList ProductSoftwareInitializer::getModuleDisplayOrder() const
 {
-    return {
-        QStringLiteral("datagen"),
-        QStringLiteral("params"),
-        QStringLiteral("pointpick"),
-        QStringLiteral("planning"),
-        QStringLiteral("navigation")
-    };
+    return productModuleDisplayOrder(m_productDefinition, m_defaultProfile);
 }
 
-QString DefaultSoftwareInitializer::getInitialModule() const
+QString ProductSoftwareInitializer::getInitialModule() const
 {
-    return QStringLiteral("datagen");
+    return productInitialModule(m_productDefinition, m_defaultProfile);
 }
 
-void DefaultSoftwareInitializer::registerModuleLogicHandlers(LogicRuntime* runtime)
+void ProductSoftwareInitializer::registerModuleLogicHandlers(LogicRuntime* runtime)
 {
     if (!runtime) {
         return;
@@ -419,13 +298,12 @@ void DefaultSoftwareInitializer::registerModuleLogicHandlers(LogicRuntime* runti
     runtime->registerModuleHandler(new InterModuleSenderLogicHandler(runtime));
     runtime->registerModuleHandler(new InterModuleReceiverLogicHandler(runtime));
 
-    const QStringList enabledModules = configuredEnabledModules();
-    for (const QString& moduleId : enabledModules) {
+    for (const QString& moduleId : configuredEnabledModules()) {
         registerConfiguredModuleLogicPack(moduleId, runtime);
     }
 }
 
-void DefaultSoftwareInitializer::registerModuleUIs(MainWindow* mainWindow,
+void ProductSoftwareInitializer::registerModuleUIs(MainWindow* mainWindow,
                                                    LogicRuntime* runtime,
                                                    ApplicationCoordinator* appCoord,
                                                    ILogicRuntimePort* runtimePort)
@@ -440,13 +318,12 @@ void DefaultSoftwareInitializer::registerModuleUIs(MainWindow* mainWindow,
         m_globalWidgetRegistry
     };
 
-    const QStringList enabledModules = configuredEnabledModules();
-    for (const QString& moduleId : enabledModules) {
+    for (const QString& moduleId : configuredEnabledModules()) {
         registerConfiguredModuleUiPack(moduleId, context);
     }
 }
 
-void DefaultSoftwareInitializer::registerGlobalWidgetFactories(
+void ProductSoftwareInitializer::registerGlobalWidgetFactories(
     MainWindow* mainWindow,
     LogicRuntime* runtime,
     ApplicationCoordinator* appCoord,
@@ -478,7 +355,7 @@ void DefaultSoftwareInitializer::registerGlobalWidgetFactories(
         });
 }
 
-QWidget* DefaultSoftwareInitializer::buildProductUi(MainWindow* mainWindow,
+QWidget* ProductSoftwareInitializer::buildProductUi(MainWindow* mainWindow,
                                                     LogicRuntime* runtime,
                                                     ApplicationCoordinator* appCoord,
                                                     ILogicRuntimePort* runtimePort)
@@ -560,19 +437,17 @@ QWidget* DefaultSoftwareInitializer::buildProductUi(MainWindow* mainWindow,
     return productRoot;
 }
 
-void DefaultSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runtime)
+void ProductSoftwareInitializer::configureAdditionalSettings(LogicRuntime* runtime)
 {
     Q_UNUSED(runtime);
 }
 
-void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
+void ProductSoftwareInitializer::registerCommunicationSources(CommunicationHub* commHub)
 {
     if (!commHub) {
         return;
     }
 
-    // Configure outbound control channels (unchanged — used for external control
-    // messages, ACK, and resync; unrelated to the data polling/subscription path).
     const QVariantMap profile = getSoftwareProfile();
     commHub->setOutboundChannels(
         outboundControlChannelFromProfile(profile),
@@ -581,7 +456,4 @@ void DefaultSoftwareInitializer::registerCommunicationSources(CommunicationHub* 
     for (const QString& routingChannel : routingChannelsFromProfile(profile)) {
         commHub->addRoutingChannel(routingChannel);
     }
-
-    // Socket mode receives all inbound messages through CommunicationHub and
-    // routes them after receipt.
 }
